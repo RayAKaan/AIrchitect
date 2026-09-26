@@ -4,7 +4,7 @@ class ProjectCreate(BaseModel):
     organization_id: str
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=10000)
-    building_type: str = Field(default="commercial", pattern="^(commercial|retail)$")
+    building_type: str = Field(default="commercial", pattern="^(commercial|retail|commercial_retail|office|mixed_use)$")
     location: str = Field(default="Saudi Arabia", max_length=200)
 
 class ProjectOut(BaseModel):

@@ -1,29 +1,42 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { Bounds, Grid, Html, OrbitControls, useBounds } from '@react-three/drei';
+import * as THREE from 'three';
 
-type Artifact = { artifact_id:string; option_id:string; source_revision:number; units:'m'; vertices:[number,number,number][]; faces:number[][]; footprint_area_m2:number; gross_floor_area_m2:number; gross_volume_m3:number; height_m:number; geometry_sha256:string; validation:Record<string,string|boolean> };
-type Response = { project_id:string; source_revision:number; artifacts:Artifact[]; caveats:string[] };
+type Artifact = { id:string; type:string; status:string; alternative_id:string|null; hash:string; payload:any };
+type Snapshot = { version:{number:number}; artifacts:Artifact[]; world_model:any };
 
-/** Lightweight canvas mesh viewer; renders the actual indexed mesh returned by the geometry API. */
-export default function GeometryViewer({api,token,projectId,onClose}:{api:string;token:string;projectId:string;onClose:()=>void}) {
- const canvas=useRef<HTMLCanvasElement>(null); const [result,setResult]=useState<Response|null>(null); const [selected,setSelected]=useState(''); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
- const [width,setWidth]=useState(30); const [depth,setDepth]=useState(24); const [floors,setFloors]=useState(4); const [floorHeight,setFloorHeight]=useState(3.6); const [revision,setRevision]=useState(1);
- const [yaw,setYaw]=useState(-0.65); const [pitch,setPitch]=useState(0.42); const [zoom,setZoom]=useState(1); const [showFloors,setShowFloors]=useState(true);
- const artifact=useMemo(()=>result?.artifacts.find(a=>a.option_id===selected)||result?.artifacts[0], [result,selected]);
- async function generate(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=await fetch(`${api}/geometry/generate`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({project_id:projectId,source_revision:revision,footprint_width_m:width,footprint_depth_m:depth,options:[{option_id:'base',floors,floor_to_floor_m:floorHeight,setback_m:0},{option_id:'setback',floors,floor_to_floor_m:floorHeight,setback_m:2}]})});const d=await r.json();if(!r.ok)throw Error(d.detail||'Geometry generation failed');setResult(d);setSelected(d.artifacts[0]?.option_id||'');}catch(e:any){setError(e.message)}finally{setBusy(false)}}
- useEffect(()=>{const el=canvas.current;if(!el||!artifact)return;const ctx=el.getContext('2d');if(!ctx)return;const w=el.clientWidth,h=el.clientHeight,dpr=window.devicePixelRatio||1;el.width=w*dpr;el.height=h*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);ctx.fillStyle='#121210';ctx.fillRect(0,0,w,h);
- const verts=artifact.vertices;const cx=verts.reduce((s,v)=>s+v[0],0)/verts.length,cy=verts.reduce((s,v)=>s+v[1],0)/verts.length,cz=verts.reduce((s,v)=>s+v[2],0)/verts.length;
- const projected=verts.map(v=>{let x=v[0]-cx,y=v[1]-cy,z=v[2]-cz;const x1=x*Math.cos(yaw)-y*Math.sin(yaw),y1=x*Math.sin(yaw)+y*Math.cos(yaw);const y2=y1*Math.cos(pitch)-z*Math.sin(pitch),z2=y1*Math.sin(pitch)+z*Math.cos(pitch);return [w/2+x1*zoom* Math.min(w/Math.max(width,depth,1),h/Math.max(artifact.height_m,1))*1.35,h/2+(y2)*zoom*Math.min(w/Math.max(width,depth,1),h/Math.max(artifact.height_m,1))*1.35-z2*0.0] as [number,number]});
- const scale=Math.min((w-100)/Math.max(width,depth,1),(h-80)/Math.max(artifact.height_m,1))*zoom*.72;
- const points=verts.map(v=>{let x=v[0]-cx,y=v[1]-cy,z=v[2]-cz;const xx=x*Math.cos(yaw)-y*Math.sin(yaw),yy=x*Math.sin(yaw)+y*Math.cos(yaw);const py=yy*Math.cos(pitch)-z*Math.sin(pitch);return [w/2+xx*scale,h/2+py*scale] as [number,number]});
- const faces=artifact.faces.map((face,i)=>({face,i,depth:face.reduce((s,id)=>s+verts[id][1]*Math.sin(yaw)+verts[id][2]*Math.cos(pitch),0)/face.length})).sort((a,b)=>a.depth-b.depth);
- faces.forEach(({face,i})=>{ctx.beginPath();face.forEach((id,j)=>{const p=points[id];j?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])});ctx.closePath();ctx.fillStyle=['#b97847','#d6a276','#8c5735','#a76a40','#c18a5d','#75482f'][i%6];ctx.fill();ctx.strokeStyle='#e2b58c';ctx.lineWidth=1;ctx.stroke()});
- if(showFloors&&floors>1){ctx.strokeStyle='rgba(25,20,16,.65)';ctx.lineWidth=1;for(let f=1;f<floors;f++){const z=f*floorHeight;const line=verts.filter(v=>Math.abs(v[2]-z)<.001);if(line.length>=2){ctx.beginPath();line.forEach((v,i)=>{const id=verts.indexOf(v);i?ctx.lineTo(points[id][0],points[id][1]):ctx.moveTo(points[id][0],points[id][1])});ctx.stroke()}}}
- ctx.fillStyle='#9b9287';ctx.font='11px system-ui';ctx.fillText('CONCEPTUAL MESH · METRES',16,h-16);
- },[artifact,yaw,pitch,zoom,width,depth,showFloors,floors,floorHeight]);
- function pointerDown(e:React.PointerEvent){const el=e.currentTarget;el.setPointerCapture(e.pointerId);(el as any)._last=[e.clientX,e.clientY]}
- function pointerMove(e:React.PointerEvent){const el=e.currentTarget as any;if(!el.hasPointerCapture(e.pointerId)||!el._last)return;const dx=e.clientX-el._last[0],dy=e.clientY-el._last[1];el._last=[e.clientX,e.clientY];setYaw(v=>v+dx*.008);setPitch(v=>Math.max(-1.2,Math.min(1.2,v+dy*.006)))}
- return <section className="viewer-shell"><div className="viewer-head"><div><p className="eyebrow">PHASE 9 · GEOMETRY INSPECTOR</p><h2>3D Massing Viewer</h2><small>Project {projectId.slice(0,8)} · conceptual geometry only</small></div><button className="secondary" onClick={onClose}>Close viewer</button></div>
- <form className="viewer-controls" onSubmit={generate}><label>Width (m)<input type="number" min="1" max="10000" value={width} onChange={e=>setWidth(+e.target.value)}/></label><label>Depth (m)<input type="number" min="1" max="10000" value={depth} onChange={e=>setDepth(+e.target.value)}/></label><label>Floors<input type="number" min="1" max="200" value={floors} onChange={e=>setFloors(+e.target.value)}/></label><label>Floor height (m)<input type="number" min="1" max="20" step=".1" value={floorHeight} onChange={e=>setFloorHeight(+e.target.value)}/></label><label>Source revision<input type="number" min="1" value={revision} onChange={e=>setRevision(+e.target.value)}/></label><button disabled={busy}>{busy?'Generating…':'Generate alternatives'}</button></form>
- {error&&<p className="error">{error}</p>}{result&&<div className="viewer-layout"><div className="canvas-wrap"><canvas ref={canvas} onPointerDown={pointerDown} onPointerMove={pointerMove} onWheel={e=>setZoom(v=>Math.max(.35,Math.min(3,v-e.deltaY*.001)))} /><div className="canvas-tools"><button onClick={()=>{setYaw(-.65);setPitch(.42);setZoom(1)}}>Reset view</button><button onClick={()=>setZoom(v=>Math.min(3,v*1.2))}>＋</button><button onClick={()=>setZoom(v=>Math.max(.35,v/1.2))}>−</button></div></div><aside className="artifact-panel"><h3>Alternatives</h3>{result.artifacts.map(a=><button className={`alt-btn ${a.option_id===artifact?.option_id?'active':''}`} key={a.artifact_id} onClick={()=>setSelected(a.option_id)}>{a.option_id}<small>{a.height_m.toFixed(1)} m high</small></button>)}<label className="toggle"><input type="checkbox" checked={showFloors} onChange={e=>setShowFloors(e.target.checked)}/> Show floor guides</label>{artifact&&<><h3>Artifact metadata</h3><dl><dt>Artifact</dt><dd>{artifact.artifact_id}</dd><dt>Source revision</dt><dd>v{artifact.source_revision}</dd><dt>Footprint</dt><dd>{artifact.footprint_area_m2.toLocaleString()} m²</dd><dt>Gross floor area</dt><dd>{artifact.gross_floor_area_m2.toLocaleString()} m²</dd><dt>Volume</dt><dd>{artifact.gross_volume_m3.toLocaleString()} m³</dd><dt>Geometry SHA-256</dt><dd className="hash">{artifact.geometry_sha256}</dd><dt>Regulatory compliance</dt><dd>Not evaluated</dd><dt>Engineering approval</dt><dd>Not evaluated</dd></dl></>}</aside></div>}
- {result&&<div className="caveats"><b>Conceptual model — not an approval</b><ul>{result.caveats.map(c=><li key={c}>{c}</li>)}</ul></div>}</section>
+function FitButton(){ const bounds=useBounds(); return <Html fullscreen><button onClick={()=>bounds.refresh().fit()} className="fit-button">Fit to view</button></Html> }
+function Massing({artifact,showFloors}:{artifact:Artifact;showFloors:boolean}){
+ const p=artifact.payload; const vertices=p.vertices as [number,number,number][];
+ const width=Math.max(...vertices.map(v=>v[0]))-Math.min(...vertices.map(v=>v[0]));
+ const depth=Math.max(...vertices.map(v=>v[1]))-Math.min(...vertices.map(v=>v[1]));
+ const height=p.height_m as number; const floors=Math.max(1,Math.round(p.gross_floor_area_m2/p.footprint_area_m2));
+ return <group position={[0,height/2,0]}>
+  <mesh castShadow receiveShadow><boxGeometry args={[width,height,depth]}/><meshStandardMaterial color="#b97847" roughness={0.72} metalness={0.04}/></mesh>
+  <lineSegments><edgesGeometry args={[new THREE.BoxGeometry(width,height,depth)]}/><lineBasicMaterial color="#5b3624"/></lineSegments>
+  {showFloors&&Array.from({length:floors-1},(_,i)=>{const y=-height/2+(height/floors)*(i+1);return <mesh key={i} position={[0,y,depth/2+.015]}><planeGeometry args={[width,.025]}/><meshBasicMaterial color="#fff3e8"/></mesh>})}
+  <Html position={[width/2+.4,0,depth/2]}><span className="dimension-label">{height.toFixed(1)} m</span></Html>
+ </group>
+}
+
+/** Actual WebGL 3D viewer. Geometry comes only from persisted canonical geometry artifacts. */
+export default function GeometryViewer({api,token,projectId,onClose}:{api:string;token:string;projectId:string;onClose:()=>void}){
+ const [snapshot,setSnapshot]=useState<Snapshot|null>(null); const [selected,setSelected]=useState('');
+ const [showFloors,setShowFloors]=useState(true); const [busy,setBusy]=useState(true); const [error,setError]=useState('');
+ useEffect(()=>{(async()=>{setBusy(true);setError('');try{
+  const headers={Authorization:`Bearer ${token}`}; const vr=await fetch(`${api}/projects/${projectId}/versions`,{headers}); if(!vr.ok)throw Error('Could not load project versions');
+  const versions=await vr.json(); if(!versions.length)throw Error('No project version exists'); const sr=await fetch(`${api}/projects/${projectId}/versions/${versions[0].version}/snapshot`,{headers});
+  if(!sr.ok)throw Error('Could not load canonical project snapshot'); const data=await sr.json(); setSnapshot(data);
+  const first=data.artifacts.find((a:Artifact)=>a.type==='geometry'&&a.status!=='stale'); setSelected(first?.id||'');
+ }catch(e){setError(e instanceof Error?e.message:'Viewer failed')}finally{setBusy(false)}})()},[api,token,projectId]);
+ const geometries=useMemo(()=>snapshot?.artifacts.filter(a=>a.type==='geometry')||[],[snapshot]);
+ const artifact=geometries.find(a=>a.id===selected)||geometries[0];
+ return <section className="viewer-shell"><div className="viewer-head"><div><p className="eyebrow">PERSISTED GEOMETRY</p><h2>3D massing</h2><small>WebGL · project version {snapshot?.version.number??'—'} · canonical artifacts only</small></div><button className="btn outline" onClick={onClose}>Close</button></div>
+ {busy&&<div className="empty-state"><div className="spinner"/>Loading persisted geometry…</div>}
+ {error&&<div className="alert">{error}</div>}
+ {!busy&&!error&&!artifact&&<div className="empty-state"><h3>No geometry artifact</h3><p>Submit a complete brief and run the feasibility workflow first.</p></div>}
+ {artifact&&<div className="viewer-layout"><div className="canvas-wrap three-canvas"><Canvas shadows camera={{position:[45,35,45],fov:42}}><color attach="background" args={['#eeece5']}/><ambientLight intensity={1.5}/><directionalLight castShadow position={[30,45,20]} intensity={2}/><Suspense fallback={null}><Bounds fit clip observe margin={1.25}><Massing artifact={artifact} showFloors={showFloors}/><FitButton/></Bounds></Suspense><Grid infiniteGrid fadeDistance={150} sectionColor="#9a765f" cellColor="#c9c2b8"/><OrbitControls makeDefault enablePan enableZoom enableRotate/></Canvas></div>
+ <aside className="artifact-panel"><h3>Alternatives</h3>{geometries.map((a,i)=><button className={`alt-btn ${a.id===artifact.id?'active':''}`} key={a.id} onClick={()=>setSelected(a.id)}>Alternative {i+1}<small>{a.status} · {a.payload.height_m.toFixed(1)} m</small></button>)}<label className="toggle"><input type="checkbox" checked={showFloors} onChange={e=>setShowFloors(e.target.checked)}/> Floor visibility</label><h3>Artifact lineage</h3><dl><dt>Artifact version</dt><dd>{artifact.id}</dd><dt>Geometry SHA-256</dt><dd className="hash">{artifact.payload.geometry_sha256}</dd><dt>Gross floor area</dt><dd>{artifact.payload.gross_floor_area_m2.toLocaleString()} m²</dd><dt>Status</dt><dd>{artifact.status}</dd></dl></aside></div>}
+ <div className="caveats"><b>Preliminary geometry only</b><p>Orbit, pan and zoom are enabled. This massing is not BIM, regulatory approval, or engineering certification.</p></div></section>
 }

@@ -1,20 +1,48 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [project]
-name = "nazmak-building-platform-api"
-version = "0.1.0"
-description = "Nazmak building feasibility platform API"
+name = "building-feasibility-api"
+version = "0.2.0"
+description = "Versioned building feasibility orchestration API"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1", "pydantic-settings>=2.4,<3", "sqlalchemy[asyncio]>=2.0,<3", "asyncpg>=0.29,<1", "alembic>=1.13,<2", "email-validator>=2.2,<3"]
+dependencies = [
+  "fastapi==0.115.14",
+  "uvicorn[standard]==0.34.3",
+  "pydantic-settings==2.10.1",
+  "sqlalchemy[asyncio]==2.0.41",
+  "asyncpg==0.30.0",
+  "alembic==1.16.2",
+  "email-validator==2.2.0",
+  "reportlab==4.4.2"
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9", "httpx>=0.27,<1", "ruff>=0.6,<1", "mypy>=1.11,<2"]
+dev = [
+  "pytest==8.4.1",
+  "pytest-asyncio==1.0.0",
+  "httpx==0.28.1",
+  "ruff==0.12.0",
+  "mypy==1.16.1",
+  "aiosqlite==0.21.0"
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
+# Legacy prototype modules use compact statements; enforce correctness rules while they are incrementally reformatted.
+ignore = ["E401", "E402", "E701", "E702", "F401"]
 
 [tool.mypy]
 python_version = "3.11"

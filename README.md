@@ -1,30 +1,63 @@
-# Nazmak Building Feasibility Platform
+# Building feasibility platform
 
-Modular-monolith MVP for preliminary commercial/retail building feasibility. The repository includes the phase 0–17 implementation slices; it is **not yet verified as production-ready**. See the master completion audit before relying on any capability.
+An AI-native, deterministic-first platform for versioned preliminary commercial/retail building feasibility. The product name is intentionally not fixed.
 
-## Current state
+## Current implementation
 
-- API: FastAPI + SQLAlchemy async, domain modules and 58 passing unit tests.
-- Frontend: React + TypeScript + Vite starter workspace. Dependency installation/build remains unverified.
-- Data: PostgreSQL/PostGIS is the intended database. PostgreSQL integration and production migrations remain release gates.
-- Safety boundary: structural and regulatory outputs are preliminary; no engineering certification or official regulatory approval is implied. Cost rates must be explicitly sourced and supplied.
+Phase 1 establishes the canonical building brain:
 
-## Documentation
+`Organization -> Project -> Project Version -> Brief -> Requirements/Assumptions -> hash-verified World Model Revision`
 
-- [Master repository audit](docs/completion/MASTER_AUDIT.md)
-- [Blueprint traceability matrix](docs/completion/BLUEPRINT_TRACEABILITY_MATRIX.md)
-- [Prioritized implementation gaps](docs/completion/IMPLEMENTATION_GAPS.md)
-- [Integration defects](docs/completion/INTEGRATION_DEFECTS.md)
-- [Verification baseline](docs/completion/VERIFICATION_BASELINE.md)
-- [Phase tracker](docs/implementation/PHASE-TRACKER.md)
-- [Release checklist](docs/implementation/RELEASE-CHECKLIST.md)
+See [the Phase 1 report](docs/completion/PHASE-1-COMPLETION-REPORT.md) and [source audit](docs/implementation/PHASE-1-COMPLIANCE-AUDIT.md). Later-phase prototype modules remain in the repository, but direct client-owned canonical geometry and legacy project-scoped mutations are disabled until those consumers are refactored onto the central World Model resolver.
 
-## Local development
+Important boundaries:
 
-1. Copy `.env.example` to `.env` and set a unique `AUTH_SECRET` (at least 32 characters outside local mode).
-2. Start dependencies with `docker compose up --build` (Docker required).
-3. API docs: `http://localhost:8000/docs`; frontend: `http://localhost:5173`.
-4. API tests: `cd apps/api && pytest -q`.
-5. Frontend build: `cd apps/web && npm ci && npm run build` (requires a committed lockfile; currently blocked pending dependency resolution).
+- Structural output is conceptual and never certification.
+- Missing authoritative regulatory evidence produces `UNKNOWN`, never `PASS`.
+- Seeded demo rates are explicitly non-authoritative.
+- JEV is optional; deterministic operation is the default.
+- Historical project versions and artifact hashes remain inspectable.
 
-Local API bootstrap attempts `create_all` for development convenience. Production must use committed Alembic migrations and managed secrets. Authentication remains a starter implementation and requires a production security review.
+See [the engineering report](docs/completion/ENGINEERING_COMPLETION_REPORT.md) for verified results and remaining limitations.
+
+## Stack
+
+- API: FastAPI, async SQLAlchemy, PostgreSQL/PostGIS direction, Alembic
+- Web: React, TypeScript, Vite, TanStack Query, Three.js, React Three Fiber
+- Workflow: persisted tasks/events, idempotency, leases, retries and PostgreSQL `SKIP LOCKED` claims
+
+## Local run with Docker
+
+```bash
+cp .env.example .env
+# Set a unique AUTH_SECRET in .env
+docker compose up --build
+```
+
+- Web: http://localhost:5173
+- API/OpenAPI: http://localhost:8000/docs
+
+The API container runs `alembic upgrade head` before serving. Application startup never creates tables implicitly.
+
+## Checks
+
+```bash
+cd apps/api && pip install -e '.[dev]' && pytest -q && ruff check .
+cd apps/web && npm ci && npm run lint && npm test && npm run build
+```
+
+## Development without Docker
+
+```bash
+cd apps/api
+pip install -e '.[dev]'
+DATABASE_URL=sqlite+aiosqlite:///./dev.db alembic upgrade head
+DATABASE_URL=sqlite+aiosqlite:///./dev.db uvicorn app.main:app --reload
+
+# separate shell
+cd apps/web
+npm ci
+npm run dev
+```
+
+SQLite is only a local/test convenience. PostgreSQL is the intended deployed database.

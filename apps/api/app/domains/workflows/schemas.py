@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
-TaskState = Literal['pending','running','succeeded','failed','cancelled']
+TaskState = Literal['pending','running','succeeded','failed','blocked','stale','unknown','cancelled']
 
 class TaskSpec(BaseModel):
     key: str = Field(min_length=1, max_length=100, pattern=r'^[a-zA-Z0-9_.:-]+$')

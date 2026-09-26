@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, HTTPException, status
+from uuid import uuid4
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings, validate_production_settings
 from app.core.security import hash_password, verify_password, issue_token
-from app.db.models import Base, User, Organization, Membership, Project, AuditEvent
+from app.db.models import User, Organization, Membership, Project, AuditEvent
+from app.domains.foundation.service import create_initial_state
 from app.db.session import get_engine, get_session, dispose_engine
 from app.dependencies import current_user, require_membership
 from app.domains.identity.schemas import RegisterRequest, LoginRequest, AuthOut, UserOut
@@ -15,20 +17,35 @@ from app.domains.projects.schemas import ProjectCreate, ProjectOut
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     validate_production_settings(settings)
-    # Convenient local bootstrap; production schema changes must use Alembic migrations.
-    if settings.app_env == "local":
-        try:
-            async with get_engine().begin() as connection:
-                await connection.run_sync(Base.metadata.create_all)
-        except Exception:
-            # API health remains available while dependencies are starting; /ready reports DB failure.
-            pass
+    # Schema creation is exclusively managed by Alembic in every environment.
     try:
         yield
     finally:
         await dispose_engine()
 
-app = FastAPI(title=settings.app_name, version="0.3.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.4.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    request_id = request.headers.get("X-Request-Id") or str(uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-Id"] = request_id
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", str(uuid4()))
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        payload = exc.detail
+        payload["error"].setdefault("request_id", request_id)
+    else:
+        code = {401: "UNAUTHORIZED", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT"}.get(exc.status_code, "REQUEST_ERROR")
+        payload = {"error": {"code": code, "message": str(exc.detail), "request_id": request_id}}
+    return JSONResponse(status_code=exc.status_code, content=payload)
+
 
 @app.get("/health", tags=["operations"])
 async def health() -> dict[str, str]:
@@ -86,7 +103,10 @@ async def create_project(body: ProjectCreate, user: User = Depends(current_user)
     project = Project(organization_id=body.organization_id, name=body.name.strip(), description=body.description, building_type=body.building_type, location=body.location, created_by=user.id)
     session.add(project)
     await session.flush()
-    session.add(AuditEvent(organization_id=project.organization_id, actor_user_id=user.id, action="project.created", resource_type="project", resource_id=project.id))
+    await create_initial_state(session, project, user.id)
+    session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id,
+        project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_CREATED",
+        resource_type="project", resource_id=project.id))
     await session.commit()
     await session.refresh(project)
     return project
@@ -111,10 +131,13 @@ async def update_project(project_id: str, body: ProjectCreate, user: User = Depe
     membership = await require_membership(project.organization_id, user, session, {"owner", "admin", "member"})
     if body.organization_id != project.organization_id: raise HTTPException(422, "Project organization cannot be changed")
     if membership.role == "viewer": raise HTTPException(403, "Viewer cannot edit projects")
+    if body.building_type != project.building_type or body.location != project.location:
+        raise HTTPException(409, {"error": {"code": "CANONICAL_VERSION_REQUIRED",
+            "message": "Building type/location changes must create a new canonical project version."}})
     project.name, project.description = body.name.strip(), body.description
-    project.building_type, project.location = body.building_type, body.location
-    project.version += 1
-    session.add(AuditEvent(organization_id=project.organization_id, actor_user_id=user.id, action="project.updated", resource_type="project", resource_id=project.id))
+    session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id,
+        project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_UPDATED",
+        resource_type="project", resource_id=project.id))
     await session.commit()
     await session.refresh(project)
     return project
@@ -154,3 +177,19 @@ app.include_router(validation_router, prefix=settings.api_prefix)
 
 from app.domains.reviews.routes import router as reviews_router
 app.include_router(reviews_router, prefix=settings.api_prefix)
+
+from app.domains.foundation.routes import router as foundation_router
+app.include_router(foundation_router, prefix=settings.api_prefix)
+
+from app.domains.design.routes import router as design_router
+app.include_router(design_router, prefix=settings.api_prefix)
+
+from app.domains.engineering.routes import router as engineering_router
+app.include_router(engineering_router, prefix=settings.api_prefix)
+
+from app.domains.lifecycle.routes import router as lifecycle_router
+app.include_router(lifecycle_router, prefix=settings.api_prefix)
+from app.domains.ai.routes import router as ai_router
+app.include_router(ai_router, prefix=settings.api_prefix)
+from app.domains.evidence.routes import router as evidence_router
+app.include_router(evidence_router, prefix=settings.api_prefix)

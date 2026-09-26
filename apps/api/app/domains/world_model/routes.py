@@ -27,16 +27,8 @@ async def get_world_model(project_id: str, user: User = Depends(current_user), s
 async def mutate_world_model(project_id: str, body: WorldModelMutation, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     project = await _project(project_id, user, session)
     await require_membership(project.organization_id, user, session, {'owner', 'admin', 'member'})
-    if project.version != body.expected_project_version:
-        raise HTTPException(409, {'message': 'Project version conflict', 'current_version': project.version})
-    latest = await session.scalar(select(func.max(WorldModelRevision.revision)).where(WorldModelRevision.project_id == project_id))
-    revision = (latest or 0) + 1
-    row = WorldModelRevision(organization_id=project.organization_id, project_id=project_id, revision=revision, model_json=body.model.model_dump(mode='json'), created_by=user.id)
-    project.version += 1
-    session.add(row)
-    session.add(AuditEvent(organization_id=project.organization_id, actor_user_id=user.id, action='world_model.revised', resource_type='project', resource_id=project_id))
-    await session.commit()
-    return {'project_id': project_id, 'project_version': project.version, 'revision': revision, 'model': row.model_json}
+    raise HTTPException(410, {"error": {"code": "CANONICAL_VERSION_REQUIRED",
+        "message": "Project-scoped World Model mutation is disabled; use the version-scoped Phase 1 API."}})
 
 @router.get('/projects/{project_id}/world-model/revisions')
 async def list_world_model_revisions(project_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):

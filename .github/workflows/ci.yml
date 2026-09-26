@@ -3,6 +3,23 @@ on: [push, pull_request]
 jobs:
   api:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: building_test
+          POSTGRES_USER: building
+          POSTGRES_PASSWORD: building
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U building -d building_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://building:building@localhost:5432/building_test
+      APP_ENV: test
+      AUTH_SECRET: ci-only-secret-with-at-least-thirty-two-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -11,6 +28,7 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/pyproject.toml
       - run: pip install -e './apps/api[dev]'
+      - run: cd apps/api && alembic upgrade head && alembic downgrade base && alembic upgrade head
       - run: cd apps/api && ruff check . && pytest -q
   web:
     runs-on: ubuntu-latest
@@ -19,9 +37,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Until a reviewed package-lock.json is committed, npm install is required.
-      - run: cd apps/web && npm install --no-audit --no-fund
-      - run: cd apps/web && npm run build
+      - run: cd apps/web && npm ci --no-audit --no-fund
+      - run: cd apps/web && npm run lint && npm test && npm run build
   release-preflight:
     runs-on: ubuntu-latest
     steps:

@@ -14,7 +14,9 @@ async def generate_geometry(body: GeometryGenerateRequest, user: User = Depends(
     if project is None:
         raise HTTPException(404, 'Project not found')
     await require_membership(project.organization_id, user, session)
-    return GeometryGenerateResponse(
+    raise HTTPException(410, {"error": {"code": "CANONICAL_VERSION_REQUIRED",
+        "message": "Direct client-owned geometry inputs are disabled; a future phase must resolve a project version and canonical World Model."}})
+    return GeometryGenerateResponse(  # pragma: no cover - retained response shape for OpenAPI compatibility
         project_id=project.id, source_revision=body.source_revision, artifacts=generate(body),
         caveats=['Conceptual rectangular massing only; not a site-boundary or BIM model.',
                  'Setbacks are user-supplied geometric inputs, not verified regulatory requirements.',
