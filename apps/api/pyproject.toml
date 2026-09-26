@@ -47,3 +47,23 @@ ignore = ["E401", "E402", "E701", "E702", "F401"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+
+[[tool.mypy.overrides]]
+# The CAD worker executes in a dedicated virtualenv that owns the native CAD/BIM
+# stack (OCP/OCCT, IfcOpenShell, FreeCAD). The API environment deliberately does
+# not contain those packages -- that separation is the security boundary for
+# this phase, not a missing dependency -- so mypy run from the API environment
+# cannot resolve them. Silence only the imports, never the checking.
+module = [
+    "OCP.*",
+    "ifcopenshell.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# freecad_script.py is executed by FreeCAD's embedded interpreter. It shares no
+# code with the API, imports FreeCAD's own modules, and is deliberately kept free
+# of annotations so it can run standalone. mypy cannot see FreeCAD's runtime
+# types at all, so checking it produces noise rather than confidence.
+module = "app.cad_worker.freecad_script"
+ignore_errors = true

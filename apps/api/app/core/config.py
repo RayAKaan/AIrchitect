@@ -26,6 +26,38 @@ class Settings(BaseSettings):
     assistant_rate_limit_per_minute: int = 20
     auth_secret: str = "local-only-change-this-secret"
 
+    # --- Phase 5 CAD/BIM toolchain -------------------------------------------------
+    # "cad_bim" is the real OpenCASCADE/FreeCAD/IfcOpenShell pipeline. "legacy" is the
+    # pre-Phase-5 scratch cuboid generator, retained only as a migration aid and
+    # scheduled for deletion once parity and acceptance gates pass.
+    geometry_engine: str = "cad_bim"
+    # Interpreter for the isolated worker virtualenv. Empty means auto-discover from
+    # CAD_WORKER_VENV_ROOT; the API interpreter is never used for CAD work.
+    cad_worker_python: str = ""
+    cad_worker_venv_root: str = "H:/.cad-tools/worker-venv"
+    cad_freecad_root: str = "H:/.cad-tools/freecad-1.1.3/FreeCAD_1.1.3-Windows-x86_64-py311"
+    # Where generated binaries (FCStd/STEP/IFC/GLB) are written before upload.
+    cad_artifact_root: str = "H:/.cad-tools/artifacts"
+    # "freecad" drives FreeCADCmd for native documents; "occt" uses the standalone
+    # OCP kernel only. "auto" prefers freecad and falls back to occt.
+    cad_provider: str = "auto"
+    cad_ifc_schema: str = "IFC4"
+    cad_job_timeout_seconds: float = 180.0
+    cad_freecad_timeout_seconds: float = 180.0
+    cad_worker_memory_limit_mb: int = 4096
+    cad_max_output_bytes: int = 67108864
+    cad_max_request_bytes: int = 1048576
+    cad_mesh_deflection_m: float = 0.05
+    cad_mesh_angular_deflection_rad: float = 0.35
+    cad_volume_tolerance_ratio: float = 0.005
+    cad_area_tolerance_ratio: float = 0.005
+    cad_linear_tolerance_m: float = 0.01
+    cad_write_fcstd: bool = True
+    cad_write_step: bool = True
+    cad_write_ifc: bool = True
+    cad_write_glb: bool = True
+    cad_allow_legacy_engine: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
