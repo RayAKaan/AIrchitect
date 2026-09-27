@@ -192,20 +192,26 @@ def resolve_worker_python(config: CadConfig) -> Path:
     if config.worker_python:
         candidate = Path(config.worker_python)
     else:
-        candidate = config.worker_venv_root_path() / "Scripts" / "python.exe"
+        venv_root = config.worker_venv_root_path()
+        if os.name == "nt":
+            candidate = venv_root / "Scripts" / "python.exe"
+        else:
+            candidate = venv_root / "bin" / "python"
     if not candidate.is_file():
         raise CadDependencyMissingError("worker-python", f"not found at {candidate}")
     return candidate
 
 
 def resolve_freecad_cmd(config: CadConfig) -> Path | None:
-    """Return the ``freecadcmd.exe`` path if the configured root contains one.
+    """Return the ``freecadcmd`` path if the configured root contains one.
 
     Both portable-build layouts are checked: the 7-Zip portable tree keeps the
     console executable in ``bin/``, while the installer puts it at the root.
+    On Windows the executable has a ``.exe`` suffix.
     """
     root = Path(config.freecad_root)
-    for relative in (Path("bin") / "freecadcmd.exe", Path("freecadcmd.exe")):
+    exe = "freecadcmd.exe" if os.name == "nt" else "freecadcmd"
+    for relative in (Path("bin") / exe, Path(exe)):
         candidate = root / relative
         if candidate.is_file():
             return candidate
