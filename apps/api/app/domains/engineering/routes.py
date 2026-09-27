@@ -27,8 +27,8 @@ async def list_rate_schedules(organization_id:str,user:User=Depends(current_user
 
 @router.post("/projects/{project_id}/versions/{version_ref}/design/alternatives/{alternative_id}/engineering/calculate",status_code=201)
 async def calculate_engineering(project_id:str,version_ref:str,alternative_id:str,body:EngineeringCalculateRequest,user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
- project,version,world,alt,geom=await resolve_sources(session,project_id,version_ref,alternative_id,user,write=True);ids=(project.id,version.id,alt.id,user.id)
- try:return await calculate_all(session,project,version,world,alt,geom,user,body.rate_schedule_id)
+ project,version,world,alt,geom,gi=await resolve_sources(session,project_id,version_ref,alternative_id,user,write=True);ids=(project.id,version.id,alt.id,user.id)
+ try:return await calculate_all(session,project,version,world,alt,geom,user,body.rate_schedule_id,gi=gi)
  except EngineeringError as exc:
   await session.rollback();pid,vid,aid,uid=ids;failed_project=await session.get(Project,pid);failed_version=await session.get(ProjectVersion,vid)
   action=("COST_CALCULATION_FAILED" if exc.code.startswith(("RATE_","COST_")) else "STRUCTURAL_CONCEPT_FAILED" if exc.code.startswith("STRUCTURAL_") else "REGULATORY_EVALUATION_FAILED" if exc.code.startswith("REGULATORY_") else "QUANTITY_CALCULATION_FAILED")
@@ -43,7 +43,7 @@ async def calculate_engineering(project_id:str,version_ref:str,alternative_id:st
 
 @router.get("/projects/{project_id}/versions/{version_ref}/design/alternatives/{alternative_id}/engineering")
 async def get_engineering(project_id:str,version_ref:str,alternative_id:str,rate_schedule_id:str|None=None,user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
- project,version,world,alt,geom=await resolve_sources(session,project_id,version_ref,alternative_id,user)
+ project,version,world,alt,geom,gi=await resolve_sources(session,project_id,version_ref,alternative_id,user)
  result=await summary(session,project,version,world,alt,geom,rate_schedule_id)
  if result["quantity"] is None:raise error(404,"ENGINEERING_ARTIFACTS_NOT_FOUND","Calculate engineering artifacts for this alternative first")
  if result["cost"] is None:result["cost_error"]={"code":"COST_UNAVAILABLE","message":"No matching cost estimate exists. Select an explicitly sourced rate schedule to calculate cost."}

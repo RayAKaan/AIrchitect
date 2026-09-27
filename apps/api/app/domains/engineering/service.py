@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import (ArtifactVersion,CostEstimate,DesignAlternative,GeometryArtifact,Project,ProjectVersion,
+from app.db.models import (ArtifactVersion,CadJobRun,CostEstimate,DesignAlternative,GeometryArtifact,Project,ProjectVersion,
  QuantityArtifact,RateEntry,RateSchedule,RegulatoryEvaluation,RegulatoryResult,StructuralArtifact,User,
  ValidationCheck,ValidationRun,WorldModelRevision)
 from app.domains.foundation.service import audit,error,resolve_project_version,resolve_world_model
@@ -20,15 +20,51 @@ async def resolve_sources(session:AsyncSession,project_id:str,version_ref:str,al
  if alt is None:raise error(404,"ALTERNATIVE_NOT_FOUND","Design alternative not found")
  if alt.status=="STALE" or alt.input_world_model_hash!=(world.model_hash or ""):raise error(409,"STALE_ARTIFACT","Regenerate the design alternative from the current World Model")
  if alt.status not in {"VALID","SELECTED"}:raise error(409,"DEPENDENCY_INVALID","Alternative is not valid for engineering calculation",alternative_status=alt.status)
- geom=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,GeometryArtifact.project_version_id==version.id))
+ # A CAD-produced solid and the legacy GeometryIR can both describe one
+ # alternative. Prefer the solid: it is the artifact the rest of the pipeline is
+ # being moved onto, and the IR is a parametric description standing in for it.
+ # Newest first within each class, so a re-run supersedes its predecessor. Without
+ # this the choice was whichever row the database happened to return first.
+ rows=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,GeometryArtifact.project_version_id==version.id).order_by(GeometryArtifact.created_at.desc()))).all())
+ geom=next((row for row in rows if is_cad_geometry(row)),rows[0] if rows else None)
  if geom is None:raise error(409,"QUANTITY_SOURCE_INVALID","The alternative has no persisted geometry artifact")
  if geom.status!="CURRENT":raise error(409,"STALE_ARTIFACT","Geometry artifact is not current",geometry_status=geom.status)
  if geom.input_world_model_hash!=(world.model_hash or "") or geom.design_hash!=(alt.design_hash or ""):raise error(409,"STALE_ARTIFACT","Geometry dependencies do not match the current alternative")
- if not geom.payload_json.get("validation",{}).get("valid"):raise error(409,"QUANTITY_SOURCE_INVALID","Persisted geometry is not validated")
- return project,version,world,alt,geom
+ try:gi=await geom_input(session,geom)
+ except EngineeringError as exc:raise error(409,exc.code,exc.message,**exc.context) from exc
+ return project,version,world,alt,geom,gi
+
+def is_cad_geometry(geom)->bool:return "geometry_ir" not in (geom.payload_json or {})
+async def geom_input(session:AsyncSession,geom:GeometryArtifact)->dict:
+ """Normalise a persisted geometry artifact into the shape the engines consume.
+
+ Two producers write GeometryArtifact rows and their payloads are not the same
+ document. The legacy design engine stores a ``geometry_ir`` description and its
+ own validation inline. The CAD worker stores measurements and no IR, because a
+ B-rep is not a parametric description: the solids are the geometry. Reading one
+ with the other's accessor raises KeyError, so the shape is decided here and named
+ with an explicit ``source``.
+ """
+ payload=geom.payload_json or {}
+ if not is_cad_geometry(geom):
+  validation=payload.get("validation") or {}
+  if not validation.get("valid"):raise EngineeringError("QUANTITY_SOURCE_INVALID","Persisted geometry is not validated",{"geometry_artifact_id":geom.id})
+  return {"id":geom.id,"geometry_hash":geom.geometry_hash,"source":"LEGACY_IR","geometry_ir":payload["geometry_ir"],"validation":validation}
+ run_id=(geom.provenance_json or {}).get("cad_job_run_id")
+ if not run_id:raise EngineeringError("QUANTITY_SOURCE_INVALID","The geometry artifact is neither a validated GeometryIR nor a CAD solid, so no quantity can be attributed to it",{"geometry_artifact_id":geom.id})
+ run=await session.get(CadJobRun,run_id)
+ document=(run.validation_json if run is not None else None) or {}
+ # A run that failed produced no solid, and a run that produced one without
+ # vouching for it has measurements that nothing stands behind. Both are refused
+ # here rather than quantified, because a number nobody checked is the failure mode
+ # this whole phase exists to close.
+ if run is None or run.status!="SUCCEEDED" or not document.get("valid"):
+  raise EngineeringError("QUANTITY_SOURCE_INVALID","The CAD run behind this solid did not produce a validated solid",{"geometry_artifact_id":geom.id,"cad_job_run_id":run_id,"run_status":run.status if run is not None else None,"validation_errors":document.get("errors") or []})
+ return {"id":geom.id,"geometry_hash":geom.geometry_hash,"source":"CAD_BREP","provider":run.provider,"engine_version":geom.engine_version,"cad_job_run_id":run_id,
+  "measurements":payload.get("measurements") or [],"combined_volume_m3":payload.get("combined_volume_m3"),"combined_area_m2":payload.get("combined_area_m2"),"combined_bounding_box":payload.get("combined_bounding_box"),
+  "validation":{"valid":True,"checks":document.get("checks") or [],"errors":document.get("errors") or []}}
 
 def alt_input(world,alt):return {"world_hash":world.model_hash or "","design_hash":alt.design_hash or "","metrics":alt.key_metrics_json,"parameters":alt.design_parameters_json}
-def geom_input(geom):return {"id":geom.id,"geometry_hash":geom.geometry_hash,"geometry_ir":geom.payload_json["geometry_ir"],"validation":geom.payload_json.get("validation",{})}
 
 def schedule_out(row:RateSchedule,entries:list[RateEntry])->dict:
  return {"id":row.id,"organization_id":row.organization_id,"name":row.name,"version":row.version,"jurisdiction":row.jurisdiction,"currency":row.currency,"source":row.source,"source_type":row.source_type,"source_reference":row.source_reference,"effective_date":row.effective_date,"status":row.status,"is_demo":row.is_demo,"entries":[{"id":x.id,"item_code":x.item_code,"category":x.category,"description":x.description,"quantity_code":x.metadata_json.get("quantity_code"),"unit":x.unit,"rate":x.rate,"low_rate":x.low_rate,"high_rate":x.high_rate,"currency":x.currency,"source_type":x.source_type,"source_reference":x.source_reference,"effective_date":x.effective_date,"confidence":x.confidence} for x in entries]}
@@ -40,8 +76,13 @@ async def load_schedule(session:AsyncSession,schedule_id:str,organization_id:str
  return row,schedule_out(row,entries)
 
 async def calculate_all(session:AsyncSession,project:Project,version:ProjectVersion,world:WorldModelRevision,
- alt:DesignAlternative,geom:GeometryArtifact,actor:User,rate_schedule_id:str|None)->dict:
- ai=alt_input(world,alt);gi=geom_input(geom);geom_av=await session.get(ArtifactVersion,geom.artifact_version_id)
+  alt:DesignAlternative,geom:GeometryArtifact,actor:User,rate_schedule_id:str|None,*,gi:dict|None=None)->dict:
+ # ``gi`` is optional so a caller that has only a geometry row cannot pass the
+ # arguments in the wrong order and have the actor silently become the normalised
+ # input. Nine positional parameters is enough of a trap on its own; when it is not
+ # supplied the geometry is normalised here, which is the same call the routes make.
+ if gi is None:gi=await geom_input(session,geom)
+ ai=alt_input(world,alt);geom_av=await session.get(ArtifactVersion,geom.artifact_version_id)
  await audit(session,project=project,version=version,actor=actor.id,action="QUANTITY_CALCULATION_REQUESTED",entity="design_alternative",entity_id=alt.id,metadata={"geometry_hash":geom.geometry_hash})
  qout=QENGINE.calculate(world.model_json,ai,gi)
  q=await session.scalar(select(QuantityArtifact).where(QuantityArtifact.project_version_id==version.id,QuantityArtifact.quantity_hash==qout["quantity_hash"]))
@@ -51,7 +92,11 @@ async def calculate_all(session:AsyncSession,project:Project,version:ProjectVers
   q=QuantityArtifact(artifact_version_id=qav.id,project_id=project.id,project_version_id=version.id,world_model_revision_id=world.id,design_alternative_id=alt.id,geometry_artifact_id=geom.id,input_world_model_hash=ai["world_hash"],input_design_hash=ai["design_hash"],input_geometry_hash=geom.geometry_hash,engine_name=qout["engine_name"],engine_version=qout["engine_version"],config_version=qout["config_version"],quantity_hash=qout["quantity_hash"],status="CURRENT",assumptions_json=qout["assumptions"],unknowns_json=qout["unknowns"],uncertainty_json=qout["uncertainty"],provenance_json={"world_model_revision_id":world.id,"design_alternative_id":alt.id,"geometry_artifact_id":geom.id},payload_json=qout);session.add(q);await session.flush()
   await audit(session,project=project,version=version,actor=actor.id,action="QUANTITY_ARTIFACT_CREATED",entity="quantity_artifact",entity_id=q.id,metadata={"quantity_hash":q.quantity_hash})
  else:qav=await session.get(ArtifactVersion,q.artifact_version_id)
- try:sout=SENGINE.calculate(world.model_json,ai,gi)
+  # The consumers reason over the quantity artifact rather than over the geometry
+  # description, because that is where each value carries the label saying whether it
+  # was measured on a solid or declared by the programme. Passing the geometry alone
+  # is what left them unable to read a solid at all.
+ try:sout=SENGINE.calculate(world.model_json,ai,gi,qout)
  except Exception as exc:raise EngineeringError("STRUCTURAL_CONCEPT_FAILED","Preliminary structural concept generation failed") from exc
  s=await session.scalar(select(StructuralArtifact).where(StructuralArtifact.project_version_id==version.id,StructuralArtifact.concept_hash==sout["concept_hash"]))
  s_reused=s is not None
@@ -61,7 +106,7 @@ async def calculate_all(session:AsyncSession,project:Project,version:ProjectVers
   await audit(session,project=project,version=version,actor=actor.id,action="STRUCTURAL_CONCEPT_GENERATED",entity="structural_artifact",entity_id=s.id,metadata={"concept_hash":s.concept_hash})
  else:sav=await session.get(ArtifactVersion,s.artifact_version_id)
  await audit(session,project=project,version=version,actor=actor.id,action="REGULATORY_EVALUATION_REQUESTED",entity="design_alternative",entity_id=alt.id,metadata={"world_model_hash":world.model_hash})
- try:rout=RENGINE.calculate(world.model_json,ai,gi)
+ try:rout=RENGINE.calculate(world.model_json,ai,gi,qout)
  except Exception as exc:raise EngineeringError("REGULATORY_EVALUATION_FAILED","Regulatory evaluation failed") from exc
  r=await session.scalar(select(RegulatoryEvaluation).where(RegulatoryEvaluation.project_version_id==version.id,RegulatoryEvaluation.regulatory_hash==rout["regulatory_hash"]))
  r_reused=r is not None

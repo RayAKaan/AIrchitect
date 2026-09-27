@@ -46,6 +46,8 @@ GIANT = "giant"
 INVALID_RESULT = "invalid_result"
 OPEN_SHELL = "open_shell"
 EMPTY_RESULT = "empty_result"
+INCONSISTENT_TOTALS = "inconsistent_totals"
+OVERSIZED_VOLUME = "oversized_volume"
 LYING_DIGEST = "lying_digest"
 WRONG_SIZE = "wrong_size"
 BAD_BASE64 = "bad_base64"
@@ -118,7 +120,7 @@ def failure(code, message):
     }
 
 
-def success(artifacts=None, measurements=None, valid=True):
+def success(artifacts=None, measurements=None, valid=True, combined_volume_m3=None, combined_area_m2=None):
     solids = [measurement()] if measurements is None else measurements
     return {
         "schema_version": "1.0",
@@ -132,8 +134,8 @@ def success(artifacts=None, measurements=None, valid=True):
             "python_version": sys.version.split()[0],
         },
         "measurements": solids,
-        "combined_volume_m3": 3000.0,
-        "combined_area_m2": 1400.0,
+        "combined_volume_m3": 3000.0 if combined_volume_m3 is None else combined_volume_m3,
+        "combined_area_m2": 1400.0 if combined_area_m2 is None else combined_area_m2,
         "combined_bounding_box": (
             {
                 "min": [min(s["bounding_box"]["min"][i] for s in solids) for i in range(3)],
@@ -165,6 +167,14 @@ def build(scenario):
         return success(valid=False)
     if scenario == "open_shell":
         return success(measurements=[measurement(is_closed=False)])
+    if scenario == "inconsistent_totals":
+        # The combined total contradicts the per-solid rows it was supposedly summed
+        # from. The protocol cannot know this, so the consumer has to check it.
+        return success(combined_volume_m3=2999.0, combined_area_m2=1399.0)
+    if scenario == "oversized_volume":
+        # A volume larger than the box that encloses the solid, which is the shape a
+        # unit error takes: cubic metres reported against a bounding box in millimetres.
+        return success(combined_volume_m3=3000.0 * 1000)
     if scenario == "empty_result":
         return success(measurements=[])
     if scenario == "lying_digest":

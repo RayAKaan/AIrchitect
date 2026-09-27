@@ -10,7 +10,7 @@ from app.domains.ai.service import deterministic_extraction
 from app.domains.decisions.runtime import DecisionRuntime
 from app.domains.decisions.schemas import DecisionRequest
 from app.domains.design.engine import ENGINE
-from app.domains.engineering.service import calculate_all
+from app.domains.engineering.service import calculate_all,resolve_sources
 from app.domains.foundation.service import audit,resolve_world_model
 from app.domains.lifecycle.service import canonical_hash
 
@@ -73,8 +73,13 @@ async def execute_run(session:AsyncSession,wf:WorkflowRecord,user:User)->Workflo
     result={'alternative_id':selected.id,'decision_id':decision.decision_id,'provider':decision.provider,'policy':decision.metadata.get('policy_disposition')}
    elif name=='RUN_ENGINEERING':
     selected=await session.scalar(select(DesignAlternative).where(DesignAlternative.project_version_id==version.id,DesignAlternative.status=='SELECTED'))
-    geom=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==selected.id,GeometryArtifact.status=='CURRENT'))
-    result=await calculate_all(session,project,version,world,selected,geom,user,task.payload_json.get('rate_schedule_id'))
+    # Source resolution goes through the engineering service rather than picking a
+    # geometry row here. Choosing the geometry -- preferring a measured solid over the
+    # legacy description, newest first -- and normalising its payload are decisions
+    # that belong in one place, and a workflow that picked its own row would disagree
+    # with the API about which geometry a calculation is over.
+    _project,_version,_world,alt,geom,gi=await resolve_sources(session,project.id,version.id,selected.id,user)
+    result=await calculate_all(session,_project,_version,_world,alt,geom,user,task.payload_json.get('rate_schedule_id'),gi=gi)
    else:
     result=await assemble_evidence(session,project,version,world,wf)
    transition(session,wf,task,'SUCCEEDED',result);await session.commit()
