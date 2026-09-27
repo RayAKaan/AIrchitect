@@ -19,10 +19,10 @@ async def resolve_sources(session:AsyncSession,project_id:str,version_ref:str,al
  alt=await session.scalar(select(DesignAlternative).where(DesignAlternative.id==alternative_id,DesignAlternative.project_id==project.id,DesignAlternative.project_version_id==version.id))
  if alt is None:raise error(404,"ALTERNATIVE_NOT_FOUND","Design alternative not found")
  if alt.status=="STALE" or alt.input_world_model_hash!=(world.model_hash or ""):raise error(409,"STALE_ARTIFACT","Regenerate the design alternative from the current World Model")
- if alt.status not in {"VALID","SELECTED"}:raise error(409,"DEPENDENCY_INVALID","Alternative is not valid for engineering calculation",status=alt.status)
+ if alt.status not in {"VALID","SELECTED"}:raise error(409,"DEPENDENCY_INVALID","Alternative is not valid for engineering calculation",alternative_status=alt.status)
  geom=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,GeometryArtifact.project_version_id==version.id))
  if geom is None:raise error(409,"QUANTITY_SOURCE_INVALID","The alternative has no persisted geometry artifact")
- if geom.status!="CURRENT":raise error(409,"STALE_ARTIFACT","Geometry artifact is not current",status=geom.status)
+ if geom.status!="CURRENT":raise error(409,"STALE_ARTIFACT","Geometry artifact is not current",geometry_status=geom.status)
  if geom.input_world_model_hash!=(world.model_hash or "") or geom.design_hash!=(alt.design_hash or ""):raise error(409,"STALE_ARTIFACT","Geometry dependencies do not match the current alternative")
  if not geom.payload_json.get("validation",{}).get("valid"):raise error(409,"QUANTITY_SOURCE_INVALID","Persisted geometry is not validated")
  return project,version,world,alt,geom

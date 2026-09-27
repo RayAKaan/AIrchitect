@@ -44,7 +44,7 @@ async def load_alt(session:AsyncSession,project_id:str,version_id:str,alternativ
 @router.post("/projects/{project_id}/versions/{version_ref}/design/generate",status_code=201)
 async def generate_design(project_id:str,version_ref:str,user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
     project,version=await resolve_project_version(session,project_id,version_ref,user.id,write=True)
-    if version.status!="COMMITTED":raise error(409,"WORLD_MODEL_INVALID","Commit the canonical project version before design generation",status=version.status)
+    if version.status!="COMMITTED":raise error(409,"WORLD_MODEL_INVALID","Commit the canonical project version before design generation",version_status=version.status)
     world=await resolve_world_model(session,version.id)
     serious=[x for x in world.model_json.get("consistency_issues",[]) if x.get("code") in {"CONTRADICTORY_REQUIREMENTS","HEIGHT_FLOOR_INCONSISTENCY"}]
     if serious:raise error(409,"WORLD_MODEL_INVALID","Resolve World Model consistency issues before design generation",issues=serious)
@@ -115,7 +115,7 @@ async def select_alternative(project_id:str,version_ref:str,alternative_id:str,b
     project,version,world,alt=await load_alt(session,project_id,version_ref,alternative_id,user,write=True)
     if alt.input_world_model_hash!=(world.model_hash or "") or alt.status=="STALE":
         raise error(409,"STALE_ARTIFACT","A stale alternative cannot be selected; regenerate from the current World Model")
-    if alt.status not in {"VALID","SELECTED"}:raise error(409,"ALTERNATIVE_NOT_SELECTABLE","Only valid alternatives can be selected",status=alt.status)
+    if alt.status not in {"VALID","SELECTED"}:raise error(409,"ALTERNATIVE_NOT_SELECTABLE","Only valid alternatives can be selected",alternative_status=alt.status)
     rows=list((await session.scalars(select(DesignAlternative).where(DesignAlternative.project_version_id==version.id).with_for_update())).all())
     for row in rows:
         if row.id!=alt.id and row.status=="SELECTED":

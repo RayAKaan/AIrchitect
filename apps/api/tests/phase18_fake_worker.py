@@ -31,6 +31,7 @@ from typing import Any, Callable
 
 import pytest
 
+from app.domains.cad.capability import reset_capability_cache
 from app.domains.cad.config import CadConfig
 
 SCENARIO_ENV = "AIRCHITECT_FAKE_SCENARIO"
@@ -118,6 +119,7 @@ def failure(code, message):
 
 
 def success(artifacts=None, measurements=None, valid=True):
+    solids = [measurement()] if measurements is None else measurements
     return {
         "schema_version": "1.0",
         "job_id": "test-job",
@@ -129,9 +131,17 @@ def success(artifacts=None, measurements=None, valid=True):
             "occt_version": "7.9.3",
             "python_version": sys.version.split()[0],
         },
-        "measurements": [measurement()] if measurements is None else measurements,
+        "measurements": solids,
         "combined_volume_m3": 3000.0,
         "combined_area_m2": 1400.0,
+        "combined_bounding_box": (
+            {
+                "min": [min(s["bounding_box"]["min"][i] for s in solids) for i in range(3)],
+                "max": [max(s["bounding_box"]["max"][i] for s in solids) for i in range(3)],
+            }
+            if solids
+            else None
+        ),
         "artifacts": [artifact()] if artifacts is None else artifacts,
         "validation": {
             "valid": valid,
@@ -174,7 +184,33 @@ def build(scenario):
     return success()
 
 
+def capabilities():
+    return {
+        "schema_version": "1.0",
+        "python_version": sys.version.split()[0],
+        "occt": {
+            "available": True,
+            "error": "",
+            "engine_name": "fake",
+            "engine_version": "0",
+            "occt_version": "7.9.3",
+            "occt_build": "",
+        },
+        "ifc": {"available": True, "error": "", "version": "0.8.5-fake"},
+        "freecad": {"available": True, "error": "", "version": "1.1.3-fake", "occt_version": "7.8.1"},
+        "glb": {"available": True, "error": ""},
+    }
+
+
 def main(argv):
+    if argv and argv[0] == "--capabilities":
+        # The real worker's capability entry point: report what this kernel can do,
+        # on stdout, and exit. The API's probe reads nothing else. Answering it here
+        # is what lets the fake stand in for the whole worker rather than only for
+        # the geometry half of it.
+        print(json.dumps(capabilities()))
+        return 0
+
     request_path, response_path = Path(argv[0]), Path(argv[1])
     scenario = os.environ.get("AIRCHITECT_FAKE_SCENARIO", "ok")
     request = {}
@@ -336,7 +372,13 @@ def fake_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeWorker:
     log = tmp_path / "invocations.jsonl"
     monkeypatch.setenv(SCENARIO_ENV, OK)
     monkeypatch.setenv(LOG_ENV, str(log))
-    return FakeWorker(log, root)
+    # The capability report is cached process-wide and keyed on nothing, so a report
+    # probed by an earlier test would otherwise be handed to this one -- describing a
+    # worker that no longer exists. Every test that asks for capabilities must be able
+    # to ask for them afresh.
+    reset_capability_cache()
+    yield FakeWorker(log, root)
+    reset_capability_cache()
 
 
 @pytest.fixture

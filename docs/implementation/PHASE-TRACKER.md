@@ -20,7 +20,7 @@
 | 15 | Review and Deliverables | Partial | Review and PDF/JSON endpoints exist; verified assembled immutable packages remain. |
 | 16 | Frontend Integration | Partial / Blocked | React workspace shell exists; dependencies/build and full domain UI journey remain. |
 | 17 | Testing and Release | Partial / Blocked | API unit suite and preflight exist; DB/E2E/security/container/deployment gates remain. |
-| 18 | CAD/BIM Geometry Pipeline | In progress | Real-kernel geometry (OCCT/FreeCAD) with IFC/GLB/STEP export, an isolated bounded worker, and durable job/artifact persistence; API endpoints, quantities, structural/regulatory consumers, frontend integration, and container gates remain. |
+| 18 | CAD/BIM Geometry Pipeline | In progress | Real-kernel geometry (OCCT/FreeCAD) with IFC/GLB/STEP export, an isolated bounded worker, durable job/artifact persistence, and tenant-scoped API endpoints; quantities, structural/regulatory consumers, frontend integration, and container gates remain. |
 
 ## Rules
 - A phase is complete only with implementation evidence, tests, limitations, and Definition of Done confirmation.
@@ -131,16 +131,18 @@
 
 
 ## Phase 18 — CAD/BIM Geometry Pipeline
-- Status: **In progress** (S1–S9 delivered; S10–S14 open)
+- Status: **In progress** (S1–S10 delivered; S11–S14 open)
 - Delivered:
   - S1 verified toolchain manifest and open-source licence audit (`docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`).
   - S2–S7 worker protocol plus OCCT/FreeCAD geometry, IFC, GLB, and STEP export.
   - S8 capability discovery and a bounded worker runner with scratch isolation, payload limits, artifact verification, typed errors, and timeout/process-tree termination.
   - S9 persistence: `cad_job_runs` and `cad_artifacts`, content-addressed artifact storage outside PostgreSQL, and a repository that records success and failure, binds geometry to the current `WorldModelRevision`, and records validation, checks, and evidence.
-- Open: S10 API endpoints and orchestration; S11 quantities; S12 structural and regulatory consumers; S13 frontend GLB integration replacing fabricated browser geometry; S14 Docker/CI, parity gates against the legacy engine, and the final architecture/completion reports.
+  - S10 API and orchestration: four tenant-scoped endpoints (generate, read run, list artifacts, download), an orchestrator that derives all geometry server-side from a design alternative, dispatches the blocking worker to a thread so a slow kernel cannot stall the event loop, and records every invoked job as a run. Failures after invocation are recorded outcomes (201 with `FAILED`); an absent toolchain is a 503 that records nothing. Artifact bytes are streamed with persisted content type and an `ETag`, and the server's storage path is never exposed.
+- Open: S11 quantities measured on the solid; S12 structural and regulatory consumers; S13 frontend GLB integration replacing fabricated browser geometry; S14 Docker/CI, parity gates against the legacy engine, and the final architecture/completion reports.
+- Fixed in passing: four `error(...)` call sites passed `status=` as a keyword while `error`'s first parameter is named `status`, which raised `TypeError` instead of the intended 4xx. These were latent 500s on the design-generation, alternative-selection, and engineering-quantity paths.
 - Architecture: `../architecture/PHASE-18-CAD-BIM-ARCHITECTURE.md`
 - Licence audit: `../legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`
-- Verification status: API suite 375 passed; Ruff clean; `mypy app/domains/cad` clean. Unverified: PostgreSQL, Docker, and `ifcopenshell.geom` on Python 3.14.4 (see the architecture document).
+- Verification status: API suite 397 passed (40 against the real OCCT/FreeCAD worker); Ruff clean; `mypy app/domains/cad` clean; `models.py` at its 63-error pre-existing baseline; one Alembic head. Unverified: PostgreSQL, Docker, and `ifcopenshell.geom` on Python 3.14.4 (see the architecture document).
 
 ## Master completion pass — baseline update (2026-09-25)
 - Re-audited workspace, phase reports, API source/tests, frontend manifest, and environment setup.

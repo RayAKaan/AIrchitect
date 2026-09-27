@@ -163,6 +163,11 @@ Verified in CI:
   deduplication, and content verification on read;
 - persistence against a real database, including failure recording, revision
   binding, staleness on a mid-run revision change, and reuse of identical geometry;
+- the HTTP surface end to end: all four endpoints, both failure stories
+  (recorded failure versus absent toolchain), tenant isolation on every endpoint, the
+  three indistinguishable 404s, artifact download with the persisted content type and
+  an `ETag`, and the fact that a slow kernel does not block the event loop. The
+  geometry kernel is a real subprocess; only OCCT and FreeCAD are absent.
 - migration/model parity. The test suite builds its schema from the models, so a
   column added to a model and forgotten in a migration would pass every test and
   then fail on first deploy; the parity test runs the whole Alembic chain against
@@ -179,10 +184,63 @@ Not verified, and why:
   generation and GLB export are unaffected because they do not use that path, but
   ifcopenshell-based geometry traversal is not usable at this interpreter version.
 
+## The API surface (S10)
+
+Four endpoints, all nested under project and version:
+
+| Method | Path |
+| --- | --- |
+| `POST` | `.../design/alternatives/{alternative_id}/cad` |
+| `GET` | `.../cad/jobs/{run_id}` |
+| `GET` | `.../cad/jobs/{run_id}/artifacts` |
+| `GET` | `.../cad/artifacts/{artifact_id}/download` |
+
+**The client names an alternative; the server derives the geometry.** The request body
+can only narrow the artifact set. There is no field for a footprint, a height, a set of
+elements, or an organisation. This is the single most important property of the surface:
+if a caller could submit geometry, the project would have a second source of geometry
+that no world model, no constraint, and no audit record had ever seen, and the two would
+silently disagree. Everything geometric comes from the alternative's design parameters,
+which the design engine derived from the committed world model.
+
+**Execution is synchronous, but not on the event loop.** `run_cad_job` launches a
+subprocess and blocks for as long as the kernel takes. The orchestrator hands it to
+`starlette.concurrency.run_in_threadpool`, so a slow or hung kernel delays its own
+request and nothing else. The runner's wall-clock timeout bounds the delay; on expiry the
+process tree is terminated and the job is recorded as a timeout. There is no queue,
+because a queue would mean an operator watching jobs that the API has already forgotten
+about, and this phase is not yet at the scale where that trade is worth making.
+
+**Two different failure stories, deliberately.**
+
+- A failure *after* the worker was invoked — a provider failure, a timeout, an invalid
+  result, a storage failure — is a recorded outcome. The request returns `201` with the
+  run's `FAILED` status, its error code, and an empty artifact list, because the run is
+  evidence of what was attempted and why it did not produce geometry.
+- A toolchain that is *absent* is a deployment fault, not a job outcome. The request
+  returns `503` and records nothing, because no job was ever invoked and a row claiming
+  otherwise would be a lie.
+
+The error code and message are chosen by a `classify_failure` function rather than taken
+from the exception's text. Provider diagnostics and dependency paths tend to contain the
+job's scratch directory, and those strings end up in a database column and then in an API
+response; the full text goes to the log, where it is useful and not public.
+
+**Non-disclosure.** Every handler resolves project, version, alternative, run, and
+artifact inside the authorised scope, and returns the same `404` for "does not exist",
+"belongs to another tenant", and — for downloads — "the row exists but its content was
+pruned from the store". Responses carry a relative, opaque `storage_key` that is
+meaningful only to the download endpoint; the path on the server is never returned.
+
+**Staleness is reported from the recorded hash, not only from the status.** A committed
+project version is immutable, so an alternative on one cannot go stale through the public
+API today; the guards for both the alternative and the run are defence-in-depth. The run
+read model compares the run's recorded `input_world_model_hash` against the current world
+model and reports `STALE` on a mismatch even if the cascade has not yet rewritten the row,
+because serving a superseded result as current is worse than reporting it late.
+
 ## Remaining work
 
-- **S10** — API endpoints and orchestration: submit a job, poll it, download an
-  artifact with a tenant-scoped, non-disclosing 404 when it is absent.
 - **S11** — quantities derived from the persisted solids.
 - **S12** — structural and regulatory consumers bound to the geometry artifact.
 - **S13** — frontend integration: the viewer loads the persisted GLB instead of
