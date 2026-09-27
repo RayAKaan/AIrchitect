@@ -155,6 +155,27 @@ class CadConfig:
         return Path(self.worker_venv_root) / "Lib" / "site-packages"
 
     @property
+    def api_root(self) -> Path:
+        """Return the API source root that contains the ``app`` package.
+
+        The worker is launched as ``python -m app.cad_worker.main`` from this
+        directory, so it is both the subprocess working directory and the entry
+        added to ``PYTHONPATH``. Resolving it from the installed module rather
+        than from a relative path keeps the worker importable when AIrchitect runs
+        from a container image where the source lives somewhere other than the
+        working directory.
+        """
+        return Path(__file__).resolve().parents[3]
+
+    def worker_venv_root_path(self) -> Path:
+        """Return the worker virtualenv root as a path."""
+        return Path(self.worker_venv_root)
+
+    def artifact_root_path(self) -> Path:
+        """Return the artifact root as a path."""
+        return Path(self.artifact_root)
+
+    @property
     def resolved_freecad_cmd(self) -> Path:
         """Return the expected ``freecadcmd.exe`` path for the configured root.
 

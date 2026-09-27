@@ -12,10 +12,24 @@ independent requirements at once:
 * the LGPL boundary asserted in ``docs/legal/PHASE-5-OPEN-SOURCE-LICENSE-AUDIT.md``
   is enforced by construction rather than by convention.
 
-``test_dependency_isolation.py`` asserts that importing this package (or the API
+``test_phase5_isolation.py`` asserts that importing this package (or the API
 application as a whole) cannot pull in a CAD or BIM library.
+
+The entry point for callers is :func:`run_cad_job`; :class:`CadJobRequest` and
+:class:`CadJobOptions` describe the request it accepts and
+:class:`WorkerCapabilities` / :func:`probe_capabilities` describe the toolchain it
+resolved that request against.
 """
 
+from app.domains.cad.capability import (
+    FreecadCapabilities,
+    IfcCapabilities,
+    KernelCapabilities,
+    OcctCapabilities,
+    WorkerCapabilities,
+    probe_capabilities,
+    reset_capability_cache,
+)
 from app.domains.cad.config import CadConfig, DEFAULT_CAD_CONFIG
 from app.domains.cad.errors import (
     CadDependencyMissingError,
@@ -26,16 +40,55 @@ from app.domains.cad.errors import (
     GeometryEngineUnavailableError,
 )
 from app.domains.cad.hashing import canonicalize, semantic_hash
+from app.domains.cad.protocol import (
+    ArtifactRef,
+    BoundingBox,
+    CadJobOptions,
+    CadJobRequest,
+    CadJobResult,
+    CadValidationResult,
+    Footprint,
+    MassingElement,
+    ProviderInfo,
+    SolidMeasurement,
+    ValidationCheck,
+)
+from app.domains.cad.runner import run_cad_job
 
 __all__ = [
+    # Configuration
     "CadConfig",
     "DEFAULT_CAD_CONFIG",
+    # Errors
     "CadDependencyMissingError",
     "CadJobError",
     "CadJobTimeoutError",
     "CadProviderError",
     "CadSecurityError",
     "GeometryEngineUnavailableError",
+    # Hashing
     "canonicalize",
     "semantic_hash",
+    # Request/result contract
+    "ArtifactRef",
+    "BoundingBox",
+    "CadJobOptions",
+    "CadJobRequest",
+    "CadJobResult",
+    "CadValidationResult",
+    "Footprint",
+    "MassingElement",
+    "ProviderInfo",
+    "SolidMeasurement",
+    "ValidationCheck",
+    # Capability discovery
+    "FreecadCapabilities",
+    "IfcCapabilities",
+    "KernelCapabilities",
+    "OcctCapabilities",
+    "WorkerCapabilities",
+    "probe_capabilities",
+    "reset_capability_cache",
+    # Execution
+    "run_cad_job",
 ]

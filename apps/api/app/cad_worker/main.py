@@ -81,6 +81,11 @@ def _safe_output_dir(request: dict[str, Any]) -> str:
     a job cannot be steered into writing over the application, the toolchain, or
     an arbitrary path on the host. Both sides of the comparison are fully resolved
     first, which defeats ``..`` traversal and symlink indirection.
+
+    The sandbox root itself is allowed, and the API runner relies on that: it makes
+    the scratch directory both the sandbox and the output location. Treating
+    equality as an escape rejected the runner's own contract, and only a real
+    end-to-end run could show it -- every other caller happened to pass a subfolder.
     """
     raw_dir = (request.get("output_dir") or "").strip()
     sandbox = (request.get("sandbox_root") or "").strip()
@@ -91,7 +96,12 @@ def _safe_output_dir(request: dict[str, Any]) -> str:
 
     output = os.path.realpath(os.path.abspath(raw_dir))
     root = os.path.realpath(os.path.abspath(sandbox))
-    if output == root or not output.startswith(root + os.sep):
+    # Compared case-folded: Windows paths are case-insensitive, so
+    # C:\Sandbox and c:\sandbox name the same directory and must not read as an
+    # escape. normcase is a no-op on POSIX, where the comparison is already exact.
+    folded_output = os.path.normcase(output)
+    folded_root = os.path.normcase(root)
+    if folded_output != folded_root and not folded_output.startswith(folded_root + os.sep):
         raise RequestError(
             "output_dir_escape",
             f"output_dir {output!r} is outside the sandbox root {root!r}",

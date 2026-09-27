@@ -10,13 +10,22 @@ a solid is real, measurements agree with closed-form geometry, the two independe
 kernels agree with each other, and every artifact is a structurally valid file.
 """
 
+import base64
+import hashlib
 import json
 import os
+import struct
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from app.domains.cad.config import CadConfig
+from app.domains.cad.errors import CadProviderError
+from app.domains.cad.protocol import CadJobRequest
+from app.domains.cad.runner import run_cad_job
+
 
 API_ROOT = Path(__file__).resolve().parents[1]
 WORKER_VENV = Path(os.environ.get("CAD_WORKER_VENV", r"H:\.cad-tools\worker-venv"))
@@ -88,13 +97,28 @@ def job(elements=None, **overrides):
     return payload
 
 
-def run_worker(request, tmp_path, *args, expect_failure=False, timeout=900):
+def run_worker(
+    request,
+    tmp_path,
+    *args,
+    expect_failure=False,
+    timeout=900,
+    output_dir=None,
+    sandbox_root=None,
+):
     """Run the worker as a subprocess and return the parsed response document.
 
     With *expect_failure*, an ``error`` response is returned instead of failing
     the test, so rejection paths can be asserted on directly.
     """
-    run = _run_worker_process(request, tmp_path, *args, timeout=timeout)
+    run = _run_worker_process(
+        request,
+        tmp_path,
+        *args,
+        timeout=timeout,
+        output_dir=output_dir,
+        sandbox_root=sandbox_root,
+    )
     response = run.response
     if response.get("status") == "error":
         if expect_failure:
@@ -161,9 +185,15 @@ class WorkerRun:
         return (self.out_dir / artifact["filename"]).read_bytes()
 
 
-def _run_worker_process(request, tmp_path, *args, timeout=900):
+def _run_worker_process(
+    request, tmp_path, *args, timeout=900, output_dir=None, sandbox_root=None
+):
     request = dict(request)
     out_dir = tmp_path / "out"
+    if output_dir is not None:
+        request["output_dir"] = str(output_dir)
+    if sandbox_root is not None:
+        request["sandbox_root"] = str(sandbox_root)
     # setdefault, not assignment: several tests deliberately supply a hostile
     # output_dir to prove the worker refuses it.
     request.setdefault("output_dir", str(out_dir))
@@ -486,3 +516,165 @@ class TestFreecadProvider:
         assert occt["combined_volume_m3"] == pytest.approx(
             freecad["combined_volume_m3"], rel=1e-4
         )
+
+
+@needs_worker
+class TestRunnerAgainstRealWorker:
+    """The real worker driven through the real API runner.
+
+    The fake worker in ``phase5_fake_worker`` proves the runner's argv, environment
+    and file handling. It cannot prove that a genuine response survives the
+    runner's independent verification: real STEP/GLB/IFC bytes, real SHA-256
+    digests, real measurements, and the real kernel's own validation verdict. That
+    is what these tests cover, and it is the last gap between "the runner works"
+    and "the runner works on the thing that will run in production".
+    """
+
+    def config(self, tmp_path, **overrides):
+        payload = {
+            "worker_venv_root": str(WORKER_VENV),
+            "freecad_root": str(FREECAD_ROOT),
+            "artifact_root": str(tmp_path / "artifacts"),
+            "provider": "occt",
+        }
+        payload.update(overrides)
+        return CadConfig(**payload)
+
+    def test_occt_result_passes_the_runner_verification(self, tmp_path):
+        result = run_cad_job(
+            CadJobRequest.model_validate(job()),
+            self.config(tmp_path),
+        )
+        assert result.status == "ok"
+        assert result.provider.provider == "occt"
+        assert result.measurements
+        assert result.combined_volume_m3 == pytest.approx(EXPECTED_VOLUME, rel=1e-3)
+        assert result.validation is not None and result.validation.valid is True
+
+    def test_every_real_artifact_digest_verifies(self, tmp_path):
+        result = run_cad_job(
+            CadJobRequest.model_validate(job()),
+            self.config(tmp_path),
+        )
+        kinds = {artifact.kind for artifact in result.artifacts}
+        assert {"step", "glb", "ifc"} <= kinds
+        for artifact in result.artifacts:
+            data = base64.b64decode(artifact.payload, validate=True)
+            # The runner already re-derived these; recomputing here would only
+            # repeat it. What matters is that a genuine kernel response passes.
+            assert hashlib.sha256(data).hexdigest() == artifact.sha256
+            assert len(data) == artifact.byte_size
+
+    def test_the_glb_the_runner_accepted_really_is_a_glb(self, tmp_path):
+        result = run_cad_job(
+            CadJobRequest.model_validate(job()),
+            self.config(tmp_path),
+        )
+        glb = next(a for a in result.artifacts if a.kind == "glb")
+        data = base64.b64decode(glb.payload, validate=True)
+        assert data[:4] == b"glTF"
+        assert struct.unpack_from("<I", data, 8)[0] == len(data)
+
+    def test_the_runner_closes_its_scratch_directory(self, tmp_path):
+        run_cad_job(
+            CadJobRequest.model_validate(job()),
+            self.config(tmp_path),
+        )
+        # A live job writes real megabytes; leaving them behind would let the
+        # artifact root grow without bound across a long-running deployment.
+        assert list((tmp_path / "artifacts").glob("job-*")) == []
+
+    def test_a_live_worker_rejection_surfaces_as_a_typed_error(self, tmp_path):
+        # Two elements sharing an id: the protocol model allows it, so this is the
+        # worker's own rejection reaching the runner and being typed correctly.
+        element = {
+            "id": "mass-1",
+            "kind": "building_mass",
+            "name": "Tower A",
+            "footprint": {"points": [list(p) for p in L_FOOTPRINT]},
+            "base_elevation_m": 0.0,
+            "height_m": L_HEIGHT,
+            "material_class": "conceptual_mass",
+        }
+        with pytest.raises(CadProviderError) as excinfo:
+            run_cad_job(
+                CadJobRequest.model_validate(job(elements=[element, dict(element)])),
+                self.config(tmp_path),
+            )
+        assert excinfo.value.details["code"] == "duplicate_element_id"
+
+    @needs_freecad
+    def test_freecad_result_passes_the_runner_verification(self, tmp_path):
+        result = run_cad_job(
+            CadJobRequest.model_validate(job()),
+            self.config(tmp_path, provider="freecad"),
+        )
+        assert result.provider.provider == "freecad"
+        assert result.combined_volume_m3 == pytest.approx(EXPECTED_VOLUME, rel=1e-3)
+        kinds = {artifact.kind for artifact in result.artifacts}
+        assert {"step", "glb", "ifc"} <= kinds
+
+
+class TestSandboxContainment:
+    """The worker's own view of its output directory.
+
+    The API runner sets the scratch directory as both ``output_dir`` and
+    ``sandbox_root``, so the worker has to accept that equality. It used to reject
+    it, and the live ``TestRunnerAgainstRealWorker`` tests are what exposed it --
+    every other caller happened to pass a subfolder.
+    """
+
+    def test_the_sandbox_root_itself_is_an_acceptable_output_dir(self, tmp_path):
+        # Equality is the most contained case there is, not an escape.
+        result = run_worker(
+            job(),
+            tmp_path,
+            "--provider",
+            "occt",
+            output_dir=tmp_path,
+            sandbox_root=tmp_path,
+        )
+        assert result["status"] == "ok"
+
+    def test_a_subdirectory_of_the_sandbox_is_acceptable(self, tmp_path):
+        inside = tmp_path / "nested" / "deeper"
+        inside.mkdir(parents=True)
+        result = run_worker(
+            job(),
+            tmp_path,
+            "--provider",
+            "occt",
+            output_dir=inside,
+            sandbox_root=tmp_path,
+        )
+        assert result["status"] == "ok"
+        assert (inside / "test-job.ifc").is_file()
+
+    def test_a_sibling_directory_sharing_a_name_prefix_is_still_an_escape(self, tmp_path):
+        # The classic prefix bug: /artifacts/job-1 is inside /artifacts, but
+        # /artifacts/job-1x is not, despite starting with the same characters.
+        sandbox = tmp_path / "artifacts"
+        sibling = tmp_path / "artifacts-evil"
+        sibling.mkdir(parents=True)
+        result = run_worker(
+            job(),
+            sibling,
+            "--provider",
+            "occt",
+            expect_failure=True,
+            output_dir=sibling,
+            sandbox_root=sandbox,
+        )
+        assert result.get("error_code") == "output_dir_escape"
+
+    def test_a_traversal_out_of_the_sandbox_is_rejected(self, tmp_path):
+        result = run_worker(
+            job(),
+            tmp_path,
+            "--provider",
+            "occt",
+            expect_failure=True,
+            output_dir=tmp_path / ".." / "escaped",
+            sandbox_root=tmp_path / "sandbox",
+        )
+        assert result.get("error_code") == "output_dir_escape"
