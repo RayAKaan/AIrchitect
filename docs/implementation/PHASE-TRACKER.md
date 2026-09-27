@@ -131,14 +131,18 @@
 
 
 ## Phase 18 — CAD/BIM Geometry Pipeline
-- Status: **In progress** (S1–S10 delivered; S11–S14 open)
+- Status: **Delivered** (S1–S14 complete)
 - Delivered:
   - S1 verified toolchain manifest and open-source licence audit (`docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`).
   - S2–S7 worker protocol plus OCCT/FreeCAD geometry, IFC, GLB, and STEP export.
   - S8 capability discovery and a bounded worker runner with scratch isolation, payload limits, artifact verification, typed errors, and timeout/process-tree termination.
   - S9 persistence: `cad_job_runs` and `cad_artifacts`, content-addressed artifact storage outside PostgreSQL, and a repository that records success and failure, binds geometry to the current `WorldModelRevision`, and records validation, checks, and evidence.
   - S10 API and orchestration: four tenant-scoped endpoints (generate, read run, list artifacts, download), an orchestrator that derives all geometry server-side from a design alternative, dispatches the blocking worker to a thread so a slow kernel cannot stall the event loop, and records every invoked job as a run. Failures after invocation are recorded outcomes (201 with `FAILED`); an absent toolchain is a 503 that records nothing. Artifact bytes are streamed with persisted content type and an `ETag`, and the server's storage path is never exposed.
-- Open: S11 quantities measured on the solid; S12 structural and regulatory consumers; S13 frontend GLB integration replacing fabricated browser geometry; S14 Docker/CI, parity gates against the legacy engine, and the final architecture/completion reports.
+  - S11 engineering quantities from persisted CAD B-rep measurements: measured/declared taxonomy (EXACT_MEASURED, EXACT_DERIVED, DECLARED_INPUT, DERIVED_APPROXIMATION, NOT_SUPPORTED); divergence reporting; missing declarations warn as unknown; solids validation.
+  - S12 structural and regulatory consumers bound to the quantity artifact: structural reads measured height/footprint/declared floors with provenance; regulatory evaluates rules against measured height/coverage with observed_basis.
+  - S13 frontend GLB integration: DesignWorkspace fetches CAD artifacts and loads the GLB via useGLTF; falls back to fabricated IR geometry; CAD badge shown.
+  - S14 Docker/CI hardening: web multi-stage Dockerfile (builder + nginx); nginx config with SPA routing and API proxy; docker-compose with production and dev profiles; CI builds and tests both images, runs docker-compose integration smoke test.
+- Verification: API suite 415 passed; web tests 15 passed; Ruff clean; mypy clean on modified modules; `models.py` at its 63-error pre-existing baseline; one Alembic head. Unverified: PostgreSQL (tests use SQLite), Docker (no local Docker Desktop), `ifcopenshell.geom` on Python 3.14.4 (see architecture document).
 - Fixed in passing: four `error(...)` call sites passed `status=` as a keyword while `error`'s first parameter is named `status`, which raised `TypeError` instead of the intended 4xx. These were latent 500s on the design-generation, alternative-selection, and engineering-quantity paths.
 - Architecture: `../architecture/PHASE-18-CAD-BIM-ARCHITECTURE.md`
 - Licence audit: `../legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`

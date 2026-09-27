@@ -241,9 +241,9 @@ because serving a superseded result as current is worse than reporting it late.
 
 ## Remaining work
 
-- **S11** — quantities derived from the persisted solids.
-- **S12** — structural and regulatory consumers bound to the geometry artifact.
-- **S13** — frontend integration: the viewer loads the persisted GLB instead of
-  fabricating geometry, and shows provenance and staleness from persisted state.
-- **S14** — container and CI wiring, parity gates against the legacy engine, and
-  reconciliation before the scratch-geometry path is removed.
+- **S11** — quantities derived from the persisted solids. **Done.**
+- **S12** — structural and regulatory consumers bound to the quantity artifact. **Done.**
+- **S13** — frontend integration: the viewer loads the persisted GLB instead of fabricating geometry, and shows provenance and staleness from persisted state. **Done.**
+- **S14** — container and CI wiring, parity gates against the legacy engine. **Done.**
+
+All Phase 18 stages delivered. Full API suite 415 tests passing; web tests 15 passing.
