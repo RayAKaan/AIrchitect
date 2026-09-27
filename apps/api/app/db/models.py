@@ -280,6 +280,7 @@ class GeometryArtifact(Base, DomainArtifactMixin):
     alternative_id: Mapped[str] = mapped_column(ForeignKey("design_alternatives.id"), index=True)
     world_model_revision_id: Mapped[str | None] = mapped_column(ForeignKey("world_model_revisions.id"), nullable=True, index=True)
     geometry_hash: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(24), nullable=False, default="LEGACY_IR", index=True)
     input_world_model_hash: Mapped[str] = mapped_column(String(64), default="")
     design_hash: Mapped[str] = mapped_column(String(64), default="")
     engine_name: Mapped[str] = mapped_column(String(80), default="legacy")

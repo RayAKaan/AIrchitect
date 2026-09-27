@@ -34,7 +34,7 @@ async def resolve_sources(session:AsyncSession,project_id:str,version_ref:str,al
  except EngineeringError as exc:raise error(409,exc.code,exc.message,**exc.context) from exc
  return project,version,world,alt,geom,gi
 
-def is_cad_geometry(geom)->bool:return "geometry_ir" not in (geom.payload_json or {})
+def is_cad_geometry(geom)->bool:return geom.source == "CAD_BREP"
 async def geom_input(session:AsyncSession,geom:GeometryArtifact)->dict:
  """Normalise a persisted geometry artifact into the shape the engines consume.
 

@@ -531,6 +531,7 @@ async def record_cad_success(
                 alternative_id=alternative_id,
                 world_model_revision_id=world.id,
                 geometry_hash=geometry_hash,
+                source="CAD_BREP",
                 input_world_model_hash=world.model_hash or "",
                 design_hash=design_hash,
                 engine_name=provider,
