@@ -25,10 +25,18 @@ from __future__ import annotations
 import ast
 import re
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
-from app.domains.cad.protocol import CadJobRequest, Footprint, MassingElement
+from app.domains.cad.protocol import (
+    ARTIFACT_CONTENT_TYPES,
+    ARTIFACT_EXTENSIONS,
+    ArtifactKind,
+    CadJobRequest,
+    Footprint,
+    MassingElement,
+)
 
 CAD_WORKER = Path(__file__).resolve().parents[1] / "app" / "cad_worker"
 
@@ -210,3 +218,78 @@ def test_no_lowercase_typos_in_worker_key_literals() -> None:
     camel = re.compile(r"[a-z][A-Z]")
     offenders = {k for k in worker_request_keys() if camel.search(k)}
     assert not offenders, f"request keys must be snake_case: {sorted(offenders)}"
+
+
+def _worker_content_types() -> dict[str, str]:
+    """Read the content-type table out of the worker's ``_read_artifact``.
+
+    Extracted from the source rather than restated, for the same reason the request
+    keys are: a value the worker changes is picked up automatically. The function
+    also corrects ``ifc`` after building the table, so the two literal assignments
+    are merged here the way the worker merges them.
+    """
+    path = CAD_WORKER / "main.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == "content_types"
+            for target in node.targets
+        ):
+            continue
+        if not isinstance(node.value, ast.Dict):
+            continue
+        for key, value in zip(node.value.keys, node.value.values):
+            if (
+                isinstance(key, ast.Constant)
+                and isinstance(key.value, str)
+                and isinstance(value, ast.Constant)
+                and isinstance(value.value, str)
+            ):
+                found[key.value] = value.value
+    for node in ast.walk(tree):
+        # Corrected after construction: content_types["ifc"] = "application/x-ifc"
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Subscript)
+            and isinstance(node.targets[0].value, ast.Name)
+            and node.targets[0].value.id == "content_types"
+            and isinstance(node.targets[0].slice, ast.Constant)
+            and isinstance(node.value, ast.Constant)
+        ):
+            found[node.targets[0].slice.value] = node.value.value
+    return found
+
+
+def test_the_content_type_table_is_actually_extracted() -> None:
+    """Guard the guard, as above: extraction must find the worker's table."""
+    found = _worker_content_types()
+    assert found.get("glb") == "model/gltf-binary", "content-type extraction found nothing useful"
+
+
+def test_worker_and_api_agree_on_artifact_content_types() -> None:
+    """The persisted ``content_type`` must match what the worker reports.
+
+    The API does not derive content types from the artifact kind; the worker
+    reports the type of the file it produced and that value is stored, because it
+    is what decides how a download is served. The protocol keeps a table of the same
+    values, so the two copies have to agree. They disagreed once already: FreeCAD
+    documents are ``application/vnd.freecad``, not ``application/x-freecad``, and
+    BREP is ``model/occt-brep``. A client that trusted the API's guess would have
+    received a mislabelled download.
+    """
+    worker = _worker_content_types()
+    api = ARTIFACT_CONTENT_TYPES
+    assert worker == api, (
+        "content types differ between the worker and the API protocol; "
+        f"worker-only: { {k: v for k, v in worker.items() if api.get(k) != v} }; "
+        f"api-only: { {k: v for k, v in api.items() if worker.get(k) != v} }"
+    )
+
+
+def test_content_type_table_covers_exactly_the_artifact_kinds() -> None:
+    assert set(ARTIFACT_CONTENT_TYPES) == set(ARTIFACT_EXTENSIONS)
+    assert set(ARTIFACT_CONTENT_TYPES) == set(get_args(ArtifactKind))

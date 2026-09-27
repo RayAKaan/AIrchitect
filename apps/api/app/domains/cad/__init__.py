@@ -32,15 +32,27 @@ from app.domains.cad.capability import (
 )
 from app.domains.cad.config import CadConfig, DEFAULT_CAD_CONFIG
 from app.domains.cad.errors import (
+    CadArtifactMissingError,
     CadDependencyMissingError,
     CadJobError,
     CadJobTimeoutError,
     CadProviderError,
     CadSecurityError,
+    CadStorageError,
     GeometryEngineUnavailableError,
 )
 from app.domains.cad.hashing import canonicalize, semantic_hash
+from app.domains.cad.persistence import (
+    CadRevisionError,
+    RecordedCadRun,
+    record_cad_failure,
+    record_cad_success,
+    resolve_current_world,
+    store_worker_artifacts,
+)
 from app.domains.cad.protocol import (
+    ARTIFACT_CONTENT_TYPES,
+    ARTIFACT_EXTENSIONS,
     ArtifactRef,
     BoundingBox,
     CadJobOptions,
@@ -54,22 +66,31 @@ from app.domains.cad.protocol import (
     ValidationCheck,
 )
 from app.domains.cad.runner import run_cad_job
+from app.domains.cad.storage import (
+    ARTIFACT_MEDIA_ROLES,
+    ContentAddressedStore,
+    StoredBlob,
+)
 
 __all__ = [
     # Configuration
     "CadConfig",
     "DEFAULT_CAD_CONFIG",
     # Errors
+    "CadArtifactMissingError",
     "CadDependencyMissingError",
     "CadJobError",
     "CadJobTimeoutError",
     "CadProviderError",
     "CadSecurityError",
+    "CadStorageError",
     "GeometryEngineUnavailableError",
     # Hashing
     "canonicalize",
     "semantic_hash",
     # Request/result contract
+    "ARTIFACT_CONTENT_TYPES",
+    "ARTIFACT_EXTENSIONS",
     "ArtifactRef",
     "BoundingBox",
     "CadJobOptions",
@@ -91,4 +112,15 @@ __all__ = [
     "reset_capability_cache",
     # Execution
     "run_cad_job",
+    # Artifact storage
+    "ARTIFACT_MEDIA_ROLES",
+    "ContentAddressedStore",
+    "StoredBlob",
+    # Persistence
+    "CadRevisionError",
+    "RecordedCadRun",
+    "record_cad_failure",
+    "record_cad_success",
+    "resolve_current_world",
+    "store_worker_artifacts",
 ]

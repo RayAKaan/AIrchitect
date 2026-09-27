@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -287,6 +287,95 @@ class GeometryArtifact(Base, DomainArtifactMixin):
     status: Mapped[str] = mapped_column(String(24), default="CURRENT", index=True)
     provenance_json: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class CadJobRun(Base):
+    """One invocation of the isolated CAD worker, recorded whether it succeeded or not.
+
+    A failed run is as much a part of the record as a successful one: a geometry
+    pipeline that cannot explain why a model it did not produce is rejected is not
+    auditable. The row therefore exists for rejections, timeouts, and crashes, with
+    ``status`` and ``error_code`` carrying the outcome.
+
+    ``world_model_revision_id`` and ``input_world_model_hash`` are the binding to
+    the canonical state the geometry was derived from. When the world model moves,
+    the hash stops matching and the run -- along with the geometry it produced -- is
+    marked stale, so a consumer can never read a result as current when it was
+    computed from a superseded revision.
+    """
+    __tablename__ = "cad_job_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    project_version_id: Mapped[str] = mapped_column(ForeignKey("project_versions.id", ondelete="CASCADE"), index=True)
+    world_model_revision_id: Mapped[str | None] = mapped_column(ForeignKey("world_model_revisions.id"), nullable=True, index=True)
+    input_world_model_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    design_alternative_id: Mapped[str | None] = mapped_column(ForeignKey("design_alternatives.id"), nullable=True, index=True)
+    geometry_artifact_id: Mapped[str | None] = mapped_column(ForeignKey("geometry_artifacts.id"), nullable=True, index=True)
+    # The worker's own job identifier, echoed from the request. Not unique: a caller
+    # may legitimately reuse a label, and the request hash is the real identity.
+    job_id: Mapped[str] = mapped_column(String(128), default="")
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    provider_engine_name: Mapped[str] = mapped_column(String(80), default="")
+    provider_engine_version: Mapped[str] = mapped_column(String(40), default="")
+    occt_version: Mapped[str] = mapped_column(String(40), default="")
+    ifc_library_version: Mapped[str] = mapped_column(String(40), default="")
+    freecad_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    request_hash: Mapped[str] = mapped_column(String(64), index=True)
+    element_count: Mapped[int] = mapped_column(Integer, default=0)
+    # The toolchain record for this run, as a nested document:
+    #   {"capability_snapshot": {...}, "provider": {...}}
+    # The scalar version columns above hold what is worth querying on; this keeps
+    # everything the worker reported, including the interpreter build and the
+    # toolchain digest, so a run can be reproduced or explained later. A failed run
+    # has no provider block, because a run that produced no result never reported one.
+    capabilities_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="RUNNING", index=True)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    measurements_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    validation_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    warnings_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    requested_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CadArtifact(Base):
+    """A single binary the worker produced, stored outside PostgreSQL.
+
+    The row holds metadata and a content-addressed ``storage_key``; the bytes live in
+    the artifact root. Nothing large is stored in the database, and nothing is
+    stored here that cannot be re-derived from the recorded SHA-256.
+
+    ``sha256`` is the identity. Two runs that produce the same GLB address the same
+    object, so the store deduplicates and a re-run cannot silently change what an
+    earlier row points at.
+    """
+    __tablename__ = "cad_artifacts"
+    __table_args__ = (UniqueConstraint("cad_job_run_id", "kind", name="uq_cad_artifact_kind"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    cad_job_run_id: Mapped[str] = mapped_column(ForeignKey("cad_job_runs.id", ondelete="CASCADE"), index=True)
+    artifact_version_id: Mapped[str] = mapped_column(ForeignKey("artifact_versions.id", ondelete="CASCADE"), index=True)
+    # Denormalised so a tenant-scoped download can be authorised with one query
+    # instead of joining through the run.
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    project_version_id: Mapped[str] = mapped_column(ForeignKey("project_versions.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(120))
+    # BigInteger, not Integer: a 2 GiB STEP file is unusual but not impossible, and
+    # an overflow here would corrupt a size that must be exact for integrity checks.
+    byte_size: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    # What the artifact is for, so a consumer selects the viewer mesh without
+    # hard-coding a file extension. "viewer_primary" is the GLB.
+    media_role: Mapped[str] = mapped_column(String(40), default="exchange")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class QuantityArtifact(Base, DomainArtifactMixin):

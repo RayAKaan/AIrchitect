@@ -20,6 +20,7 @@
 | 15 | Review and Deliverables | Partial | Review and PDF/JSON endpoints exist; verified assembled immutable packages remain. |
 | 16 | Frontend Integration | Partial / Blocked | React workspace shell exists; dependencies/build and full domain UI journey remain. |
 | 17 | Testing and Release | Partial / Blocked | API unit suite and preflight exist; DB/E2E/security/container/deployment gates remain. |
+| 18 | CAD/BIM Geometry Pipeline | In progress | Real-kernel geometry (OCCT/FreeCAD) with IFC/GLB/STEP export, an isolated bounded worker, and durable job/artifact persistence; API endpoints, quantities, structural/regulatory consumers, frontend integration, and container gates remain. |
 
 ## Rules
 - A phase is complete only with implementation evidence, tests, limitations, and Definition of Done confirmation.
@@ -128,6 +129,18 @@
 - Open: frontend dependency lock/install/build, DB-backed integration and tenant-isolation tests, browser E2E, production security review, container/SBOM scan, deployment rehearsal, qualified domain validation.
 - Report: `PHASE-17-TESTING-RELEASE.md`
 
+
+## Phase 18 — CAD/BIM Geometry Pipeline
+- Status: **In progress** (S1–S9 delivered; S10–S14 open)
+- Delivered:
+  - S1 verified toolchain manifest and open-source licence audit (`docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`).
+  - S2–S7 worker protocol plus OCCT/FreeCAD geometry, IFC, GLB, and STEP export.
+  - S8 capability discovery and a bounded worker runner with scratch isolation, payload limits, artifact verification, typed errors, and timeout/process-tree termination.
+  - S9 persistence: `cad_job_runs` and `cad_artifacts`, content-addressed artifact storage outside PostgreSQL, and a repository that records success and failure, binds geometry to the current `WorldModelRevision`, and records validation, checks, and evidence.
+- Open: S10 API endpoints and orchestration; S11 quantities; S12 structural and regulatory consumers; S13 frontend GLB integration replacing fabricated browser geometry; S14 Docker/CI, parity gates against the legacy engine, and the final architecture/completion reports.
+- Architecture: `../architecture/PHASE-18-CAD-BIM-ARCHITECTURE.md`
+- Licence audit: `../legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`
+- Verification status: API suite 375 passed; Ruff clean; `mypy app/domains/cad` clean. Unverified: PostgreSQL, Docker, and `ifcopenshell.geom` on Python 3.14.4 (see the architecture document).
 
 ## Master completion pass — baseline update (2026-09-25)
 - Re-audited workspace, phase reports, API source/tests, frontend manifest, and environment setup.

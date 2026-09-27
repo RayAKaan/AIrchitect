@@ -80,3 +80,23 @@ class CadJobError(CadError):
     Indicates a protocol mismatch rather than a geometry problem; it is always a
     bug in AIrchitect rather than user input.
     """
+
+
+class CadStorageError(CadError):
+    """The artifact store rejected a key, a kind, or an object that failed its hash.
+
+    A storage key originates in our own database, so a malformed one is an internal
+    defect, not user input. It is deliberately not a ``CadSecurityError``: nothing
+    here should be reported to a caller as a rejected request, and collapsing the
+    two would make a corrupt row look like an attack.
+    """
+
+
+class CadArtifactMissingError(CadError):
+    """A well-formed reference points at content that is no longer in the store.
+
+    Usually means the artifact root was pruned, or restored from a backup that did
+    not include the blobs. Kept distinct from ``CadStorageError`` because the two
+    need different responses: this one becomes a non-disclosing 404, whereas a
+    malformed key is a bug worth alerting on.
+    """

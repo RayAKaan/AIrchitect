@@ -8,7 +8,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
-    ArtifactDependency, ArtifactVersion, DesignAlternative, DesignConstraintRecord, DesignGenerationRun,
+    ArtifactDependency, ArtifactVersion, CadArtifact, CadJobRun, DesignAlternative,
+    DesignConstraintRecord, DesignGenerationRun,
     GeometryArtifact, Project, ProjectVersion, User, WorldModelRevision,
     QuantityArtifact, CostEstimate, StructuralArtifact, RegulatoryEvaluation, ValidationRun,
 )
@@ -208,10 +209,24 @@ class ComputationalDesignEngine:
         alternatives=list((await session.scalars(select(DesignAlternative).where(
             DesignAlternative.project_version_id==version_id,DesignAlternative.input_world_model_hash!=current_hash,
             DesignAlternative.status.in_(["VALID","SELECTED"])))).all())
-        if not alternatives:return
+        # CAD runs are invalidated by the same predicate, but they must be handled
+        # independently of the design side. A run can outlive its alternative (the
+        # alternative may already be stale, or the run was recorded without one), and
+        # geometry that no longer describes the world must not read as current merely
+        # because there was no design candidate left to mark.
+        cad_runs=list((await session.scalars(select(CadJobRun).where(
+            CadJobRun.project_version_id==version_id,CadJobRun.input_world_model_hash!=current_hash,
+            CadJobRun.status=="SUCCEEDED"))).all())
+        if not alternatives and not cad_runs:return
         ids=[a.id for a in alternatives]
         for alt in alternatives:alt.status="STALE"
-        geometries=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.alternative_id.in_(ids)))).all())
+        # A run that failed or is still in flight produced nothing to invalidate; the
+        # in-flight case is settled by the write-time revision check in the CAD
+        # repository, which re-resolves the current revision before it commits.
+        for run in cad_runs:run.status="STALE"
+        run_ids=[r.id for r in cad_runs]
+        cad_artifacts=list((await session.scalars(select(CadArtifact).where(CadArtifact.cad_job_run_id.in_(run_ids)))).all()) if run_ids else []
+        geometries=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.alternative_id.in_(ids)))).all()) if ids else []
         for geom in geometries:geom.status="STALE"
         geometry_ids=[g.id for g in geometries]
         quantities=list((await session.scalars(select(QuantityArtifact).where(QuantityArtifact.geometry_artifact_id.in_(geometry_ids)))).all()) if geometry_ids else []
@@ -219,14 +234,15 @@ class ComputationalDesignEngine:
         regulations=list((await session.scalars(select(RegulatoryEvaluation).where(RegulatoryEvaluation.geometry_artifact_id.in_(geometry_ids)))).all()) if geometry_ids else []
         quantity_ids=[q.id for q in quantities]
         costs=list((await session.scalars(select(CostEstimate).where(CostEstimate.quantity_artifact_id.in_(quantity_ids)))).all()) if quantity_ids else []
-        validations=list((await session.scalars(select(ValidationRun).where(ValidationRun.design_alternative_id.in_(ids)))).all())
+        validations=list((await session.scalars(select(ValidationRun).where(ValidationRun.design_alternative_id.in_(ids)))).all()) if ids else []
         downstream=[*quantities,*costs,*structures,*regulations,*validations]
         for artifact in downstream:artifact.status="STALE"
-        av_ids=[a.artifact_version_id for a in alternatives]+[g.artifact_version_id for g in geometries]+[x.artifact_version_id for x in downstream]
+        av_ids=[a.artifact_version_id for a in alternatives]+[g.artifact_version_id for g in geometries]+[x.artifact_version_id for x in downstream]+[c.artifact_version_id for c in cad_artifacts]
         artifact_versions=list((await session.scalars(select(ArtifactVersion).where(ArtifactVersion.id.in_(av_ids)))).all())
         for av in artifact_versions:av.status="STALE"
         await audit(session,project=project,version=version,actor=actor,action="GEOMETRY_INVALIDATED",
-            entity="project_version",entity_id=version.id,metadata={"stale_alternative_ids":ids,"reason":"world_model_hash_changed"})
+            entity="project_version",entity_id=version.id,metadata={"stale_alternative_ids":ids,
+            "stale_cad_job_run_ids":run_ids,"reason":"world_model_hash_changed"})
 
 
 ENGINE=ComputationalDesignEngine()

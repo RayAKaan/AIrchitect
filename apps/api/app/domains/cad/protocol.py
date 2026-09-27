@@ -40,6 +40,22 @@ ALLOWED_ARTIFACT_SUFFIXES: frozenset[str] = frozenset(
     ext.lower() for ext in ARTIFACT_EXTENSIONS.values()
 )
 
+#: Content type per artifact kind, as the worker reports it.
+#:
+#: The worker is a separate process and deliberately does not import this module --
+#: it reads a plain dict -- so it carries its own copy of these strings. That makes
+#: this table a place where the two can silently disagree, which matters because
+#: the persisted ``cad_artifacts.content_type`` decides how a download is served.
+#: ``tests/test_phase18_worker_protocol.py`` compares the worker's copy against this
+#: one so a divergence is a test failure rather than a mislabelled download.
+ARTIFACT_CONTENT_TYPES: dict[str, str] = {
+    "freecad_document": "application/vnd.freecad",
+    "step": "model/step",
+    "ifc": "application/x-ifc",
+    "glb": "model/gltf-binary",
+    "brep": "model/occt-brep",
+}
+
 MassingKind = Literal["building_mass", "floor_plate", "core", "site_boundary"]
 
 
@@ -290,6 +306,7 @@ class CadJobFailure(BaseModel):
 __all__ = [
     "ALLOWED_ARTIFACT_SUFFIXES",
     "ARTIFACT_EXTENSIONS",
+    "ARTIFACT_CONTENT_TYPES",
     "ArtifactKind",
     "ArtifactRef",
     "BoundingBox",
