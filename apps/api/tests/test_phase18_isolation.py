@@ -1,6 +1,6 @@
-"""Tests that enforce the process-isolation boundary of the Phase 5 pipeline.
+"""Tests that enforce the process-isolation boundary of the Phase 18 pipeline.
 
-Phase 5's central architectural claim is that the API never loads a CAD kernel:
+Phase 18's central architectural claim is that the API never loads a CAD kernel:
 OCCT and IfcOpenShell live in a separate virtualenv, and FreeCAD runs as a bounded
 subprocess. That claim is only worth anything if it is tested, because the natural
 temptation during integration is a single ``import ifcopenshell`` in a route handler

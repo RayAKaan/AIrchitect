@@ -6,10 +6,10 @@ how a hostile request is refused, and above all that the API does not take a
 worker's word for anything it can check itself.
 
 The fake worker is a real subprocess launched through the real command line (see
-``phase5_fake_worker``), so a regression in the runner's argv, environment,
+``phase18_fake_worker``), so a regression in the runner's argv, environment,
 working directory or file handling fails these tests rather than hiding behind a
 mock. End-to-end behaviour against real OCCT and FreeCAD lives in
-``test_phase5_worker_live.py``; this file must never need them.
+``test_phase18_worker_live.py``; this file must never need them.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from app.domains.cad.errors import (
 )
 from app.domains.cad.protocol import CadJobRequest, Footprint, MassingElement
 from app.domains.cad.runner import _memory_limit_kwargs, _response_byte_budget, run_cad_job
-from tests.phase5_fake_worker import (
+from tests.phase18_fake_worker import (
     BAD_BASE64,
     EMPTY_PAYLOAD,
     EMPTY_RESULT,

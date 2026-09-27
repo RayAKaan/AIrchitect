@@ -140,9 +140,18 @@ def _prepare_request(
 
     The output directory is stamped here rather than by the caller, so a caller
     cannot influence where the worker writes by passing its own ``output_dir``.
+
+    ``freecad_timeout_seconds`` is stamped for the same reason. It is a process
+    setting rather than a modelling preference, so a caller must not be able to
+    raise the inner limit; the outer wall-clock limit in :func:`_execute` still
+    applies on top of it.
     """
     stamped = request.model_copy(
-        update={"output_dir": str(output_dir), "sandbox_root": str(output_dir)}
+        update={
+            "output_dir": str(output_dir),
+            "sandbox_root": str(output_dir),
+            "freecad_timeout_seconds": float(config.freecad_timeout_seconds),
+        }
     )
     document = json.dumps(stamped.model_dump(mode="json"), separators=(",", ":"))
     encoded = document.encode("utf-8")

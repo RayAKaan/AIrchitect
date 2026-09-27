@@ -5,7 +5,7 @@ IfcOpenShell. They are skipped, not failed, when the toolchain is absent, so the
 ordinary API test run stays fast and does not require a 400 MB FreeCAD install --
 but on a machine that has it, the pipeline is verified rather than assumed.
 
-The invariants asserted here are the ones the Phase 5 report has to stand behind:
+The invariants asserted here are the ones the Phase 18 report has to stand behind:
 a solid is real, measurements agree with closed-form geometry, the two independent
 kernels agree with each other, and every artifact is a structurally valid file.
 """
@@ -522,7 +522,7 @@ class TestFreecadProvider:
 class TestRunnerAgainstRealWorker:
     """The real worker driven through the real API runner.
 
-    The fake worker in ``phase5_fake_worker`` proves the runner's argv, environment
+    The fake worker in ``phase18_fake_worker`` proves the runner's argv, environment
     and file handling. It cannot prove that a genuine response survives the
     runner's independent verification: real STEP/GLB/IFC bytes, real SHA-256
     digests, real measurements, and the real kernel's own validation verdict. That

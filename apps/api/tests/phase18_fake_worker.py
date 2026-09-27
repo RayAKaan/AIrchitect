@@ -18,7 +18,7 @@ environment variable, and each invocation appends a record to the file named by
 ``AIRCHITECT_FAKE_LOG`` so a test can assert on what the runner actually did.
 
 End-to-end behaviour against real OCCT and FreeCAD lives in
-``test_phase5_worker_live.py``; nothing in this module imports a CAD package.
+``test_phase18_worker_live.py``; nothing in this module imports a CAD package.
 """
 
 from __future__ import annotations

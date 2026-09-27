@@ -8,7 +8,7 @@ The writer is deliberately small and dependency-free. The worker virtualenv
 already carries a large native surface for audit purposes, so adding a glTF
 library to produce ~100 lines of output would be a poor trade. Only the subset of
 glTF 2.0 needed for static, flat-shaded, per-element-coloured triangle meshes is
-emitted, and the result is validated by ``test_phase5_glb.py``.
+emitted, and the result is validated by ``test_phase18_glb.py``.
 
 Normals are computed per triangle. Sharing vertices across faces would average
 away the hard edges that make a building readable, so vertices are duplicated at

@@ -2,7 +2,7 @@
 
 These exercise the parts of the CAD pipeline that need no native kernel, so they
 run in the ordinary API environment. The kernel-dependent paths are covered by
-``test_phase5_worker_live.py``, which skips when the worker virtualenv is absent.
+``test_phase18_worker_live.py``, which skips when the worker virtualenv is absent.
 """
 
 import pytest

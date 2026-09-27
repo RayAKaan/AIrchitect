@@ -1,9 +1,9 @@
-# Phase 5 — Open-Source License Audit (CAD / BIM Toolchain)
+# Phase 18 — Open-Source License Audit (CAD / BIM Toolchain)
 
 **Status:** IMPLEMENTED — requires countersignature by qualified counsel before commercial release.
 **Audit date:** 2026-09-26
 **Scope:** Every third-party component that AIrchitect installs, imports, executes, or redistributes
-in the Phase 5 CAD/BIM pipeline (FreeCAD, OCCT, IfcOpenShell, and their transitive dependencies).
+in the Phase 18 CAD/BIM pipeline (FreeCAD, OCCT, IfcOpenShell, and their transitive dependencies).
 **Authority for this document:** empirical inspection of the actual artifacts installed on this machine
 (`H:\.cad-tools\`), not recollection or marketing pages. Where a claim could not be verified from the
 shipped artifact itself, that is stated explicitly.
@@ -25,7 +25,7 @@ shipped artifact itself, that is stated explicitly.
 | License texts present in the artifacts we ship? | **PARTIAL** — see the gap in §5.1 |
 | Action items outstanding before release? | **YES** — 4 items, §8 |
 
-**Bottom line:** the architecture chosen in Phase 5 (separate worker process + separate virtualenv +
+**Bottom line:** the architecture chosen in Phase 18 (separate worker process + separate virtualenv +
 unmodified upstream binaries) is the *most* LGPL-compatible option available to us. The remaining work
 is paperwork: ship the missing license texts, add automated license scanning to CI, and obtain counsel
 sign-off. No architectural change is required.
@@ -69,7 +69,7 @@ different builds at two different versions and both must be recorded.**
 | License | **LGPL-2.1-or-later WITH the Open CASCADE exception** | Open CASCADE official licensing statement |
 | Total FreeCAD third-party packages | 236 | `packages.txt` line count |
 
-> **Correction to earlier planning notes.** The Phase 5 plan assumed FreeCAD 1.1.3 would embed
+> **Correction to earlier planning notes.** The Phase 18 plan assumed FreeCAD 1.1.3 would embed
 > OCCT 7.9.x. Measured reality is **OCCT 7.8.1**. This is precisely why the worker reports
 > `Part.OCC_VERSION` at runtime instead of trusting a hard-coded version, and why no code may assume a
 > particular OCCT minor version. See §7.
@@ -136,7 +136,7 @@ Collected programmatically from the worker virtualenv (`H:\.cad-tools\worker-ven
 **Not copyleft.** No GPL-2.0-only, GPL-3.0-only, AGPL, SSPL, BUSL, or Commons Clause component was found.
 The strongest obligations are the three LGPL components in §2.
 
-**`vtk` note.** `vtk` is pulled in transitively by the `ifcopenshell` wheel. Phase 5 does **not** use the
+**`vtk` note.** `vtk` is pulled in transitively by the `ifcopenshell` wheel. Phase 18 does **not** use the
 `ifcopenshell.geom` tessellation path (see §7.4), but the wheel links VTK regardless, so VTK is
 executing code in the worker venv. Its BSD license is permissive, but it belongs on the notices list.
 

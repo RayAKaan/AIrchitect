@@ -61,7 +61,7 @@ TRACKED_TRANSITIVE: tuple[str, ...] = (
 )
 
 # Licenses that require explicit sign-off before they may be added. Derived from
-# the LGPL/AGPL analysis in docs/legal/PHASE-5-OPEN-SOURCE-LICENSE-AUDIT.md.
+# the LGPL/AGPL analysis in docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md.
 #
 # These are matched on token boundaries, not as bare substrings: "lgpl" must not
 # register as "gpl", which a naive ``in`` test would do.

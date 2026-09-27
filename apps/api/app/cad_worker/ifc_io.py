@@ -1,6 +1,6 @@
 """IFC4 export and inspection, owned exclusively by IfcOpenShell.
 
-Division of responsibility in Phase 5: OCCT/FreeCAD own solid geometry and
+Division of responsibility in Phase 18: OCCT/FreeCAD own solid geometry and
 tessellation; IfcOpenShell owns IFC. That is not a compromise for convenience --
 IfcOpenShell's IFC schema handling, spatial structure, classification and property
 sets are the parts of the BIM requirement that are genuinely hard to get right,

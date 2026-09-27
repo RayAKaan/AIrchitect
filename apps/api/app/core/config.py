@@ -26,9 +26,9 @@ class Settings(BaseSettings):
     assistant_rate_limit_per_minute: int = 20
     auth_secret: str = "local-only-change-this-secret"
 
-    # --- Phase 5 CAD/BIM toolchain -------------------------------------------------
+    # --- Phase 18 CAD/BIM toolchain -------------------------------------------------
     # "cad_bim" is the real OpenCASCADE/FreeCAD/IfcOpenShell pipeline. "legacy" is the
-    # pre-Phase-5 scratch cuboid generator, retained only as a migration aid and
+    # pre-Phase-18 scratch cuboid generator, retained only as a migration aid and
     # scheduled for deletion once parity and acceptance gates pass.
     geometry_engine: str = "cad_bim"
     # Interpreter for the isolated worker virtualenv. Empty means auto-discover from

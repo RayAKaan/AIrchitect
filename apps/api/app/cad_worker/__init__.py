@@ -6,7 +6,7 @@ application never imports this package, and this package never imports the API
 application. They communicate only by JSON over a pipe.
 
 That is what keeps the LGPL boundary asserted in
-``docs/legal/PHASE-5-OPEN-SOURCE-LICENSE-AUDIT.md`` a property of the system
+``docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md`` a property of the system
 rather than a hope, and it is why the API image can stay free of native CAD
 dependencies.
 

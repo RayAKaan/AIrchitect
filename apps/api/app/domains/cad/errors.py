@@ -1,4 +1,4 @@
-"""Error taxonomy for the Phase 5 CAD/BIM pipeline.
+"""Error taxonomy for the Phase 18 CAD/BIM pipeline.
 
 Every failure mode a CAD worker can hit is mapped to a specific exception so the
 API can distinguish "the toolchain is not installed" (an operator problem, 503)

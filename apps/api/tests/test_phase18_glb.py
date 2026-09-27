@@ -1,6 +1,6 @@
 """Tests for the GLB writer and its structural validator.
 
-The Phase 2 viewer fabricated boxes in the browser; Phase 5 ships real tessellated
+The Phase 2 viewer fabricated boxes in the browser; Phase 18 ships real tessellated
 solids instead. These tests exist because the first version of this writer emitted
 a ``NORMAL`` accessor whose count disagreed with ``POSITION``, which Python and
 lenient viewers accept but a conforming glTF validator rejects. The bug would have

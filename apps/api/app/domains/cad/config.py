@@ -1,4 +1,4 @@
-"""Configuration for the Phase 5 CAD/BIM pipeline.
+"""Configuration for the Phase 18 CAD/BIM pipeline.
 
 Follows the same shape as :class:`app.domains.design.config.DesignEngineConfig`: a
 frozen dataclass that owns the domain's tunables and can emit a ``canonical()``

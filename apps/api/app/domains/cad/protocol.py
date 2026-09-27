@@ -11,7 +11,7 @@ deliberate constraint, not an accident:
 
 Because the two sides cannot share a model class, the API validates requests with
 pydantic and the worker parses them with stdlib dataclasses. That duplication is
-guarded by ``tests/test_phase5_worker_protocol.py``, which asserts the two
+guarded by ``tests/test_phase18_worker_protocol.py``, which asserts the two
 definitions have identical field sets -- so drift is a test failure rather than a
 production incident.
 """
@@ -158,6 +158,13 @@ class CadJobRequest(BaseModel):
     output_dir: str = Field(default="", max_length=1024)
     sandbox_root: str = Field(default="", max_length=1024)
     site: Footprint | None = None
+    # Bounds the worker's *inner* FreeCAD subprocess. The runner separately
+    # enforces an outer wall-clock limit, and the two are not interchangeable: an
+    # outer kill ends the whole job, while this one lets the worker report a
+    # partial failure through the normal response document. The API stamps this
+    # from cad_freecad_timeout_seconds; without it the worker would fall back to
+    # its own default and the setting would appear to do nothing.
+    freecad_timeout_seconds: float = Field(default=180.0, gt=0.0, le=3600.0)
 
 
 class SolidMeasurement(BaseModel):
