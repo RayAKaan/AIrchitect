@@ -22,6 +22,12 @@ services:
     depends_on:
       db: {condition: service_healthy}
   web:
+    build:
+      context: ./apps/web
+      target: runner
+    ports: ["80:80"]
+    depends_on: [api]
+  web-dev:
     image: node:22-alpine
     working_dir: /app
     volumes: ["./apps/web:/app"]
@@ -30,5 +36,6 @@ services:
     environment:
       VITE_API_BASE_URL: http://localhost:8000/api/v1
     depends_on: [api]
+    profiles: ["dev"]
 volumes:
   postgres_data:
