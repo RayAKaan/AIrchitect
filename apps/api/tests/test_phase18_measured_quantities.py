@@ -228,25 +228,16 @@ async def test_cad_geometry_is_preferred_over_the_legacy_ir(api, cad, db):
     )
 
 
-async def test_legacy_ir_path_still_derives_from_the_description(api, cad):
-    """Without a CAD solid, the legacy path still works and now admits it measures nothing."""
+async def test_no_cad_geometry_returns_cad_required(api, cad):
+    """Without CAD geometry, authoritative engineering returns CAD_REQUIRED."""
     headers, org, project, version = await _committed_project(api)
     alternative = await _alternative(api, headers, project, version)
 
-    quantity = (await _calculate(api, headers, project, version, alternative)).json()["quantity"]
-    provenance = quantity["measurement_provenance"]
-
-    assert provenance["geometry_source"] == "LEGACY_IR"
-    assert provenance["measured_quantities"] == []
-    assert "No solid was built" in provenance["notice"]
-    # The analytical volume is still what the legacy path reports, and still says so.
-    by = _by_code(quantity)
-    assert by["BUILDING_VOLUME"]["value"] == pytest.approx(
-        float(alternative["metrics"]["building_volume_m3"]), abs=1e-2
-    )
-    assert by["BUILDING_VOLUME"]["type"] == "EXACT_DERIVED"
-    assert by["ROOF_AREA"]["type"] == "EXACT_DERIVED"
-    assert "declared_vs_measured" not in quantity
+    response = await _calculate(api, headers, project, version, alternative)
+    assert response.status_code == 409, response.text
+    error = response.json()["error"]
+    assert error["code"] == "CAD_REQUIRED"
+    assert "validated CAD solid" in error["message"]
 
 
 async def test_geometry_validation_run_is_enforced_for_cad_solids(api, cad, db):

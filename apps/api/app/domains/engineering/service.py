@@ -15,54 +15,45 @@ logger=logging.getLogger("engineering")
 QENGINE=QuantityEngine();CENGINE=CostEngine();SENGINE=StructuralConceptEngine();RENGINE=RegulatoryEngine();VENGINE=EngineeringValidationEngine()
 
 async def resolve_sources(session:AsyncSession,project_id:str,version_ref:str,alternative_id:str,user:User,write=False):
- project,version=await resolve_project_version(session,project_id,version_ref,user.id,write=write);world=await resolve_world_model(session,version.id)
- alt=await session.scalar(select(DesignAlternative).where(DesignAlternative.id==alternative_id,DesignAlternative.project_id==project.id,DesignAlternative.project_version_id==version.id))
- if alt is None:raise error(404,"ALTERNATIVE_NOT_FOUND","Design alternative not found")
- if alt.status=="STALE" or alt.input_world_model_hash!=(world.model_hash or ""):raise error(409,"STALE_ARTIFACT","Regenerate the design alternative from the current World Model")
- if alt.status not in {"VALID","SELECTED"}:raise error(409,"DEPENDENCY_INVALID","Alternative is not valid for engineering calculation",alternative_status=alt.status)
- # A CAD-produced solid and the legacy GeometryIR can both describe one
- # alternative. Prefer the solid: it is the artifact the rest of the pipeline is
- # being moved onto, and the IR is a parametric description standing in for it.
- # Newest first within each class, so a re-run supersedes its predecessor. Without
- # this the choice was whichever row the database happened to return first.
- rows=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,GeometryArtifact.project_version_id==version.id).order_by(GeometryArtifact.created_at.desc()))).all())
- geom=next((row for row in rows if is_cad_geometry(row)),rows[0] if rows else None)
- if geom is None:raise error(409,"QUANTITY_SOURCE_INVALID","The alternative has no persisted geometry artifact")
- if geom.status!="CURRENT":raise error(409,"STALE_ARTIFACT","Geometry artifact is not current",geometry_status=geom.status)
- if geom.input_world_model_hash!=(world.model_hash or "") or geom.design_hash!=(alt.design_hash or ""):raise error(409,"STALE_ARTIFACT","Geometry dependencies do not match the current alternative")
- try:gi=await geom_input(session,geom)
- except EngineeringError as exc:raise error(409,exc.code,exc.message,**exc.context) from exc
- return project,version,world,alt,geom,gi
+  project,version=await resolve_project_version(session,project_id,version_ref,user.id,write=write);world=await resolve_world_model(session,version.id)
+  alt=await session.scalar(select(DesignAlternative).where(DesignAlternative.id==alternative_id,DesignAlternative.project_id==project.id,DesignAlternative.project_version_id==version.id))
+  if alt is None:raise error(404,"ALTERNATIVE_NOT_FOUND","Design alternative not found")
+  if alt.status=="STALE" or alt.input_world_model_hash!=(world.model_hash or ""):raise error(409,"STALE_ARTIFACT","Regenerate the design alternative from the current World Model")
+  if alt.status not in {"VALID","SELECTED"}:raise error(409,"DEPENDENCY_INVALID","Alternative is not valid for engineering calculation",alternative_status=alt.status)
+  # CAD geometry is now mandatory for authoritative engineering.
+  # Legacy GeometryIR artifacts are not accepted as a quantity source.
+  rows=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,GeometryArtifact.project_version_id==version.id,GeometryArtifact.source=="CAD_BREP").order_by(GeometryArtifact.created_at.desc()))).all())
+  if not rows:raise error(409,"CAD_REQUIRED","Authoritative engineering requires a validated CAD solid. Generate CAD geometry for this alternative first.")
+  geom=rows[0]
+  if geom.status!="CURRENT":raise error(409,"STALE_ARTIFACT","Geometry artifact is not current",geometry_status=geom.status)
+  if geom.input_world_model_hash!=(world.model_hash or "") or geom.design_hash!=(alt.design_hash or ""):raise error(409,"STALE_ARTIFACT","Geometry dependencies do not match the current alternative")
+  try:gi=await geom_input(session,geom)
+  except EngineeringError as exc:raise error(409,exc.code,exc.message,**exc.context) from exc
+  return project,version,world,alt,geom,gi
 
 def is_cad_geometry(geom)->bool:return geom.source == "CAD_BREP"
 async def geom_input(session:AsyncSession,geom:GeometryArtifact)->dict:
- """Normalise a persisted geometry artifact into the shape the engines consume.
+  """Normalise a CAD geometry artifact into the shape the engines consume.
 
- Two producers write GeometryArtifact rows and their payloads are not the same
- document. The legacy design engine stores a ``geometry_ir`` description and its
- own validation inline. The CAD worker stores measurements and no IR, because a
- B-rep is not a parametric description: the solids are the geometry. Reading one
- with the other's accessor raises KeyError, so the shape is decided here and named
- with an explicit ``source``.
- """
- payload=geom.payload_json or {}
- if not is_cad_geometry(geom):
-  validation=payload.get("validation") or {}
-  if not validation.get("valid"):raise EngineeringError("QUANTITY_SOURCE_INVALID","Persisted geometry is not validated",{"geometry_artifact_id":geom.id})
-  return {"id":geom.id,"geometry_hash":geom.geometry_hash,"source":"LEGACY_IR","geometry_ir":payload["geometry_ir"],"validation":validation}
- run_id=(geom.provenance_json or {}).get("cad_job_run_id")
- if not run_id:raise EngineeringError("QUANTITY_SOURCE_INVALID","The geometry artifact is neither a validated GeometryIR nor a CAD solid, so no quantity can be attributed to it",{"geometry_artifact_id":geom.id})
- run=await session.get(CadJobRun,run_id)
- document=(run.validation_json if run is not None else None) or {}
- # A run that failed produced no solid, and a run that produced one without
- # vouching for it has measurements that nothing stands behind. Both are refused
- # here rather than quantified, because a number nobody checked is the failure mode
- # this whole phase exists to close.
- if run is None or run.status!="SUCCEEDED" or not document.get("valid"):
-  raise EngineeringError("QUANTITY_SOURCE_INVALID","The CAD run behind this solid did not produce a validated solid",{"geometry_artifact_id":geom.id,"cad_job_run_id":run_id,"run_status":run.status if run is not None else None,"validation_errors":document.get("errors") or []})
- return {"id":geom.id,"geometry_hash":geom.geometry_hash,"source":"CAD_BREP","provider":run.provider,"engine_version":geom.engine_version,"cad_job_run_id":run_id,
-  "measurements":payload.get("measurements") or [],"combined_volume_m3":payload.get("combined_volume_m3"),"combined_area_m2":payload.get("combined_area_m2"),"combined_bounding_box":payload.get("combined_bounding_box"),
-  "validation":{"valid":True,"checks":document.get("checks") or [],"errors":document.get("errors") or []}}
+  Only CAD_BREP geometry is accepted. Legacy GeometryIR is no longer a valid
+  quantity source. This function validates the CAD run and extracts measurements.
+  """
+  if not is_cad_geometry(geom):
+    raise EngineeringError("CAD_REQUIRED","Authoritative engineering requires a validated CAD solid. Legacy GeometryIR is not accepted.")
+  payload=geom.payload_json or {}
+  run_id=(geom.provenance_json or {}).get("cad_job_run_id")
+  if not run_id:raise EngineeringError("QUANTITY_SOURCE_INVALID","CAD geometry artifact missing cad_job_run_id",{"geometry_artifact_id":geom.id})
+  run=await session.get(CadJobRun,run_id)
+  document=(run.validation_json if run is not None else None) or {}
+  # A run that failed produced no solid, and a run that produced one without
+  # vouching for it has measurements that nothing stands behind. Both are refused
+  # here rather than quantified, because a number nobody checked is the failure mode
+  # this whole phase exists to close.
+  if run is None or run.status!="SUCCEEDED" or not document.get("valid"):
+    raise EngineeringError("QUANTITY_SOURCE_INVALID","The CAD run behind this solid did not produce a validated solid",{"geometry_artifact_id":geom.id,"cad_job_run_id":run_id,"run_status":run.status if run is not None else None,"validation_errors":document.get("errors") or []})
+  return {"id":geom.id,"geometry_hash":geom.geometry_hash,"source":"CAD_BREP","provider":run.provider,"engine_version":geom.engine_version,"cad_job_run_id":run_id,
+   "measurements":payload.get("measurements") or [],"combined_volume_m3":payload.get("combined_volume_m3"),"combined_area_m2":payload.get("combined_area_m2"),"combined_bounding_box":payload.get("combined_bounding_box"),
+   "validation":{"valid":True,"checks":document.get("checks") or [],"errors":document.get("errors") or []}}
 
 def alt_input(world,alt):return {"world_hash":world.model_hash or "","design_hash":alt.design_hash or "","metrics":alt.key_metrics_json,"parameters":alt.design_parameters_json}
 

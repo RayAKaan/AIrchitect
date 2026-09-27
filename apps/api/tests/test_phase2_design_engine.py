@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.models import (
-    ArtifactDependency, ArtifactVersion, Base, DesignAlternative, DesignConstraintRecord,
+    ArtifactDependency, ArtifactVersion, Base, CadJobRun, DesignAlternative, DesignConstraintRecord,
     DesignGenerationRun, GeometryArtifact, Membership, Organization, Project, ProjectVersion, User,
     WorldModelRevision, QuantityArtifact, StructuralArtifact, RegulatoryEvaluation, ValidationRun,
 )
@@ -15,6 +15,96 @@ from app.domains.design.geometry_ir import GeometryValidator, MassingGeometryEng
 from app.domains.design.strategies import STRATEGIES
 from app.domains.lifecycle.service import canonical_hash
 from app.domains.engineering.service import calculate_all
+from app.domains.cad.persistence import record_cad_success
+from app.domains.cad.protocol import CadJobResult, CadJobRequest, SolidMeasurement, Footprint, MassingElement
+
+
+def _make_fake_cad_result():
+    """Create a mock CAD job result with standard measurements for testing."""
+    from app.domains.cad.protocol import CadJobResult, SolidMeasurement
+    measurements = [
+        SolidMeasurement(
+            id="mass-1",
+            kind="building_mass",
+            volume_m3=3000.0,
+            surface_area_m2=1400.0,
+            centroid=[5.0, 5.0, 15.0],
+            bounding_box={"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 30.0]},
+            solid_count=1,
+            face_count=6,
+            edge_count=12,
+            vertex_count=8,
+            is_valid=True,
+            is_closed=True,
+        )
+    ]
+    return CadJobResult(
+        schema_version="1.0",
+        job_id="test-job",
+        status="ok",
+        provider={
+            "provider": "occt",
+            "engine_name": "fake",
+            "engine_version": "0",
+            "occt_version": "7.9.3",
+            "python_version": "3.12",
+        },
+        measurements=[
+            SolidMeasurement(
+                id="mass-1",
+                kind="building_mass",
+                volume_m3=3000.0,
+                surface_area_m2=1400.0,
+                centroid=[5.0, 5.0, 15.0],
+                bounding_box={"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 30.0]},
+                solid_count=1,
+                face_count=6,
+                edge_count=12,
+                vertex_count=8,
+                is_valid=True,
+                is_closed=True,
+            )
+        ],
+        combined_volume_m3=3000.0,
+        combined_area_m2=1400.0,
+        combined_bounding_box={"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 30.0]},
+        artifacts=[],
+        validation={"valid": True, "checks": [], "errors": [], "warnings": []},
+        element_count=1,
+        warnings=[],
+    )
+
+
+async def _create_cad_geometry(session, project, version, world, alt_id, user_id, design_hash="", alternative_id=None):
+    """Create a CAD_BREP geometry artifact for testing."""
+    from app.domains.cad.persistence import record_cad_success
+    from app.domains.cad.protocol import CadJobRequest
+
+    recorded = await record_cad_success(
+        session=session,
+        project=project,
+        version=version,
+        world=world,
+        actor_id=user_id,
+        provider="occt",
+        request=CadJobRequest(
+            elements=[MassingElement(
+                id="mass-1",
+                name="Test Mass",
+                footprint=Footprint(points=[[0,0],[10,0],[10,10],[0,10]]),
+                base_elevation_m=0.0,
+                height_m=30.0,
+                material_class="conceptual_mass",
+            )],
+            outputs=["glb"],
+        ),
+        result=_make_fake_cad_result(),
+        stored={},
+        alternative_id=alt_id,
+        design_hash=design_hash or "",
+        duration_ms=100,
+    )
+    return recorded
 
 
 @pytest.fixture
@@ -157,7 +247,16 @@ async def test_world_hash_change_marks_same_version_artifacts_stale(session):
     user,org,project,version,world=await seed(session)
     await ENGINE.generate(session,project,version,world,user)
     selected=await session.scalar(select(DesignAlternative).where(DesignAlternative.strategy_id=="balanced"))
-    selected_geom=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==selected.id))
+    
+    # Create CAD geometry for the alternative (required for authoritative engineering)
+    recorded = await _create_cad_geometry(
+        session, project, version, world, selected.id, user.id,
+        design_hash=selected.design_hash or "", alternative_id=selected.id
+    )
+    selected_geom = await session.get(GeometryArtifact, recorded.geometry_artifact_id)
+    assert selected_geom is not None
+    assert selected_geom.source == "CAD_BREP"
+    
     await calculate_all(session,project,version,world,selected,selected_geom,user,None)
     changed=copy.deepcopy(world.model_json);changed["building"]["target_gfa"]["value"]=7600
     newer=WorldModelRevision(organization_id=org.id,project_id=project.id,project_version_id=version.id,revision=2,
