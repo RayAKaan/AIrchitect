@@ -615,6 +615,7 @@ class TestRunnerAgainstRealWorker:
         assert {"step", "glb", "ifc"} <= kinds
 
 
+@needs_worker
 class TestSandboxContainment:
     """The worker's own view of its output directory.
 
