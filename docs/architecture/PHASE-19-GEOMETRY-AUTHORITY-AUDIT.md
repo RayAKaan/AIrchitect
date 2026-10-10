@@ -1,6 +1,6 @@
 # Phase 19 — Geometry Authority & Legacy Path Elimination: S1 Dependency Audit
 
-**Status**: In progress — S1–S4 delivered; S5–S16 remain open  
+**Status**: In progress — S1–S4 delivered; S5–S9 partially delivered; S10–S16 remain open  
 **Generated**: 2026-09-28  
 **Base Commit**: d9ca126 (Phase 18 S14 complete)
 
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Phase 18 delivered the isolated OCCT/FreeCAD worker, IFC/GLB/STEP export, bounded execution, artifact persistence, and CAD-derived measurements. Phase 19 S2–S3 added an explicit `CAD_BREP | LEGACY_IR` source discriminator and made engineering reject legacy IR. S4 now removes the frontend IR renderer, makes the geometry endpoint CAD-only, and exposes an explicit CAD-generation action. Legacy geometry generation and non-authoritative helper code still exist and must be retired or proven unreachable in S5–S16.
+Phase 18 delivered the isolated OCCT/FreeCAD worker, IFC/GLB/STEP export, bounded execution, artifact persistence, and CAD-derived measurements. Phase 19 S2–S3 added an explicit `CAD_BREP | LEGACY_IR` source discriminator and made engineering reject legacy IR. S4 removes the frontend IR renderer, makes the geometry endpoint CAD-only, and exposes an explicit CAD-generation action. S5–S7 now record quantity dependencies for structural/regulatory artifacts, and S8–S9 stale the old geometry and dependency-graph descendants when a replacement solid is committed. Legacy geometry generation and non-authoritative helper code still exist and must be retired or proven unreachable in S10–S16.
 
 This audit catalogs every reference to GeometryIR, GeometryArtifact, parametric massing engines, and fabricated geometry across the codebase. Each entry is classified: **KEEP**, **MIGRATE**, **DEPRECATE**, or **DELETE**.
 
@@ -179,9 +179,9 @@ Phase 19 S11–S16: Testing, PostgreSQL, Security, Documentation
 
 ## Next Steps
 
-1. Complete S5–S9: enforce the geometry → quantity → cost/structure/regulation → validation/evidence dependency chain.
+1. Complete S5–S9 verification: assert the full geometry → quantity → cost/structure/regulation → validation/evidence chain, including CAD replacement and world-revision races.
 2. Complete S10: remove legacy GeometryIR from authoritative execution and explicitly deprecate non-authoritative generation paths.
-3. Complete S11–S16: replace IR fixtures, test hash/staleness propagation and tenant isolation, verify PostgreSQL migrations and real CAD worker behavior, and update release documentation.
+3. Complete S11–S16: replace remaining IR-only engine fixtures, test tenant isolation and artifact downloads, verify PostgreSQL migrations and real CAD worker behavior, and update release documentation.
 4. Run the complete repository CI and verify the final PR head before calling Phase 19 complete.
 
 ---
