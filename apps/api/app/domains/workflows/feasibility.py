@@ -10,6 +10,10 @@ from app.domains.ai.service import deterministic_extraction
 from app.domains.decisions.runtime import DecisionRuntime
 from app.domains.decisions.schemas import DecisionRequest
 from app.domains.design.engine import ENGINE
+from app.domains.cad.capability import probe_capabilities
+from app.domains.cad.config import CadConfig
+from app.domains.cad.errors import CadDependencyMissingError
+from app.domains.cad.orchestrator import run_cad_job_for_alternative
 from app.domains.engineering.service import calculate_all,resolve_sources
 from app.domains.foundation.service import audit,resolve_world_model
 from app.domains.lifecycle.service import canonical_hash
@@ -73,13 +77,55 @@ async def execute_run(session:AsyncSession,wf:WorkflowRecord,user:User)->Workflo
     result={'alternative_id':selected.id,'decision_id':decision.decision_id,'provider':decision.provider,'policy':decision.metadata.get('policy_disposition')}
    elif name=='RUN_ENGINEERING':
     selected=await session.scalar(select(DesignAlternative).where(DesignAlternative.project_version_id==version.id,DesignAlternative.status=='SELECTED'))
-    # Source resolution goes through the engineering service rather than picking a
-    # geometry row here. Choosing the geometry -- preferring a measured solid over the
-    # legacy description, newest first -- and normalising its payload are decisions
-    # that belong in one place, and a workflow that picked its own row would disagree
-    # with the API about which geometry a calculation is over.
+    if selected is None:raise ValueError('NO_SELECTED_ALTERNATIVE')
+    # A feasibility run is end-to-end: do not require a separate manual CAD request
+    # between design generation and engineering. Reuse only the newest CAD artifact
+    # when it is current and bound to this exact World Model + design hash.
+    cad_rows=list((await session.scalars(select(GeometryArtifact).where(
+     GeometryArtifact.alternative_id==selected.id,
+     GeometryArtifact.project_version_id==version.id,
+     GeometryArtifact.source=='CAD_BREP'
+    ).order_by(GeometryArtifact.created_at.desc()))).all())
+    latest_cad=cad_rows[0] if cad_rows else None
+    cad_result=None
+    if not (latest_cad and latest_cad.status=='CURRENT'
+            and latest_cad.input_world_model_hash==(world.model_hash or '')
+            and latest_cad.design_hash==(selected.design_hash or '')):
+     config=CadConfig.from_settings()
+     if config.geometry_engine!='cad_bim':raise ValueError('CAD_ENGINE_DISABLED')
+     try:
+      capabilities=probe_capabilities(config)
+     except CadDependencyMissingError as exc:
+      raise ValueError('CAD_TOOLCHAIN_UNAVAILABLE') from exc
+     if not capabilities.can_build_geometry:raise ValueError('CAD_TOOLCHAIN_UNAVAILABLE')
+     outcome=await run_cad_job_for_alternative(
+      session,project=project,version=version,alternative=selected,actor_id=user.id,
+      config=config,requested_outputs=['glb'],capabilities=capabilities,world=world
+     )
+     if outcome.unavailable or outcome.run is None:
+      raise ValueError(outcome.error_code or 'CAD_TOOLCHAIN_UNAVAILABLE')
+     if outcome.run.status!='SUCCEEDED' or not outcome.geometry_artifact_id:
+      raise ValueError(outcome.error_code or 'CAD_GENERATION_FAILED')
+     cad_result={
+      'cad_job_run_id':outcome.run.id,
+      'geometry_artifact_id':outcome.geometry_artifact_id,
+      'artifact_ids':[artifact.id for artifact in outcome.artifacts],
+      'provider':outcome.run.provider,
+      'reused_existing_geometry':False,
+     }
+    else:
+     cad_result={
+      'cad_job_run_id':(latest_cad.provenance_json or {}).get('cad_job_run_id'),
+      'geometry_artifact_id':latest_cad.id,
+      'artifact_ids':[],
+      'provider':(latest_cad.provenance_json or {}).get('provider'),
+      'reused_existing_geometry':True,
+     }
+    # Source resolution remains centralized: engineering cannot bypass CAD
+    # validation, tenant/version binding, dependency hashes, or stale-state checks.
     _project,_version,_world,alt,geom,gi=await resolve_sources(session,project.id,version.id,selected.id,user)
     result=await calculate_all(session,_project,_version,_world,alt,geom,user,task.payload_json.get('rate_schedule_id'),gi=gi)
+    result['cad_generation']=cad_result
    else:
     result=await assemble_evidence(session,project,version,world,wf)
    transition(session,wf,task,'SUCCEEDED',result);await session.commit()
