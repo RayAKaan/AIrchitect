@@ -61,7 +61,7 @@
       ],
       [
         "building_use",
-        "retail"
+        "commercial_retail"
       ],
       [
         "floor_count",
@@ -101,7 +101,7 @@
       ],
       [
         "building_use",
-        "retail"
+        "commercial_retail"
       ],
       [
         "floor_count",
@@ -133,7 +133,7 @@
     "expected": [
       [
         "building_use",
-        "retail"
+        "commercial_retail"
       ]
     ]
   },
@@ -175,7 +175,7 @@
     "expected": [
       [
         "building_use",
-        "retail"
+        "commercial_retail"
       ],
       [
         "site_area",

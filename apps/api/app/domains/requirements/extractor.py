@@ -21,7 +21,7 @@ class DeterministicRequirementExtractor:
     @staticmethod
     def _excluded_by_context(brief: str, match: re.Match[str]) -> bool:
         prefix = brief[max(0, match.start()-64):match.start()]
-        prefix = re.split(r"[.!?;\n]", prefix)[-1].lower().strip()
+        prefix = re.split(r"[.!?;\n]", prefix)[-1].lower()
         patterns = (
             r"\b(?:no more than|not more than|up to|at most|less than|fewer than|under|below|maximum(?: of)?|minimum(?: of)?|at least|no fewer than|no less than|more than|greater than|over|above|between)\s*$",
             r"\b(?:do not|don't|does not|doesn't|must not|mustn't)\s+(?:[a-z]+\s+){0,2}$",
@@ -63,6 +63,8 @@ class DeterministicRequirementExtractor:
             add("height","floor_to_floor_height",match,float(match.group(1)),"m","decimal")
         for match in re.finditer(r"\b(\d+(?:\.\d+)?)\s*(?:m|meters?|metres?)\s*(?:high|height)\b",brief,re.I):
             add("height","building_height",match,float(match.group(1)),"m","decimal")
+        for match in re.finditer(r"\b(?:building|overall)\s+height\s*(?:of|is|:|=)?\s*(\d+(?:\.\d+)?)\s*(?:m|meters?|metres?)\b",brief,re.I):
+            add("height","building_height",match,float(match.group(1)),"m","decimal")
         for city in ("Riyadh","Jeddah","Dammam","Mecca","Medina","Bengaluru"):
             match=re.search(rf"\b({re.escape(city)})\b",brief,re.I)
             if match:
@@ -71,8 +73,8 @@ class DeterministicRequirementExtractor:
         if use_match:
             normalized="commercial_retail" if "retail" in use_match.group(1).lower() else use_match.group(1).lower()
             add("use","building_use",use_match,normalized,None,"enum")
-        parking_match=re.search(r"\b(basement|surface|podium)\s+parking\b",brief,re.I)
-        if parking_match: add("parking","parking_arrangement",parking_match,parking_match.group(1).lower(),None,"enum")
+        for parking_match in re.finditer(r"\b(basement|surface|podium)\s+parking\b",brief,re.I):
+            add("parking","parking_arrangement",parking_match,parking_match.group(1).lower(),None,"enum")
         for match in re.finditer(r"\b(\d{1,5})\s*(?:parking\s+)?spaces\b",brief,re.I):
             add("parking","parking_spaces",match,int(match.group(1)),"count","integer")
         for match in re.finditer(r"\b(?:SAR|﷼)\s*([\d,]+(?:\.\d+)?)\b",brief,re.I):
