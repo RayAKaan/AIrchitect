@@ -156,6 +156,9 @@ async def update_project(project_id: str, body: ProjectCreate, user: User = Depe
 from app.domains.world_model.routes import router as world_model_router
 app.include_router(world_model_router, prefix=settings.api_prefix)
 
+from app.domains.semantic_model.routes import router as semantic_model_router
+app.include_router(semantic_model_router, prefix=settings.api_prefix)
+
 from app.domains.requirements.routes import router as requirements_router
 app.include_router(requirements_router, prefix=settings.api_prefix)
 
