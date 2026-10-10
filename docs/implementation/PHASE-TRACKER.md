@@ -21,7 +21,7 @@
 | 16 | Frontend Integration | Partial / Blocked | React workspace shell exists; dependencies/build and full domain UI journey remain. |
 | 17 | Testing and Release | Partial / Blocked | API unit suite and preflight exist; DB/E2E/security/container/deployment gates remain. |
 | 18 | CAD/BIM Geometry Pipeline | Delivered (pipeline implementation) | Isolated OCCT/FreeCAD worker, IFC/GLB/STEP export, bounded execution, durable job/artifact persistence, tenant-scoped APIs; remaining cross-domain authority work is tracked in Phase 19. |
-| 19 | Geometry Authority & Legacy Path Elimination | In progress (S1–S4 delivered) | Explicit geometry source discriminator; engineering rejects legacy IR; CAD-only geometry API/viewer and explicit CAD generation UI; remaining consumer migration, stale/evidence propagation, legacy-path elimination, PostgreSQL/CAD integration, and full CI verification. |
+| 19 | Geometry Authority & Legacy Path Elimination | In progress (S1–S4 delivered; S5–S9 partial) | Explicit source discriminator; CAD-only engineering/API/viewer; CAD generation UI; structural/regulatory quantity dependency edges; downstream artifact staleness on CAD replacement. Remaining: full legacy-path elimination, end-to-end stale/evidence verification, PostgreSQL/real-worker integration, tenant/security tests, and full CI verification. |
 
 ## Rules
 - A phase is complete only with implementation evidence, tests, limitations, and Definition of Done confirmation.
