@@ -10,23 +10,27 @@ import './engineering.css';
 function useCadGlbUrl(api:string,token:string,projectId:string,versionId:string,runId:string|null):string|null{
   const [url,setUrl]=useState<string|null>(null);
   useEffect(()=>{
-    if(!runId){setUrl(null);return;}
+    setUrl(null);
+    if(!runId)return;
     let cancelled=false;
     async function load(){
-      const r=await fetch(`${api}/projects/${projectId}/versions/${versionId}/cad/jobs/${runId}/artifacts`,{headers:{Authorization:`Bearer ${token}`}});
-      if(!r.ok){if(!cancelled)setUrl(null);return;}
-      const d=await r.json();
-      const glb=d.artifacts?.find((a:any)=>a.kind==='glb');
-      if(glb && !cancelled)setUrl(`${api}/projects/${projectId}/versions/${versionId}/cad/artifacts/${glb.id}/download`);
+      try{
+        const r=await fetch(`${api}/projects/${projectId}/versions/${versionId}/cad/jobs/${runId}/artifacts`,{headers:{Authorization:`Bearer ${token}`}});
+        if(!r.ok)return;
+        const d=await r.json();
+        const glb=d.artifacts?.find((a:any)=>a.kind==='glb');
+        if(glb&&!cancelled)setUrl(`${api}/projects/${projectId}/versions/${versionId}/cad/artifacts/${glb.id}/download`);
+      }catch{
+        if(!cancelled)setUrl(null);
+      }
     }
-    load();
+    void load();
     return ()=>{cancelled=true};
   },[api,token,projectId,versionId,runId]);
   return url;
 }
-
 export default function DesignWorkspace({api,token,projectId,organizationId,version}:{api:string;token:string;projectId:string;organizationId:string;version:any}){
-  const client=useQueryClient();const [selected,setSelected]=useState('');const [compare,setCompare]=useState(false);const [lastRun,setLastRun]=useState<any>(null);const [workspacePanel,setWorkspacePanel]=useState('Design');const [rateScheduleId,setRateScheduleId]=useState('');
+  const client=useQueryClient();const [selected,setSelected]=useState('');const [compare,setCompare]=useState(false);const [lastRun,setLastRun]=useState<any>(null);const [workspacePanel,setWorkspacePanel]=useState('Design');const [rateScheduleId,setRateScheduleId]=useState('');const [cadRun,setCadRun]=useState<any>(null);
   async function request(path:string,init:RequestInit={}){const r=await fetch(api+path,{...init,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...init.headers}});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error?.message||`Request failed (${r.status})`);return d}
   const base=`/projects/${projectId}/versions/${version.id}/design`;
   const alternatives=useQuery({queryKey:['design-alternatives',projectId,version.id],queryFn:()=>request(`${base}/alternatives`)});
@@ -41,16 +45,19 @@ export default function DesignWorkspace({api,token,projectId,organizationId,vers
   const engineeringComparison=useQuery({queryKey:['engineering-comparison',projectId,version.id],queryFn:()=>request(`/projects/${projectId}/versions/${version.id}/engineering/comparison`),enabled:compare});
   const calculate=useMutation({mutationFn:()=>request(`${base}/alternatives/${selected}/engineering/calculate`,{method:'POST',body:JSON.stringify({rate_schedule_id:rateScheduleId||null})}),onSuccess:async()=>{await client.invalidateQueries({queryKey:['engineering',projectId,version.id,selected]});await client.invalidateQueries({queryKey:['engineering-comparison',projectId,version.id]})}});
   const generate=useMutation({mutationFn:()=>request(`${base}/generate`,{method:'POST'}),onSuccess:async data=>{setLastRun(data);await client.invalidateQueries({queryKey:['design-alternatives',projectId,version.id]});await client.invalidateQueries({queryKey:['design-comparison',projectId,version.id]})}});
+  const generateCad=useMutation({mutationFn:()=>request(`${base}/alternatives/${selected}/cad`,{method:'POST',body:JSON.stringify({requested_outputs:['glb']})}),onSuccess:async data=>{setCadRun(data);await client.invalidateQueries({queryKey:['geometry',projectId,version.id,selected]});await client.invalidateQueries({queryKey:['design-alternatives',projectId,version.id]})}});
   const select=useMutation({mutationFn:(id:string)=>request(`${base}/alternatives/${id}/select`,{method:'POST',body:JSON.stringify({reason:'Selected by user after explicit alternative review'})}),onSuccess:()=>client.invalidateQueries({queryKey:['design-alternatives',projectId,version.id]})});
   if(alternatives.isLoading)return <div className="design-state" role="status">Loading design alternatives for {version.label}…</div>;
   if(alternatives.error)return <div className="design-state error" role="alert"><b>Design workspace could not load.</b><span>{(alternatives.error as Error).message}</span></div>;
-  return <section className="design-workspace"><header className="design-head"><div><p className="eyebrow">COMPUTATIONAL DESIGN / {version.label}</p><h2>Design alternatives</h2><p>Derived from World Model <code>{alternatives.data?.world_model_hash?.slice(0,16)}…</code></p></div><div className="design-actions"><button className="btn outline" aria-pressed={compare} onClick={()=>{setWorkspacePanel('Design');setCompare(!compare)}} disabled={list.length<2}>Compare</button><button className="btn primary" disabled={generate.isPending||version.status!=='COMMITTED'} onClick={()=>generate.mutate()}>{generate.isPending?'Generating from canonical model…':list.length?'Regenerate deterministically':'Generate alternatives'}</button></div></header>
+  return <section className="design-workspace"><header className="design-head"><div><p className="eyebrow">COMPUTATIONAL DESIGN / {version.label}</p><h2>Design alternatives</h2><p>Derived from World Model <code>{alternatives.data?.world_model_hash?.slice(0,16)}…</code></p></div><div className="design-actions"><button className="btn outline" aria-pressed={compare} onClick={()=>{setWorkspacePanel('Design');setCompare(!compare)}} disabled={list.length<2}>Compare</button><button className="btn primary" disabled={generate.isPending||version.status!=='COMMITTED'} onClick={()=>generate.mutate()}>{generate.isPending?'Generating from canonical model…':list.length?'Regenerate deterministically':'Generate alternatives'}</button><button className="btn outline" disabled={!selected||generateCad.isPending||version.status!=='COMMITTED'||current?.status==='STALE'} onClick={()=>generateCad.mutate()}>{generateCad.isPending?'Building CAD…':'Generate CAD model'}</button></div></header>
   {version.status!=='COMMITTED'&&<div className="design-warning">Design generation unavailable: commit this World Model version first.</div>}
   {generate.error&&<div className="design-state error" role="alert"><b>Design generation could not complete.</b><span>{(generate.error as Error).message}</span></div>}
+  {generateCad.error&&<div className="design-state error" role="alert"><b>CAD generation could not complete.</b><span>{(generateCad.error as Error).message}</span></div>}
+  {cadRun&&<div className="generation-progress" role="status"><b>CAD job: {cadRun.status}</b><span>{cadRun.artifacts?.length||0} artifact(s) returned</span>{cadRun.error?.message&&<span>{cadRun.error.message}</span>}</div>}
   {lastRun&&<div className="generation-progress" aria-live="polite"><b>{lastRun.alternative_ids.length} alternatives ready</b>{lastRun.progress.map((x:any)=><span key={x.stage}>✓ {x.stage.replaceAll('_',' ')}</span>)}</div>}
   {!!list.length&&<nav className="engineering-nav" aria-label="Design and engineering views">{['Design','Quantities','Cost','Structure','Regulations','Validation','AI / Workflow','Evidence','Review'].map(x=><button key={x} aria-pressed={workspacePanel===x} onClick={()=>{setWorkspacePanel(x);setCompare(false)}}>{x}</button>)}</nav>}
   {!list.length?<div className="design-empty"><div className="empty-cube">◇</div><h3>No design alternatives generated yet</h3><p>Generate deterministic alternatives from the current canonical World Model.</p></div>:<div className="design-grid"><aside className="alternative-rail" aria-label="Design alternatives">{list.map(a=><button key={a.id} className={`alternative-card ${selected===a.id?'active':''} ${a.status.toLowerCase()}`} onClick={()=>setSelected(a.id)}><span className="strategy">{a.strategy_id.replace('_',' ')}</span><b>{a.name}</b><dl><div><dt>GFA</dt><dd>{fmt(a.metrics.gross_floor_area_m2)} m²</dd></div><div><dt>Coverage</dt><dd>{pct(a.metrics.site_coverage_ratio)}</dd></div><div><dt>Height</dt><dd>{fmt(a.metrics.building_height_m)} m</dd></div><div><dt>Floors</dt><dd>{a.metrics.floor_count}</dd></div></dl><em>{statusLabel(a.status)}</em></button>)}</aside>
-  <main className="design-main">{['AI / Workflow','Evidence','Review'].includes(workspacePanel)?<Phase4Panels panel={workspacePanel} api={api} token={token} projectId={projectId} version={version} rateScheduleId={rateScheduleId}/>:workspacePanel!=='Design'?<EngineeringPanels panel={workspacePanel} data={engineering.data} error={engineering.error} loading={engineering.isLoading} onCalculate={()=>calculate.mutate()} calculating={calculate.isPending} schedules={schedules.data||[]} scheduleId={rateScheduleId} setScheduleId={setRateScheduleId}/>:compare?<Comparison alternatives={list} engineering={engineeringComparison.data?.alternatives||[]} onOpen={id=>{setSelected(id);setCompare(false)}}/>:geometry.isLoading?<div className="design-state" role="status">Loading persisted Geometry IR…</div>:geometry.error?<div className="design-state error" role="alert">{(geometry.error as Error).message}</div>:geometry.data?.geometry_ir&&<DesignViewer ir={geometry.data.geometry_ir} geometryHash={geometry.data.geometry_hash} cadGlbUrl={cadGlbUrl}/>}</main>
+  <main className="design-main">{['AI / Workflow','Evidence','Review'].includes(workspacePanel)?<Phase4Panels panel={workspacePanel} api={api} token={token} projectId={projectId} version={version} rateScheduleId={rateScheduleId}/>:workspacePanel!=='Design'?<EngineeringPanels panel={workspacePanel} data={engineering.data} error={engineering.error} loading={engineering.isLoading} onCalculate={()=>calculate.mutate()} calculating={calculate.isPending} schedules={schedules.data||[]} scheduleId={rateScheduleId} setScheduleId={setRateScheduleId}/>:compare?<Comparison alternatives={list} engineering={engineeringComparison.data?.alternatives||[]} onOpen={id=>{setSelected(id);setCompare(false)}}/>:geometry.isLoading?<div className="design-state" role="status">Loading authoritative CAD geometry…</div>:geometry.error?<div className="design-state error" role="alert"><b>CAD geometry unavailable.</b><span>{(geometry.error as Error).message}</span><span>Use Generate CAD model after selecting a current alternative.</span></div>:<DesignViewer geometryHash={geometry.data?.geometry_hash||current?.design_hash||''} geometryStatus={geometry.data?.status||null} cadGlbUrl={cadGlbUrl}/>}</main>
   <aside className="design-inspector">{current&&<Inspector alternative={current} geometry={geometry.data} onSelect={()=>select.mutate(current.id)} selecting={select.isPending}/>}</aside></div>}
   </section>
 }
