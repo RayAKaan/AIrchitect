@@ -160,6 +160,7 @@ async def propagate_artifact_change(
     edge_pairs = [(edge.artifact_version_id, edge.depends_on_artifact_version_id) for edge in edges]
     paths = dependency_paths(by_id, edge_pairs, roots, include_roots=include_roots)
     affected_ids = set(paths)
+    previous_status = {artifact_id: by_id[artifact_id].status for artifact_id in affected_ids}
     newly_stale: set[str] = set()
     for artifact_id in affected_ids:
         row = by_id[artifact_id]
@@ -208,10 +209,10 @@ async def propagate_artifact_change(
         "affected": [{
             "artifact_version_id": artifact_id,
             "artifact_type": by_id[artifact_id].artifact_type,
-            "previous_status": by_id[artifact_id].status if artifact_id not in newly_stale else "current",
-            "resulting_status": "stale",
+            "previous_status": previous_status[artifact_id],
+            "resulting_status": "stale" if artifact_id in newly_stale or str(previous_status[artifact_id]).upper() == "STALE" else previous_status[artifact_id],
             "dependency_path": paths[artifact_id],
-        } for artifact_id in sorted(affected_ids)],
+        } for artifact_id in sorted(affected_ids, key=lambda item: (len(paths[item]), item))],
         "newly_stale_artifact_ids": sorted(newly_stale),
         "rejected_cross_scope_edge_count": rejected_edges,
         "atomic": True,
@@ -236,7 +237,6 @@ async def propagate_world_model_change(
     roots = [
         row.id for row in rows
         if row.world_model_revision_id != current_world.id
-        and str(row.status).upper() not in {"STALE", "FAILED", "ERROR", "REJECTED"}
     ]
     if not roots:
         # CAD runs may exist before the canonical artifact registry was populated.
