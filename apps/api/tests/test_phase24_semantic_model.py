@@ -57,6 +57,8 @@ def test_semantic_graph_is_deterministic_typed_and_version_bound():
     assert len([e for e in first["elements"] if e["element_type"] == "Storey"]) == 2
     assert all("cad_mapping" in element and "provenance" in element for element in first["elements"])
     assert {r["relationship_type"] for r in first["relationships"]} >= {"located_on", "has_storey", "includes_facility"}
+    element_ids = {element["id"] for element in first["elements"]}
+    assert all(rel["source_id"] in element_ids and rel["target_id"] in element_ids for rel in first["relationships"])
 
 
 def test_semantic_identity_survives_value_edits_but_source_hash_changes():
@@ -148,3 +150,21 @@ async def test_semantic_model_is_persisted_and_served_from_canonical_revision(ap
     assert spec["status"] == "UNDERCONSTRAINED"
     assert spec["source_world_model_hash"] == semantic["source_world_model_hash"]
     assert spec["specification_hash"]
+
+    snapshot = await api.get(f"/api/v1/projects/{project['id']}/versions/{version_id}/snapshot", headers=headers)
+    assert snapshot.status_code == 200, snapshot.text
+    canonical = snapshot.json()["world_model"]
+    assert canonical["semantic_model"] == semantic
+    assert snapshot.json()["world_model_revision"]["model_hash"] == canonical_hash(canonical)
+
+    other = await api.post("/api/v1/auth/register", json={
+        "email": f"phase24-other-{uuid.uuid4().hex}@example.com",
+        "name": "Other Tenant",
+        "password": "a-very-secure-password",
+        "organization_name": "Other Tenant Org",
+    })
+    assert other.status_code == 201, other.text
+    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+    forbidden = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version_id}/semantic-model", headers=other_headers)
+    assert forbidden.status_code == 404
