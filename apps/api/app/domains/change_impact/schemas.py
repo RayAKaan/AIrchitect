@@ -47,3 +47,15 @@ class ChangeImpactResponse(BaseModel):
     unchanged_artifact_ids: list[str]
     evaluation_status: str = "impact_analysis_only"
     disclaimer: str = "Impact analysis only; no artifact was recomputed or independently verified."
+
+
+class PersistedChangeRequest(BaseModel):
+    changed_artifact_ids: list[str] = Field(min_length=1, max_length=1000)
+    expected_world_model_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    reason: str = Field(min_length=3, max_length=500)
+
+    @model_validator(mode="after")
+    def unique_changed_ids(self):
+        if len(self.changed_artifact_ids) != len(set(self.changed_artifact_ids)):
+            raise ValueError("changed_artifact_ids must be unique")
+        return self

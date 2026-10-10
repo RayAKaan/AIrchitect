@@ -155,12 +155,12 @@ async def persist_world_model(session: AsyncSession, project: Project, version: 
 
     model = build_world_model(project, version, requirements, assumptions)
     payload = model.model_dump(mode="json", exclude_none=False)
-    previous_model = designer_source
-    if previous_model is None:
-        previous_row = await session.scalar(select(WorldModelRevision).where(
-            WorldModelRevision.project_version_id == version.id
-        ).order_by(WorldModelRevision.revision.desc()).limit(1))
-        previous_model = previous_row.model_json if previous_row is not None else None
+    previous_row = await session.scalar(select(WorldModelRevision).where(
+        WorldModelRevision.project_version_id == version.id
+    ).order_by(WorldModelRevision.revision.desc()).limit(1))
+    previous_model = designer_source if designer_source is not None else (
+        previous_row.model_json if previous_row is not None else None
+    )
     if previous_model is not None:
         payload["designer_elements"] = copy.deepcopy(previous_model.get("designer_elements", []))
         payload["designer_relationships"] = copy.deepcopy(previous_model.get("designer_relationships", []))
@@ -193,6 +193,14 @@ async def persist_world_model(session: AsyncSession, project: Project, version: 
         project_version_id=version.id, revision=latest + 1, model_json=payload, model_hash=canonical_hash(payload),
         source=source, metadata_json={"version_revision": version.revision_number}, created_by=actor)
     session.add(row); await session.flush()
+    if previous_row is not None and previous_row.model_hash != row.model_hash:
+        # Invalidate all descendants of artifacts bound to the superseded canonical
+        # hash in the same transaction as this World Model revision.
+        from app.domains.change_impact.persistence import propagate_world_model_change
+        await propagate_world_model_change(
+            session, project=project, version=version, actor_id=actor,
+            previous_world=previous_row, current_world=row,
+        )
     await audit(session, project=project, version=version, actor=actor, action="WORLD_MODEL_REVISED",
         entity="world_model_revision", entity_id=row.id, metadata={"revision": row.revision, "model_hash": row.model_hash})
     return row

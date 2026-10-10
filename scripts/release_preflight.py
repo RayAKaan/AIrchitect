@@ -14,6 +14,7 @@ REQUIRED = [
     "docs/completion/IMPLEMENTATION_GAPS.md",
     "docs/completion/PHASE-22-CAD-FOUNDATION-REPORT.md",
     "docs/completion/PHASE-26-CAD-BIM-INTEROPERABILITY-REPORT.md",
+    "docs/completion/PHASE-27-DEPENDENCY-AWARE-PROPAGATION-REPORT.md",
     "docs/legal/cad-license-policy.json",
     "docs/legal/THIRD-PARTY-NOTICES.md",
     "scripts/check_cad_toolchain_manifest.py",
@@ -28,6 +29,7 @@ PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (15,"REVIEW-DELIVERABLES"),(16,"FRONTEND-INTEGRATION"),
     (21,"PRODUCTION-HARDENING"),
     (22,"CAD-FOUNDATION"), (26,"CAD-BIM-INTEROPERABILITY"),
+    (27,"DEPENDENCY-AWARE-PROPAGATION"),
 ]]
 missing = [p for p in REQUIRED + PHASE_REPORTS if not (ROOT / p).is_file()]
 if missing:
