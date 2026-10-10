@@ -38,6 +38,7 @@ from app.dependencies import current_user
 from app.domains.cad.capability import probe_capabilities
 from app.domains.cad.config import CadConfig
 from app.domains.cad.errors import CadArtifactMissingError, CadError, CadStorageError
+from app.domains.cad.export_validation import validate_export
 from app.domains.cad.orchestrator import CadRequestRejected, classify_failure, run_cad_job_for_alternative
 from app.domains.cad.storage import ContentAddressedStore
 from app.domains.foundation.service import error, resolve_project_version, resolve_world_model
@@ -279,3 +280,174 @@ async def download_cad_artifact(
             "X-Cad-Artifact-Kind": row.kind,
         },
     )
+
+
+
+@router.get("/projects/{project_id}/versions/{version_ref}/cad/exports")
+async def cad_export_manifest(
+    project_id: str,
+    version_ref: str,
+    run_id: str | None = None,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Return a hash-bound export manifest with per-format integrity checks.
+
+    With no run_id, the newest CAD run is selected. A specific run_id can be
+    supplied to inspect historical exports. Historical/stale files remain
+    inspectable but are never labelled as current or offered as validated downloads.
+    """
+    project, version = await resolve_project_version(session, project_id, version_ref, user.id)
+    world = await resolve_world_model(session, version.id)
+    if run_id:
+        run = await session.scalar(
+            select(CadJobRun).where(
+                CadJobRun.id == run_id,
+                CadJobRun.project_id == project.id,
+                CadJobRun.project_version_id == version.id,
+            )
+        )
+        if run is None:
+            raise error(404, "CAD_JOB_NOT_FOUND", "CAD job not found")
+    else:
+        run = await session.scalar(
+            select(CadJobRun)
+            .where(
+                CadJobRun.project_id == project.id,
+                CadJobRun.project_version_id == version.id,
+            )
+            .order_by(CadJobRun.created_at.desc(), CadJobRun.id.desc())
+            .limit(1)
+        )
+
+    if run is None:
+        return {
+            "schema_version": "1.0.0",
+            "status": "NOT_GENERATED",
+            "project_id": project.id,
+            "project_version_id": version.id,
+            "world_model_hash": world.model_hash,
+            "cad_job_run": None,
+            "artifacts": [],
+            "message": "Generate CAD from a current design alternative to create export artifacts.",
+        }
+
+    successful_statuses = {"SUCCEEDED", "SUCCESS", "COMPLETED"}
+    run_succeeded = str(run.status).upper() in successful_statuses
+    is_current = run_succeeded and run.input_world_model_hash == world.model_hash
+    is_stale = str(run.status).upper() == "STALE" or run.input_world_model_hash != world.model_hash
+    rows = list((
+        await session.scalars(
+            select(CadArtifact)
+            .where(
+                CadArtifact.cad_job_run_id == run.id,
+                CadArtifact.project_id == project.id,
+                CadArtifact.project_version_id == version.id,
+            )
+            .order_by(CadArtifact.kind, CadArtifact.id)
+        )
+    ).all())
+    store = ContentAddressedStore(CadConfig.from_settings().artifact_root_path())
+    artifacts: list[dict[str, Any]] = []
+
+    for row in rows:
+        try:
+            data = store.read_bytes(row.storage_key)
+            validation = validate_export(
+                row.kind,
+                data,
+                declared_sha256=row.sha256,
+                declared_size=row.byte_size,
+                declared_content_type=row.content_type,
+            )
+        except CadArtifactMissingError:
+            validation = {
+                "schema_version": "1.0.0",
+                "kind": row.kind,
+                "status": "FAIL",
+                "sha256": None,
+                "byte_size": None,
+                "checks": [{
+                    "code": "ARTIFACT_BYTES_MISSING",
+                    "status": "FAIL",
+                    "detail": "Artifact bytes are missing from content-addressed storage.",
+                    "actual": None,
+                    "expected": "stored bytes",
+                }],
+                "limitations": [],
+            }
+        except CadStorageError:
+            logger.error("cad_export_integrity_failed", extra={"artifact_id": row.id})
+            validation = {
+                "schema_version": "1.0.0",
+                "kind": row.kind,
+                "status": "FAIL",
+                "sha256": None,
+                "byte_size": None,
+                "checks": [{
+                    "code": "ARTIFACT_STORAGE_INTEGRITY",
+                    "status": "FAIL",
+                    "detail": "Stored bytes failed content-addressed integrity checks.",
+                    "actual": None,
+                    "expected": row.sha256,
+                }],
+                "limitations": [],
+            }
+
+        artifact_status = (
+            "STALE" if is_stale else
+            "BLOCKED" if not run_succeeded else
+            validation["status"]
+        )
+        artifacts.append({
+            "id": row.id,
+            "kind": row.kind,
+            "filename": row.filename,
+            "content_type": row.content_type,
+            "byte_size": row.byte_size,
+            "sha256": row.sha256,
+            "media_role": row.media_role,
+            "download_path": (
+                f"/api/v1/projects/{project.id}/versions/{version.id}"
+                f"/cad/artifacts/{row.id}/download"
+            ),
+            "validation": validation,
+            "artifact_status": artifact_status,
+            "exportable": bool(is_current and validation["status"] == "PASS"),
+        })
+
+    if is_stale:
+        status_value = "STALE"
+    elif not run_succeeded or not artifacts:
+        status_value = "BLOCKED"
+    elif any(item["validation"]["status"] == "FAIL" for item in artifacts):
+        status_value = "FAIL"
+    elif any(item["validation"]["status"] == "REVIEW_REQUIRED" for item in artifacts):
+        status_value = "REVIEW_REQUIRED"
+    else:
+        status_value = "PASS"
+
+    return {
+        "schema_version": "1.0.0",
+        "status": status_value,
+        "project_id": project.id,
+        "project_version_id": version.id,
+        "world_model_hash": world.model_hash,
+        "cad_job_run": {
+            "id": run.id,
+            "status": run.status,
+            "input_world_model_hash": run.input_world_model_hash,
+            "world_model_revision_id": run.world_model_revision_id,
+            "stale": not is_current,
+        },
+        "artifacts": artifacts,
+        "message": (
+            "Only PASS artifacts bound to the current World Model can be downloaded from this manifest."
+            if status_value == "PASS" else
+            "Review the per-format checks. Stale, incomplete, corrupt, or review-required artifacts are not marked exportable."
+        ),
+        "limitations": [
+            "Checks cover byte integrity and format structure; full round-trip testing in target applications remains deployment-specific.",
+            "This manifest does not certify architectural, structural, regulatory, or construction suitability.",
+        ],
+    }
