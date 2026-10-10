@@ -15,6 +15,7 @@ from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.lifecycle.service import canonical_hash
 from app.domains.requirements.extractor import DeterministicRequirementExtractor
+from app.domains.requirements.quality import blocking_parameters, validate_requirement_candidates, validation_status
 from .schemas import (
     AssumptionIn, AssumptionPatch, BriefIn, RequirementDecision, RequirementEdit, VersionCreate,
     WorldModelCommit,
@@ -120,9 +121,13 @@ async def submit_version_brief(project_id: str, version_ref: str, body: BriefIn,
     await check_revision(version, body.expected_revision)
     if version.status != "DRAFT": raise error(409, "VERSION_CONFLICT", "Committed or superseded versions are immutable")
     candidates = extractor.extract(body.text)
+    quality_issues = validate_requirement_candidates(candidates, body.text)
+    invalid_parameters = blocking_parameters(quality_issues)
+    quality_status = validation_status(quality_issues)
     brief_revision = (await session.scalar(select(func.max(BuildingBriefRecord.revision)).where(
         BuildingBriefRecord.project_version_id == version.id)) or 0) + 1
     structured = {c.parameter: {"value": c.normalized_value, "unit": c.unit} for c in candidates}
+    structured["_validation"] = {"status": quality_status, "issues": quality_issues, "method": "deterministic_quality_rules_v1"}
     brief = BuildingBriefRecord(organization_id=project.organization_id, project_id=project.id,
         project_version_id=version.id, revision=brief_revision, raw_text=body.text, structured_json=structured,
         source_type="USER_BRIEF", source_reference=body.source_reference, content_hash=canonical_hash(body.text), created_by=user.id)
@@ -131,7 +136,10 @@ async def submit_version_brief(project_id: str, version_ref: str, body: BriefIn,
     for candidate in candidates: by_parameter.setdefault(candidate.parameter, set()).add(str(candidate.normalized_value))
     created: list[RequirementRecord] = []
     for candidate in candidates:
-        contradictory = len(by_parameter[candidate.parameter]) > 1
+        conflicting = len(by_parameter[candidate.parameter]) > 1
+        invalid = candidate.parameter in invalid_parameters
+        contradictory = conflicting or invalid
+        candidate_issues = [issue for issue in quality_issues if candidate.parameter in issue.get("related_parameters", [])]
         row = RequirementRecord(organization_id=project.organization_id, project_id=project.id,
             project_version_id=version.id, source_text=candidate.source_text, parameter=candidate.parameter,
             category=candidate.category, raw_value_json=candidate.raw_value,
@@ -140,7 +148,7 @@ async def submit_version_brief(project_id: str, version_ref: str, body: BriefIn,
             extraction_method=candidate.extraction_method, confidence=candidate.confidence,
             status="CONTRADICTORY" if contradictory else "EXTRACTED",
             contradiction_group=candidate.parameter if contradictory else None,
-            provenance_json={"brief_id": brief.id, "brief_hash": brief.content_hash}, created_by=user.id)
+            provenance_json={"brief_id": brief.id, "brief_hash": brief.content_hash, "validation_issues": candidate_issues}, created_by=user.id)
         session.add(row); await session.flush(); created.append(row)
         await audit(session, project=project, version=version, actor=user.id, action="REQUIREMENT_EXTRACTED",
             entity="requirement", entity_id=row.id, metadata={"parameter": row.parameter, "source_type": row.source_type})
@@ -165,12 +173,11 @@ async def submit_version_brief(project_id: str, version_ref: str, body: BriefIn,
     version.revision_number += 1
     world = await persist_world_model(session, project, version, user.id, source="brief_ingestion")
     await audit(session, project=project, version=version, actor=user.id, action="BRIEF_SUBMITTED",
-        entity="building_brief", entity_id=brief.id, metadata={"brief_revision": brief_revision})
+        entity="building_brief", entity_id=brief.id, metadata={"brief_revision": brief_revision, "validation_status": quality_status, "validation_issues": quality_issues})
     await session.commit()
-    return {"brief": {"id": brief.id, "revision": brief.revision, "content_hash": brief.content_hash,
-        "structured": brief.structured_json}, "requirements": [requirement_out(r) for r in created],
-        "world_model_revision": {"id": world.id, "revision_number": world.revision, "model_hash": world.model_hash},
-        "version_revision": version.revision_number}
+    return {"brief": {"id": brief.id, "revision": brief.revision, "content_hash": brief.content_hash, "structured": brief.structured_json},
+        "requirements": [requirement_out(r) for r in created], "validation": {"status": quality_status, "issues": quality_issues, "method": "deterministic_quality_rules_v1"},
+        "world_model_revision": {"id": world.id, "revision_number": world.revision, "model_hash": world.model_hash}, "version_revision": version.revision_number}
 
 
 @router.get("/projects/{project_id}/versions/{version_ref}/requirements")

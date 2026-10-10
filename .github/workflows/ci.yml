@@ -90,4 +90,6 @@ jobs:
         run: python -m py_compile scripts/check_cad_toolchain_manifest.py scripts/cad_toolchain_smoke.py
       - name: Enforce reviewed CAD/BIM license policy
         run: python scripts/check_cad_toolchain_manifest.py
+      - name: Enforce requirements accuracy benchmark
+        run: python scripts/benchmark_requirements.py --min-f1 0.95 --min-precision 0.95 --min-recall 0.95
       - run: python scripts/release_preflight.py
