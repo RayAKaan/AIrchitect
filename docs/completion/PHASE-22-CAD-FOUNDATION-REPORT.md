@@ -23,4 +23,11 @@
 
 ## Verification
 
-The pull request's required GitHub Actions checks are the source of truth for code-level verification. Record the actual run URL and result here after CI completes. Native-host smoke evidence must be attached separately before Phase 22 can be marked delivered.
+GitHub Actions run [#97](https://github.com/RayAKaan/AIrchitect/actions/runs/38077005274) passed all four jobs on the initial PR commit:
+
+- API: Ruff passed; **393 passed, 40 skipped, 2 warnings**; PostgreSQL migration upgrade/downgrade/upgrade passed; API Docker build passed.
+- Web: lint passed; **4 test files / 17 tests passed**; production build and web Docker build passed.
+- Docker Compose: all images built; stack started; database-aware `/ready` and API smoke checks passed; teardown passed.
+- Release preflight and the new CAD/BIM licence-policy gate passed.
+
+The follow-up commit also adds a Python syntax compilation gate for both CAD tooling scripts; its own CI run must pass before this PR is considered fully verified. Native-host smoke evidence must be attached separately before Phase 22 can be marked delivered.
