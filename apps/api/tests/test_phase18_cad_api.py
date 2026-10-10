@@ -699,3 +699,54 @@ async def test_phase20_feasibility_workflow_generates_cad_before_engineering(api
     assert final.status_code == 200, final.text
     assert final.json()["state"] == "COMPLETED"
 
+
+
+
+async def test_cad_export_manifest_validates_artifact_bytes_and_fails_closed(api, cad):
+    headers, _, project, version = await _committed_project(api, "export-manifest")
+    alternative = await _alternative(api, headers, project, version)
+    created = await _generate(api, headers, project, version, alternative)
+
+    response = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/cad/exports",
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+    manifest = response.json()
+    assert manifest["cad_job_run"]["id"] == created["id"]
+    assert manifest["world_model_hash"] == created["input_world_model_hash"]
+    assert manifest["cad_job_run"]["stale"] is False
+    assert manifest["status"] == "FAIL"  # The fake worker's deliberately incomplete STEP fixture must not pass.
+    artifact = next(item for item in manifest["artifacts"] if item["kind"] == "step")
+    assert artifact["validation"]["status"] == "FAIL"
+    assert artifact["exportable"] is False
+    assert "EXCHANGE_FOOTER" in {
+        check["code"] for check in artifact["validation"]["checks"] if check["status"] == "FAIL"
+    }
+
+
+async def test_cad_export_manifest_without_runs_is_explicit(api):
+    headers, _, project, version = await _committed_project(api, "no-export")
+    response = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/cad/exports",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "NOT_GENERATED"
+    assert response.json()["cad_job_run"] is None
+    assert response.json()["artifacts"] == []
+
+
+async def test_cad_export_manifest_hides_runs_from_other_tenants(api, cad):
+    headers, _, project, version = await _committed_project(api, "export-owner")
+    alternative = await _alternative(api, headers, project, version)
+    created = await _generate(api, headers, project, version, alternative)
+    other_headers, _, other_project, other_version = await _committed_project(api, "export-other")
+
+    response = await api.get(
+        f"/api/v1/projects/{other_project['id']}/versions/{other_version['id']}/cad/exports",
+        params={"run_id": created["id"]},
+        headers=other_headers,
+    )
+    assert response.status_code == 404
