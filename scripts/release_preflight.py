@@ -15,6 +15,12 @@ REQUIRED = [
     "docs/completion/PHASE-22-CAD-FOUNDATION-REPORT.md",
     "docs/completion/PHASE-26-CAD-BIM-INTEROPERABILITY-REPORT.md",
     "docs/completion/PHASE-27-DEPENDENCY-AWARE-PROPAGATION-REPORT.md",
+    "docs/completion/PHASE-28-DESIGNER-WORKSPACE-RELEASE-VALIDATION-REPORT.md",
+    "apps/web/e2e/phase28-release-acceptance.spec.ts",
+    "apps/web/src/features/foundation/ChangeImpactPanel.tsx",
+    "apps/web/src/features/foundation/ReleaseValidation.tsx",
+    "apps/web/src/features/foundation/releaseValidationModel.ts",
+    "apps/web/src/features/foundation/releaseValidationModel.test.ts",
     "docs/legal/cad-license-policy.json",
     "docs/legal/THIRD-PARTY-NOTICES.md",
     "scripts/check_cad_toolchain_manifest.py",
@@ -30,6 +36,7 @@ PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (21,"PRODUCTION-HARDENING"),
     (22,"CAD-FOUNDATION"), (26,"CAD-BIM-INTEROPERABILITY"),
     (27,"DEPENDENCY-AWARE-PROPAGATION"),
+    (28,"DESIGNER-WORKSPACE-RELEASE-VALIDATION"),
 ]]
 missing = [p for p in REQUIRED + PHASE_REPORTS if not (ROOT / p).is_file()]
 if missing:
