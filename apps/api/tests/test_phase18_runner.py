@@ -119,9 +119,7 @@ def worker_python(tmp_path: Path) -> Path:
     Capability resolution checks the interpreter exists before launching, so a
     missing file would fail for the wrong reason.
     """
-    python = (
-        tmp_path / "venv" / "Scripts" / ("python.exe" if os.name == "nt" else "python")
-    )
+    python = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
     python.parent.mkdir(parents=True, exist_ok=True)
     python.write_text("", encoding="utf-8")
     return python
@@ -332,7 +330,8 @@ def test_api_root_points_at_the_directory_containing_the_app_package():
 def test_freecad_is_found_in_either_known_layout(tmp_path):
     for layout in ("bin", "root"):
         root = tmp_path / f"layout-{layout}"
-        cmd = root / "bin" / "freecadcmd.exe" if layout == "bin" else root / "freecadcmd.exe"
+        exe = "freecadcmd.exe" if os.name == "nt" else "freecadcmd"
+        cmd = root / "bin" / exe if layout == "bin" else root / exe
         cmd.parent.mkdir(parents=True, exist_ok=True)
         cmd.write_text("", encoding="utf-8")
         assert resolve_freecad_cmd(CadConfig(freecad_root=str(root))) == cmd
