@@ -88,21 +88,38 @@ def test_compiler_does_not_invent_architectural_components_or_geometry():
 
 def test_explicit_footprint_dimensions_unlock_deterministic_building_and_storey_intents():
     world = sample_world_model()
-    world["properties"] = {"footprint_width_m": 25.0, "footprint_depth_m": 20.0}
+    world["properties"] = {"footprint_width_m": 40.0, "footprint_depth_m": 30.0}
     semantic = compile_semantic_model(world)
     spec = compile_parametric_geometry(world, semantic)
     building_intent = next(i for i in spec["intents"] if i["element_type"] == "Building")
     storey_intents = [i for i in spec["intents"] if i["element_type"] == "Storey"]
     assert building_intent["status"] == "READY_FOR_CAD_ADAPTER"
     assert building_intent["parameters"] == {
-        "footprint_width_m": 25.0,
-        "footprint_depth_m": 20.0,
+        "footprint_width_m": 40.0,
+        "footprint_depth_m": 30.0,
         "floor_count": 2,
         "floor_to_floor_height_m": 4.0,
     }
     assert len(storey_intents) == 2
     assert all(i["status"] == "READY_FOR_CAD_ADAPTER" for i in storey_intents)
+    second_storey = next(element for element in semantic["elements"]
+                         if element["element_type"] == "Storey" and element["identity_key"] == "level:2")
+    second_intent = next(intent for intent in storey_intents if intent["element_id"] == second_storey["id"])
+    assert second_intent["parameters"]["target_area_m2"] == 1000.0
+    assert second_intent["parameters"]["elevation_m"] == 4.0
+    assert second_intent["placement"]["level_number"] == 2
 
+
+
+def test_storey_area_larger_than_footprint_requires_review():
+    world = sample_world_model()
+    world["properties"] = {"footprint_width_m": 20.0, "footprint_depth_m": 20.0}
+    semantic = compile_semantic_model(world)
+    spec = compile_parametric_geometry(world, semantic)
+    assert spec["status"] == "REVIEW_REQUIRED"
+    storey_intent = next(intent for intent in spec["intents"] if intent["element_type"] == "Storey")
+    assert storey_intent["status"] == "REVIEW_REQUIRED"
+    assert any("area conflicts" in warning for warning in storey_intent["warnings"])
 
 @pytest.mark.asyncio
 async def test_semantic_model_is_persisted_and_served_from_canonical_revision(api):

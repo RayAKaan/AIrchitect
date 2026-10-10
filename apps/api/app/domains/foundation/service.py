@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -46,7 +47,10 @@ async def resolve_project_version(session: AsyncSession, project_id: str, versio
     condition = ProjectVersion.id == str(version_ref)
     if str(version_ref).isdigit():
         condition = (ProjectVersion.version == int(str(version_ref))) | condition
-    version = await session.scalar(select(ProjectVersion).where(ProjectVersion.project_id == project.id, condition))
+    statement = select(ProjectVersion).where(ProjectVersion.project_id == project.id, condition)
+    if write:
+        statement = statement.with_for_update()
+    version = await session.scalar(statement)
     if version is None:
         raise error(404, "VERSION_NOT_FOUND", "Project version not found")
     return project, version
@@ -141,15 +145,49 @@ def build_world_model(project: Project, version: ProjectVersion, requirements: l
 
 
 async def persist_world_model(session: AsyncSession, project: Project, version: ProjectVersion, actor: str,
-                              *, source: str = "requirements_and_assumptions") -> WorldModelRevision:
+                              *, source: str = "requirements_and_assumptions",
+                              designer_source: dict[str, Any] | None = None) -> WorldModelRevision:
     requirements = list((await session.scalars(select(RequirementRecord).where(
         RequirementRecord.project_version_id == version.id).order_by(RequirementRecord.created_at, RequirementRecord.id))).all())
     assumptions = list((await session.scalars(select(AssumptionRecord).where(
         AssumptionRecord.project_version_id == version.id).order_by(AssumptionRecord.created_at, AssumptionRecord.id))).all())
+    from app.domains.semantic_model.editing import apply_overrides, initial_designer_state
+
     model = build_world_model(project, version, requirements, assumptions)
     payload = model.model_dump(mode="json", exclude_none=False)
-    # Persist the semantic graph inside the hash-verified canonical revision.
-    payload["semantic_model"] = compile_semantic_model(payload)
+    previous_model = designer_source
+    if previous_model is None:
+        previous_row = await session.scalar(select(WorldModelRevision).where(
+            WorldModelRevision.project_version_id == version.id
+        ).order_by(WorldModelRevision.revision.desc()).limit(1))
+        previous_model = previous_row.model_json if previous_row is not None else None
+    if previous_model is not None:
+        payload["designer_elements"] = copy.deepcopy(previous_model.get("designer_elements", []))
+        payload["designer_relationships"] = copy.deepcopy(previous_model.get("designer_relationships", []))
+        state = copy.deepcopy(previous_model.get("designer_state") or initial_designer_state())
+        previous_semantic = previous_model.get("semantic_model") or compile_semantic_model(previous_model)
+        previous_levels = {int(level["level_number"]): level for level in previous_model.get("levels", [])}
+        locked_level_numbers = {
+            int(str(element.get("identity_key", "level:0")).split(":")[-1])
+            for element in previous_semantic.get("elements", [])
+            if element.get("element_type") == "Storey"
+            and state.get("locks", {}).get(element.get("id"), {}).get("locked")
+        }
+        # Preserve locked storey geometry across a brief/assumption rebuild. A
+        # removed locked storey is rejected by apply_overrides; retained ones keep
+        # their last reviewed area, elevation and floor-to-floor height.
+        payload["levels"] = [
+            copy.deepcopy(previous_levels[int(level["level_number"])])
+            if int(level["level_number"]) in locked_level_numbers
+            and int(level["level_number"]) in previous_levels
+            else level
+            for level in payload.get("levels", [])
+        ]
+    else:
+        state = initial_designer_state()
+    # Reapply explicit designer overrides after requirement/assumption projection,
+    # so future World Model rebuilds cannot silently erase user-authored decisions.
+    apply_overrides(payload, state)
     latest = await session.scalar(select(func.max(WorldModelRevision.revision)).where(WorldModelRevision.project_id == project.id)) or 0
     row = WorldModelRevision(organization_id=project.organization_id, project_id=project.id,
         project_version_id=version.id, revision=latest + 1, model_json=payload, model_hash=canonical_hash(payload),
@@ -182,10 +220,85 @@ async def create_next_version(session: AsyncSession, project_id: str, user: User
         ProjectVersion.idempotency_key == idempotency_key))
     if existing:
         return existing, await resolve_world_model(session, existing.id), False
-    parent = await session.get(ProjectVersion, project.current_version_id)
+    parent = await session.scalar(select(ProjectVersion).where(
+        ProjectVersion.id == project.current_version_id
+    ).with_for_update())
     if parent is None or parent.id != expected_current_version_id or parent.revision_number != expected_revision:
         raise error(409, "VERSION_CONFLICT", "The project version changed since it was read",
             current_version_id=project.current_version_id)
+    parent_world = await resolve_world_model(session, parent.id)
+    inherited_designer_source = copy.deepcopy(parent_world.model_json)
+    changed_override_map = {
+        "floor_count": ("Building", "floor_count"),
+        "target_gfa": ("Building", "target_gfa_m2"),
+        "site_area": ("Site", "area_m2"),
+        "floor_to_floor_height": ("Building", "floor_to_floor_height_m"),
+        "building_height": ("Building", "height_m"),
+        "parking_spaces": ("ParkingFacility", "spaces"),
+        "parking_arrangement": ("ParkingFacility", "arrangement"),
+        "building_use": ("Building", "use"),
+        "city": ("Site", "city"),
+    }
+    state_copy = copy.deepcopy(inherited_designer_source.get("designer_state") or {})
+    # History is inherited for traceability, but undo/redo stacks are version-local
+    # so a new draft cannot replay a mutation from its parent branch.
+    state_copy["undo_stack"] = []
+    state_copy["redo_stack"] = []
+    for parameter in changes:
+        target = changed_override_map.get(parameter)
+        if target:
+            state_copy["overrides"] = {
+                key: override for key, override in state_copy.get("overrides", {}).items()
+                if (override.get("element_type"), override.get("property")) != target
+            }
+    inherited_designer_source["designer_state"] = state_copy
+    parent_semantic = parent_world.model_json.get("semantic_model") or compile_semantic_model(parent_world.model_json)
+    locked = state_copy.get("locks", {})
+    from app.domains.semantic_model.editing import locked_ancestor_for
+    change_target_types = {
+        "floor_count": "Building", "target_gfa": "Building", "site_area": "Site",
+        "floor_to_floor_height": "Building", "building_height": "Building",
+        "parking_spaces": "ParkingFacility", "parking_arrangement": "ParkingFacility",
+        "building_use": "Building", "city": "Site",
+    }
+    for parameter in changes:
+        target_type = change_target_types.get(parameter)
+        target_element = next((element for element in parent_semantic.get("elements", [])
+                               if element.get("element_type") == target_type), None) if target_type else None
+        if target_element:
+            locked_ancestor = locked_ancestor_for(parent_semantic, state_copy, target_element["id"])
+            if locked_ancestor:
+                raise error(409, "LOCKED_DEPENDENCY", "The requested new-version change affects a locked semantic element",
+                            parameter=parameter, locked_element_id=locked_ancestor)
+    if "floor_count" in changes:
+        requested_floors = changes["floor_count"]
+        if isinstance(requested_floors, bool) or not isinstance(requested_floors, int) or requested_floors < 1:
+            raise error(422, "INVALID_REQUIREMENT", "floor_count must be a positive integer")
+        removed_storeys = {
+            element["id"] for element in parent_semantic.get("elements", [])
+            if element.get("element_type") == "Storey"
+            and int(str(element.get("identity_key", "level:0")).split(":")[-1]) > requested_floors
+        }
+        locked_removed = sorted(element_id for element_id in removed_storeys
+                                if locked.get(element_id, {}).get("locked"))
+        authored_by_removed_storey = {
+            relationship.get("target_id") for relationship in inherited_designer_source.get("designer_relationships", [])
+            if relationship.get("source_id") in removed_storeys
+            and relationship.get("relationship_type") in {"contains_space", "hosts_element"}
+        }
+        locked_components = sorted(element_id for element_id in authored_by_removed_storey
+                                   if locked.get(element_id, {}).get("locked"))
+        canonical_spaces_on_removed_storeys = sorted(str(space.get("id") or space.get("name") or "")
+            for space in parent_world.model_json.get("spaces", [])
+            if space.get("level_number") is not None and int(space["level_number"]) > requested_floors)
+        if locked_removed or locked_components:
+            raise error(409, "LOCKED_DEPENDENCY", "The new version would remove a locked storey or hosted component",
+                        locked_element_ids=locked_removed + locked_components, requested_floor_count=requested_floors)
+        if authored_by_removed_storey or canonical_spaces_on_removed_storeys:
+            raise error(409, "STOREY_HAS_COMPONENTS",
+                        "Move or remove spaces and designer-authored components before reducing the floor count",
+                        element_ids=sorted(authored_by_removed_storey), space_ids=canonical_spaces_on_removed_storeys,
+                        requested_floor_count=requested_floors)
     next_number = (await session.scalar(select(func.max(ProjectVersion.version)).where(ProjectVersion.project_id == project.id)) or 0) + 1
     version = ProjectVersion(organization_id=project.organization_id, project_id=project.id, version=next_number,
         status="DRAFT", revision_number=1, parent_version_id=parent.id, change_summary=change_summary,
@@ -234,7 +347,7 @@ async def create_next_version(session: AsyncSession, project_id: str, user: User
         await audit(session, project=project, version=version, actor=user.id, action="REQUIREMENT_CHANGED",
             entity="requirement", entity_id=row.id, metadata={"parameter": parameter, "old_requirement_id": old.id if old else None})
     await session.flush()
-    world = await persist_world_model(session, project, version, user.id, source="version_change")
+    world = await persist_world_model(session, project, version, user.id, source="version_change", designer_source=inherited_designer_source)
     parent.status = "SUPERSEDED"; project.current_version_id = version.id; project.version = next_number
     await audit(session, project=project, version=version, actor=user.id, action="VERSION_CREATED",
         entity="project_version", entity_id=version.id, metadata={"version_number": next_number, "parent_version_id": parent.id})
