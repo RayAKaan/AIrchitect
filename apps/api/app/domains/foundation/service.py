@@ -72,7 +72,7 @@ async def audit(session: AsyncSession, *, project: Project, version: ProjectVers
 def _value(records: list[RequirementRecord], parameter: str, issues: list[dict[str, Any]]):
     matches = [r for r in records if r.parameter == parameter and r.status in ACTIVE_REQUIREMENT_STATES]
     distinct = {json.dumps(r.normalized_value_json, sort_keys=True) for r in matches}
-    if len(distinct) > 1:
+    if len(distinct) > 1 or any(r.status in {"CONTRADICTORY", "contradictory"} for r in matches):
         issues.append({"code": "CONTRADICTORY_REQUIREMENTS", "parameter": parameter,
             "requirement_ids": [r.id for r in matches]})
         return None, None

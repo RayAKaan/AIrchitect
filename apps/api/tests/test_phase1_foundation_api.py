@@ -197,3 +197,50 @@ async def test_cross_tenant_project_access_is_non_disclosing(api):
     response = await api.get(f"/api/v1/projects/{project['id']}/versions", headers=headers_b)
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "PROJECT_NOT_FOUND"
+
+
+async def test_invalid_brief_requirements_are_persisted_but_not_used_or_committed(api):
+    headers, organization = await register(api, "phase23-invalid")
+    project = await create_project(api, headers, organization)
+    version = (await api.get(f"/api/v1/projects/{project['id']}/versions", headers=headers)).json()["versions"][0]
+    response = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/brief",
+        headers=headers,
+        json={"text": "A commercial building with 0 floors and 0 m² GFA.", "expected_revision": 1},
+    )
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["validation"]["status"] == "BLOCKED"
+    assert {item["parameter"] for item in payload["requirements"] if item["status"] == "CONTRADICTORY"} >= {"floor_count", "target_gfa"}
+    snapshot = (await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/snapshot", headers=headers
+    )).json()
+    assert snapshot["brief"]["structured"]["_validation"]["status"] == "BLOCKED"
+    assert snapshot["world_model"]["building"]["floor_count"] is None
+    assert snapshot["world_model"]["building"]["target_gfa"] is None
+    committed = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/world-model",
+        headers=headers,
+        json={"expected_revision": payload["version_revision"], "commit": True},
+    )
+    assert committed.status_code == 409
+    assert committed.json()["error"]["code"] == "CONTRADICTORY_REQUIREMENTS"
+
+
+async def test_ambiguous_area_validation_is_persisted_and_nonblocking(api):
+    headers, organization = await register(api, "phase23-ambiguous")
+    project = await create_project(api, headers, organization)
+    version = (await api.get(f"/api/v1/projects/{project['id']}/versions", headers=headers)).json()["versions"][0]
+    response = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/brief",
+        headers=headers,
+        json={"text": "A commercial building with 2,400 sqm.", "expected_revision": 1},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["validation"]["status"] == "REVIEW_REQUIRED"
+    snapshot = (await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/snapshot", headers=headers
+    )).json()
+    issues = snapshot["brief"]["structured"]["_validation"]["issues"]
+    assert any(issue["code"] == "AMBIGUOUS_AREA_INFERENCE" for issue in issues)
+    assert all(item["status"] != "CONTRADICTORY" for item in snapshot["requirements"])

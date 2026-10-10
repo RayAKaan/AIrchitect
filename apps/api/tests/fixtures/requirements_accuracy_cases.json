@@ -1,0 +1,194 @@
+[
+  {
+    "id": "explicit-retail",
+    "brief": "Six-floor commercial retail building in Riyadh, approximately 18,000 m² GFA on a 3,000 m² site, basement parking.",
+    "expected": [
+      [
+        "floor_count",
+        6
+      ],
+      [
+        "target_gfa",
+        18000
+      ],
+      [
+        "site_area",
+        3000
+      ],
+      [
+        "city",
+        "Riyadh"
+      ],
+      [
+        "building_use",
+        "commercial_retail"
+      ],
+      [
+        "parking_arrangement",
+        "basement"
+      ]
+    ]
+  },
+  {
+    "id": "site-not-gfa",
+    "brief": "A 2,500 m² plot in Jeddah for a 4-storey office building.",
+    "expected": [
+      [
+        "site_area",
+        2500
+      ],
+      [
+        "city",
+        "Jeddah"
+      ],
+      [
+        "floor_count",
+        4
+      ],
+      [
+        "building_use",
+        "office"
+      ]
+    ]
+  },
+  {
+    "id": "single-ambiguous-area",
+    "brief": "A 1,200 sqm retail building with 2 floors and 30 parking spaces.",
+    "expected": [
+      [
+        "target_gfa",
+        1200
+      ],
+      [
+        "building_use",
+        "commercial_retail"
+      ],
+      [
+        "floor_count",
+        2
+      ],
+      [
+        "parking_spaces",
+        30
+      ]
+    ]
+  },
+  {
+    "id": "explicit-site-and-gfa",
+    "brief": "The site area is 4,000 square meters; GFA 10,000 square meters, 5 floors.",
+    "expected": [
+      [
+        "site_area",
+        4000
+      ],
+      [
+        "target_gfa",
+        10000
+      ],
+      [
+        "floor_count",
+        5
+      ]
+    ]
+  },
+  {
+    "id": "negated-parking-arrangement",
+    "brief": "Do not use basement parking; provide surface parking for a retail building with 3 floors and 40 spaces.",
+    "expected": [
+      [
+        "parking_arrangement",
+        "surface"
+      ],
+      [
+        "building_use",
+        "commercial_retail"
+      ],
+      [
+        "floor_count",
+        3
+      ],
+      [
+        "parking_spaces",
+        40
+      ]
+    ]
+  },
+  {
+    "id": "site-only-area",
+    "brief": "We have a 2,000 m² site; target GFA is not decided; office building.",
+    "expected": [
+      [
+        "site_area",
+        2000
+      ],
+      [
+        "building_use",
+        "office"
+      ]
+    ]
+  },
+  {
+    "id": "unsupported-upper-bounds",
+    "brief": "A retail building with no more than 6 floors and up to SAR 5,000,000 budget.",
+    "expected": [
+      [
+        "building_use",
+        "commercial_retail"
+      ]
+    ]
+  },
+  {
+    "id": "negated-exact-values",
+    "brief": "Not 3 floors and no basement parking; this office brief is still undecided.",
+    "expected": [
+      [
+        "building_use",
+        "office"
+      ]
+    ]
+  },
+  {
+    "id": "height-cross-check",
+    "brief": "Commercial retail building with 6 floors, floor-to-floor height 4.2 m, building height 28 m.",
+    "expected": [
+      [
+        "building_use",
+        "commercial_retail"
+      ],
+      [
+        "floor_count",
+        6
+      ],
+      [
+        "floor_to_floor_height",
+        4.2
+      ],
+      [
+        "building_height",
+        28
+      ]
+    ]
+  },
+  {
+    "id": "multiple-area-values",
+    "brief": "A retail building on a 3,000 m² site with 12,000 m² gross floor area and 5 floors.",
+    "expected": [
+      [
+        "building_use",
+        "commercial_retail"
+      ],
+      [
+        "site_area",
+        3000
+      ],
+      [
+        "target_gfa",
+        12000
+      ],
+      [
+        "floor_count",
+        5
+      ]
+    ]
+  }
+]
