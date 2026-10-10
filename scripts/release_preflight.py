@@ -34,8 +34,7 @@ PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
 missing = [p for p in REQUIRED + PHASE_REPORTS if not (ROOT / p).is_file()]
 if missing:
     print("FAIL: missing required repository evidence:")
-    print("
-".join(f" - {p}" for p in missing))
+    print("\n".join(f" - {p}" for p in missing))
     sys.exit(1)
 
 # Prevent accidental inclusion of local secrets and bulky/generated state in a release archive.
