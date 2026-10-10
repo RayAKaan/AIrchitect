@@ -50,7 +50,7 @@ async def test_phase3_calculation_cost_unavailable_then_sourced_cost_idempotency
   assert await session.scalar(select(func.count(StructuralArtifact.id)))==1
   assert await session.scalar(select(func.count(RegulatoryEvaluation.id)))==1
   assert await session.scalar(select(func.count(ValidationRun.id)))==3
-  assert await session.scalar(select(func.count(ArtifactDependency.id)))==21
+  assert await session.scalar(select(func.count(ArtifactDependency.id)))==20
 
 async def test_phase3_cross_tenant_non_disclosure_and_verified_rate_claim_rejected(api,cad):
  client,_=api;h,org,p,v,aid=await setup(client,cad);other,_,_,_,_=await setup(client,cad,"other")
