@@ -72,7 +72,10 @@ jobs:
             if curl -sf http://localhost:8000/health >/dev/null; then exit 0; fi
             sleep 2
           done
-          echo "API did not become healthy" && exit 1
+          echo "API did not become healthy"
+          docker compose ps
+          docker compose logs --no-color api db
+          exit 1
       - name: Smoke test API
         run: curl -sf http://localhost:8000/api/v1/projects | grep -q '"projects"'
       - name: Tear down
