@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,9 +71,24 @@ def get_settings() -> Settings:
 
 
 def validate_production_settings(config: Settings) -> None:
-    """Fail closed on known development credentials outside local development."""
-    if config.app_env.lower() == "local":
+    """Fail closed on development credentials and legacy geometry in production."""
+    environment = config.app_env.strip().lower()
+    if environment in {"local", "test"}:
         return
+
     secret = config.auth_secret.strip()
     if secret in {"", "local-only-change-this-secret", "replace-for-local-development"} or len(secret) < 32:
-        raise ValueError("AUTH_SECRET must be a unique secret of at least 32 characters outside local mode")
+        raise ValueError("AUTH_SECRET must be a unique secret of at least 32 characters outside local/test mode")
+
+    database = urlsplit(config.database_url)
+    if not database.scheme.startswith("postgresql") or not database.hostname:
+        raise ValueError("DATABASE_URL must point to a PostgreSQL database in production")
+    if database.hostname.lower() in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("DATABASE_URL must not point to localhost in production")
+    if database.username in {"", "building"} or database.password in {"", "building"}:
+        raise ValueError("DATABASE_URL must use explicit non-default credentials in production")
+
+    if config.geometry_engine.lower() != "cad_bim":
+        raise ValueError("GEOMETRY_ENGINE must be cad_bim in production")
+    if config.cad_allow_legacy_engine:
+        raise ValueError("CAD_ALLOW_LEGACY_ENGINE must be false in production")
