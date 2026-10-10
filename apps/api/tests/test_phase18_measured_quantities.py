@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from app.db.models import CadJobRun, GeometryArtifact, QuantityArtifact
+from app.db.models import ArtifactDependency, CadJobRun, CostEstimate, GeometryArtifact, QuantityArtifact, RegulatoryEvaluation, StructuralArtifact
 from app.domains.engineering.engines import (
     MEASURED_DIVERGENCE_WARN,
     EngineeringError,
@@ -612,3 +612,42 @@ class TestConsumerAdaptation:
         assert result["observed_basis"]["basis"] == "QUANTITY_ARTIFACT"
         assert result["observed_basis"]["code"] == "BUILDING_HEIGHT"
         assert result["observed_basis"]["type"] == "EXACT_DERIVED"
+
+async def test_structural_and_regulatory_artifacts_depend_on_cad_quantities(api, cad, db):
+    """The dependency graph must encode the quantity inputs actually consumed."""
+    headers, _org, project, version, alternative, _run = await _measured_project(api, cad)
+    response = await _calculate(api, headers, project, version, alternative)
+    assert response.status_code == 201, response.text
+
+    async with db() as session:
+        quantity = await session.scalar(
+            select(QuantityArtifact).where(
+                QuantityArtifact.design_alternative_id == alternative["id"]
+            )
+        )
+        structural = await session.scalar(
+            select(StructuralArtifact).where(
+                StructuralArtifact.design_alternative_id == alternative["id"]
+            )
+        )
+        regulatory = await session.scalar(
+            select(RegulatoryEvaluation).where(
+                RegulatoryEvaluation.design_alternative_id == alternative["id"]
+            )
+        )
+        assert quantity is not None and structural is not None and regulatory is not None
+        quantity_version_id = quantity.artifact_version_id
+        for consumer in (structural, regulatory):
+            dependencies = list(
+                (
+                    await session.scalars(
+                        select(ArtifactDependency).where(
+                            ArtifactDependency.artifact_version_id == consumer.artifact_version_id
+                        )
+                    )
+                ).all()
+            )
+            assert quantity_version_id in {
+                dependency.depends_on_artifact_version_id for dependency in dependencies
+            }
+
