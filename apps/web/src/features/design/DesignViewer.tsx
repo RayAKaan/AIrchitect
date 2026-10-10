@@ -23,8 +23,8 @@ export default function DesignViewer({geometryHash,cadGlbUrl,geometryStatus,erro
         <gridHelper args={[100,100,'#45504e','#303735']}/>
       </Canvas>
     </div>:<div className="design-state" role="status">
-      <b>{stale?'CAD geometry is stale':geometryStatus==='FAILED'?'CAD generation failed':'No authoritative CAD model available'}</b>
-      <span>{errorMessage||'Generate a CAD/BIM model for this alternative to view real geometry. AIrchitect does not substitute a fabricated preview for missing CAD output.'}</span>
+      <b>{stale?'CAD geometry is stale':geometryStatus==='FAILED'?'CAD generation failed':geometryStatus==='CURRENT'?'CAD solid exists, but GLB is unavailable':'No authoritative CAD model available'}</b>
+      <span>{errorMessage||(geometryStatus==='CURRENT'?'The CAD run did not return a GLB viewer artifact. Check the worker output capabilities or regenerate with GLB enabled.':'Generate a CAD/BIM model for this alternative to view real geometry. AIrchitect does not substitute a fabricated preview for missing CAD output.')}</span>
     </div>}
     <div className="viewer-foot"><span>Orbit: drag · Pan: right-drag · Zoom: wheel</span><code>{geometryHash||'No CAD artifact hash'}</code></div>
   </div>;
