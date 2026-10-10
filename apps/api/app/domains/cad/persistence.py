@@ -40,14 +40,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
+    ArtifactDependency,
     ArtifactVersion,
     CadArtifact,
     CadJobRun,
+    CostEstimate,
     DesignAlternative,
     EvidenceRecord,
     GeometryArtifact,
     Project,
     ProjectVersion,
+    QuantityArtifact,
+    RegulatoryEvaluation,
+    StructuralArtifact,
     ValidationCheck,
     ValidationRun,
     WorldModelRevision,
@@ -503,6 +508,13 @@ async def record_cad_success(
             # still points at it, so the provenance chain stays intact.
             geometry_id = existing.id
         else:
+            if status == "CURRENT":
+                await _invalidate_prior_geometry_dependents(
+                    session,
+                    project_version_id=version.id,
+                    alternative_id=alternative_id,
+                    new_geometry_hash=geometry_hash,
+                )
             geometry_version = await new_artifact(
                 session,
                 project=project,
@@ -697,6 +709,101 @@ async def record_cad_success(
         validation_run_id=validation_id,
         stale=stale,
     )
+
+
+async def _invalidate_prior_geometry_dependents(
+    session: AsyncSession,
+    *,
+    project_version_id: str,
+    alternative_id: str,
+    new_geometry_hash: str,
+) -> list[str]:
+    """Mark a superseded CAD artifact and every graph descendant stale.
+
+    Existing calculations remain available as history, but they must not continue
+    to claim CURRENT after their authoritative geometry input has been replaced.
+    """
+    previous = list(
+        (
+            await session.scalars(
+                select(GeometryArtifact).where(
+                    GeometryArtifact.project_version_id == project_version_id,
+                    GeometryArtifact.alternative_id == alternative_id,
+                    GeometryArtifact.source == "CAD_BREP",
+                    GeometryArtifact.status == "CURRENT",
+                    GeometryArtifact.geometry_hash != new_geometry_hash,
+                )
+            )
+        ).all()
+    )
+    if not previous:
+        return []
+
+    stale_geometry_ids = [row.id for row in previous]
+    stale_version_ids = {
+        row.artifact_version_id for row in previous if row.artifact_version_id
+    }
+    frontier = set(stale_version_ids)
+    while frontier:
+        children = set(
+            (
+                await session.scalars(
+                    select(ArtifactDependency.artifact_version_id)
+                    .join(
+                        ArtifactVersion,
+                        ArtifactVersion.id == ArtifactDependency.artifact_version_id,
+                    )
+                    .where(
+                        ArtifactDependency.depends_on_artifact_version_id.in_(frontier),
+                        ArtifactVersion.project_version_id == project_version_id,
+                    )
+                )
+            ).all()
+        )
+        new_children = children - stale_version_ids
+        if not new_children:
+            break
+        stale_version_ids.update(new_children)
+        frontier = new_children
+
+    for row in previous:
+        row.status = "STALE"
+
+    versions = list(
+        (
+            await session.scalars(
+                select(ArtifactVersion).where(
+                    ArtifactVersion.id.in_(stale_version_ids)
+                )
+            )
+        ).all()
+    )
+    for row in versions:
+        row.status = "STALE"
+
+    # Domain rows duplicate status for efficient reads; keep them aligned with the
+    # generic artifact registry and dependency graph.
+    for model in (
+        QuantityArtifact,
+        CostEstimate,
+        StructuralArtifact,
+        RegulatoryEvaluation,
+        ValidationRun,
+    ):
+        rows = list(
+            (
+                await session.scalars(
+                    select(model).where(
+                        model.project_version_id == project_version_id,
+                        model.artifact_version_id.in_(stale_version_ids),
+                    )
+                )
+            ).all()
+        )
+        for row in rows:
+            row.status = "STALE"
+
+    return stale_geometry_ids
 
 
 async def _assert_alternative_exists(
