@@ -177,3 +177,73 @@ async def test_propagation_rejects_stale_world_model_hash_without_mutating(api, 
             select(ArtifactVersion).where(ArtifactVersion.id.in_(ids))
         )).all())
     assert all(row.status == "current" for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_cross_version_dependency_edges_are_reported_but_never_traversed(api, db):
+    from app.db.models import ProjectVersion
+
+    headers, project, version_id, world, actor_id = await _workspace(api, "scope")
+    ids = await _seed_graph(db, project=project, version_id=version_id, world=world, actor_id=actor_id)
+    async with db() as session:
+        foreign_version = ProjectVersion(
+            id="phase27-other-version",
+            organization_id=project["organization_id"],
+            project_id=project["id"],
+            version=2,
+            status="DRAFT",
+            revision_number=1,
+            change_summary="Isolation test",
+            parent_version_id=version_id,
+            source="test",
+            metadata_json={},
+            created_by=actor_id,
+        )
+        session.add(foreign_version)
+        await session.flush()
+        session.add(ArtifactVersion(
+            id="phase27-foreign-artifact",
+            organization_id=project["organization_id"],
+            project_id=project["id"],
+            project_version_id=foreign_version.id,
+            world_model_revision_id=None,
+            artifact_type="foreign_version_input",
+            version=1,
+            status="current",
+            provenance_json={"test": "phase27"},
+            input_references_json=[],
+            output_hash="b" * 64,
+            payload_json={},
+            created_by=actor_id,
+        ))
+        await session.flush()
+        session.add(ArtifactDependency(
+            artifact_version_id=ids[1],
+            depends_on_artifact_version_id="phase27-foreign-artifact",
+            dependency_kind="input",
+        ))
+        await session.commit()
+
+    graph_response = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version_id}/change-impact/graph",
+        headers=headers,
+    )
+    assert graph_response.status_code == 200, graph_response.text
+    graph = graph_response.json()
+    assert graph["rejected_cross_scope_edge_count"] == 1
+    assert graph["integrity"] == "REVIEW_REQUIRED"
+    assert all(edge["depends_on_artifact_version_id"] != "phase27-foreign-artifact" for edge in graph["edges"])
+
+    propagated = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version_id}/change-impact/propagate",
+        headers=headers,
+        json={
+            "changed_artifact_ids": [ids[0]],
+            "expected_world_model_hash": world["model_hash"],
+            "reason": "Verify version-scoped graph traversal",
+        },
+    )
+    assert propagated.status_code == 200, propagated.text
+    async with db() as session:
+        foreign = await session.get(ArtifactVersion, "phase27-foreign-artifact")
+    assert foreign.status == "current"
