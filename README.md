@@ -37,7 +37,11 @@ docker compose up --build
 - Web: http://localhost:5173
 - API/OpenAPI: http://localhost:8000/docs
 
-The API container runs `alembic upgrade head` before serving. Application startup never creates tables implicitly.
+The API container runs `alembic upgrade head` before serving. Application startup never creates tables implicitly. Compose's API health check uses `/ready`, which verifies database connectivity; `/health` is only a liveness endpoint.
+
+### Production configuration
+
+The checked-in `.env.example` is for local Compose only. Before a production deployment, set `APP_ENV=production`, generate a unique `AUTH_SECRET` of at least 32 characters, configure a non-local PostgreSQL `DATABASE_URL` with non-default credentials, and set `CAD_ALLOW_LEGACY_ENGINE=false` while keeping `GEOMETRY_ENGINE=cad_bim`. Configure `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` too when using the Compose-managed database. Production startup fails fast when these required safeguards are not met. Do not commit real secrets or production `.env` files.
 
 ## Checks
 
