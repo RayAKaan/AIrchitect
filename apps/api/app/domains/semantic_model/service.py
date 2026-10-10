@@ -182,6 +182,7 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
         mapping = CAD_MAPPINGS[element_type]
         params: dict[str, Any] = {}
         missing: list[str] = []
+        geometry: dict[str, Any] | None = None
         if element_type == "Building":
             if width is None or float(width) <= 0:
                 missing.append("footprint_width_m")
@@ -221,6 +222,34 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
                     params[required] = item["value"]
             feature = mapping["cad_feature"]
 
+        if not missing and element_type == "Building":
+            geometry = {
+                "kind": "stacked_rectangular_prisms",
+                "origin_m": [0.0, 0.0, 0.0],
+                "footprint_width_m": params["footprint_width_m"],
+                "footprint_depth_m": params["footprint_depth_m"],
+                "floor_count": params["floor_count"],
+                "floor_to_floor_height_m": params["floor_to_floor_height_m"],
+                "total_height_m": round(params["floor_count"] * params["floor_to_floor_height_m"], 6),
+            }
+        elif not missing and element_type == "Storey":
+            element_properties = element.get("properties") or {}
+            level_value = (element_properties.get("level_number") or {}).get("value")
+            elevation_value = (element_properties.get("elevation_m") or {}).get("value")
+            if level_value is None:
+                missing.append("level_number")
+            else:
+                elevation = float(elevation_value) if elevation_value is not None else max(0, int(level_value) - 1) * float(floor_height)
+                geometry = {
+                    "kind": "rectangular_prism",
+                    "origin_m": [0.0, 0.0, round(elevation, 6)],
+                    "dimensions_m": {
+                        "width": params["footprint_width_m"],
+                        "depth": params["footprint_depth_m"],
+                        "height": params["floor_to_floor_height_m"],
+                    },
+                }
+
         status = "READY_FOR_CAD_ADAPTER" if not missing else "UNDERCONSTRAINED"
         intents.append({
             "element_id": element["id"],
@@ -229,18 +258,23 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
             "mapping_version": GEOMETRY_MAPPING_VERSION,
             "ifc_class": mapping["ifc_class"],
             "parameters": params,
+            "geometry": geometry,
             "missing_parameters": sorted(set(missing)),
             "status": status,
         })
 
-    ready = all(intent["status"] == "READY_FOR_CAD_ADAPTER" for intent in intents) and bool(intents)
+    has_missing_inputs = any(intent["status"] == "UNDERCONSTRAINED" for intent in intents)
+    has_unmodelled_types = bool(semantic_model.get("element_types_not_modelled"))
+    overall_status = "UNDERCONSTRAINED" if has_missing_inputs else (
+        "PARTIAL" if has_unmodelled_types else "READY_FOR_CAD_ADAPTER"
+    )
     payload = {
         "schema_version": GEOMETRY_MAPPING_VERSION,
         "project_id": semantic_model["project_id"],
         "project_version_id": semantic_model["project_version_id"],
         "source_world_model_hash": semantic_model["source_world_model_hash"],
         "semantic_model_hash": canonical_hash(semantic_model),
-        "status": "READY_FOR_CAD_ADAPTER" if ready else "UNDERCONSTRAINED",
+        "status": overall_status,
         "intents": intents,
         "limitations": [
             "This is a deterministic parametric feature specification, not a generated B-rep or IFC file.",
