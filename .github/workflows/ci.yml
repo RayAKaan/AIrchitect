@@ -69,10 +69,10 @@ jobs:
       - name: Wait for API health
         run: |
           for i in {1..30}; do
-            if curl -sf http://localhost:8000/health >/dev/null; then exit 0; fi
+            if curl -sf http://localhost:8000/ready >/dev/null; then exit 0; fi
             sleep 2
           done
-          echo "API did not become healthy"
+          echo "API did not become ready (including database connectivity)"
           docker compose ps
           docker compose logs --no-color api db
           exit 1
