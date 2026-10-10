@@ -648,3 +648,54 @@ async def test_design_geometry_endpoint_returns_only_cad_artifacts(api, cad):
     assert body["geometry_hash"]
     assert "geometry_ir" not in body
 
+async def test_phase20_feasibility_workflow_generates_cad_before_engineering(api, cad):
+    """The user can run feasibility without a separate manual CAD-generation call."""
+    headers, _org, project, version = await _committed_project(api)
+
+    run = await api.post(
+        f"/api/v1/projects/{project['id']}/workflows/feasibility",
+        headers={**headers, "Idempotency-Key": f"phase20-{uuid.uuid4().hex}"},
+        json={"version_ref": version["id"]},
+    )
+
+    assert run.status_code == 201, run.text
+    workflow = run.json()
+    assert workflow["state"] == "WAITING_HUMAN_REVIEW", workflow
+    steps = {step["key"]: step for step in workflow["steps"]}
+    assert steps["GENERATE_DESIGN"]["state"] == "SUCCEEDED"
+    assert steps["ROUTE_ALTERNATIVE"]["state"] == "SUCCEEDED"
+    assert steps["RUN_ENGINEERING"]["state"] == "SUCCEEDED", steps["RUN_ENGINEERING"]
+    cad_generation = steps["RUN_ENGINEERING"]["result"]["cad_generation"]
+    assert cad_generation["cad_job_run_id"]
+    assert cad_generation["geometry_artifact_id"]
+    assert cad_generation["reused_existing_geometry"] is False
+
+    evidence = await api.get(
+        f"/api/v1/projects/{project['id']}/evidence?version_id={version['id']}",
+        headers=headers,
+    )
+    assert evidence.status_code == 200, evidence.text
+    assert evidence.json()["nodes"]
+    assert any(node["source_type"] == "WORLD_MODEL" for node in evidence.json()["nodes"])
+
+    review = await api.post(
+        "/api/v1/reviews",
+        headers=headers,
+        json={
+            "project_id": project["id"],
+            "project_version_id": version["id"],
+            "workflow_id": workflow["id"],
+            "artifact_id": "feasibility-package",
+            "artifact_version": "1",
+            "artifact_version_ids": [],
+            "world_model_version": "V1",
+            "source_hash": workflow["input_hash"],
+            "decision": "ACCEPT_FOR_FEASIBILITY",
+            "rationale": "Reviewed the generated preliminary feasibility evidence.",
+        },
+    )
+    assert review.status_code == 201, review.text
+    final = await api.get(f"/api/v1/workflows/{workflow['id']}", headers=headers)
+    assert final.status_code == 200, final.text
+    assert final.json()["state"] == "COMPLETED"
+
