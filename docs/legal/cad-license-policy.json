@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "policy_name": "AIrchitect CAD/BIM dependency policy",
+  "purpose": "Fail CI when the CAD/BIM toolchain adds a copyleft or source-available dependency that has not been explicitly reviewed.",
+  "commercial_release_approved": false,
+  "release_blockers": [
+    "Qualified legal counsel has not countersigned the existing Phase 18 open-source license audit.",
+    "The redistributable CAD toolchain packaging path must include the required LGPL/GPL license texts and any applicable source offer or source pointers.",
+    "Some transitive packages expose license files without a normalized SPDX identifier; these require package-specific review before a redistributable release."
+  ],
+  "approved_copyleft_components": [
+    {
+      "package": "ifcopenshell",
+      "version": "0.8.5",
+      "license": "LGPL-3.0-or-later",
+      "technical_status": "reviewed-for-architecture",
+      "commercial_release_approved": false,
+      "rationale": "Direct worker dependency. Its LGPL terms and corresponding notices must be satisfied for any redistribution."
+    },
+    {
+      "package": "FreeCAD",
+      "version": "1.1.3",
+      "license": "LGPL-2.0-or-later",
+      "technical_status": "reviewed-for-architecture",
+      "commercial_release_approved": false,
+      "rationale": "Executed as a separate native process. Redistribution still requires the applicable licence materials and legal review."
+    },
+    {
+      "package": "OCCT",
+      "version": "7.8.1",
+      "license": "LGPL-2.1-or-later WITH Open CASCADE exception",
+      "technical_status": "reviewed-for-architecture",
+      "commercial_release_approved": false,
+      "rationale": "Native geometry kernel recorded in the FreeCAD toolchain. The exact exception text and distribution model must be preserved."
+    }
+  ],
+  "blocked_unreviewed_license_markers": [
+    "GPL",
+    "AGPL",
+    "SSPL",
+    "BUSL",
+    "Commons Clause",
+    "MPL",
+    "EPL",
+    "CDDL"
+  ],
+  "review_rules": [
+    "A newly discovered copyleft component must be added to this policy only after an explicit engineering review and recorded licence rationale.",
+    "LGPL is not treated as automatically prohibited; the exact version, exception, linking/process model, notices, and redistribution obligations must be assessed.",
+    "CI approval is not legal clearance. Commercial release remains blocked until commercial_release_approved is true and release blockers are resolved.",
+    "Unknown package licence metadata is a warning during ordinary CI only when an installed licence file is recorded; release mode treats warnings as blockers."
+  ],
+  "source_audit": "docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md"
+}

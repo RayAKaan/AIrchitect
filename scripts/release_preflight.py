@@ -12,6 +12,11 @@ REQUIRED = [
     "docs/completion/MASTER_AUDIT.md",
     "docs/completion/BLUEPRINT_TRACEABILITY_MATRIX.md",
     "docs/completion/IMPLEMENTATION_GAPS.md",
+    "docs/completion/PHASE-22-CAD-FOUNDATION-REPORT.md",
+    "docs/legal/cad-license-policy.json",
+    "docs/legal/THIRD-PARTY-NOTICES.md",
+    "scripts/check_cad_toolchain_manifest.py",
+    "scripts/cad_toolchain_smoke.py",
 ]
 PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (0,"REPOSITORY-AUDIT"),(1,"DEVELOPMENT-FOUNDATION"),(2,"IDENTITY-PROJECT-CORE"),
@@ -21,6 +26,7 @@ PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (12,"REGULATORY-ENGINE"),(13,"CHANGE-IMPACT"),(14,"VALIDATION-EVIDENCE"),
     (15,"REVIEW-DELIVERABLES"),(16,"FRONTEND-INTEGRATION"),
     (21,"PRODUCTION-HARDENING"),
+    (22,"CAD-FOUNDATION"),
 ]]
 missing = [p for p in REQUIRED + PHASE_REPORTS if not (ROOT / p).is_file()]
 if missing:
