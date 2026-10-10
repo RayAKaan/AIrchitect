@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from app.db.models import ArtifactDependency, CadJobRun, CostEstimate, GeometryArtifact, QuantityArtifact, RegulatoryEvaluation, StructuralArtifact
+from app.db.models import ArtifactDependency, CadJobRun, GeometryArtifact, QuantityArtifact, RegulatoryEvaluation, StructuralArtifact
 from app.domains.engineering.engines import (
     MEASURED_DIVERGENCE_WARN,
     EngineeringError,
