@@ -201,13 +201,24 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
                 params["floor_to_floor_height_m"] = float(floor_height)
             feature = "stacked_floor_plate_mass"
         elif element_type == "Storey":
-            if width is None or depth is None:
+            if width is None or float(width) <= 0 or depth is None or float(depth) <= 0:
                 missing.append("footprint_width_m_and_footprint_depth_m")
-            if floor_height is None:
+            else:
+                params["footprint_width_m"] = float(width)
+                params["footprint_depth_m"] = float(depth)
+            if floor_height is None or float(floor_height) <= 0:
                 missing.append("floor_to_floor_height_m")
+            else:
+                params["floor_to_floor_height_m"] = float(floor_height)
             feature = "storey_slab"
         else:
-            missing.extend(mapping["required"])
+            element_properties = element.get("properties") or {}
+            for required in mapping["required"]:
+                item = element_properties.get(required)
+                if not isinstance(item, dict) or item.get("value") is None:
+                    missing.append(required)
+                else:
+                    params[required] = item["value"]
             feature = mapping["cad_feature"]
 
         status = "READY_FOR_CAD_ADAPTER" if not missing else "UNDERCONSTRAINED"
