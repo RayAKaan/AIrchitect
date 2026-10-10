@@ -86,4 +86,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - name: Enforce reviewed CAD/BIM license policy
+        run: python scripts/check_cad_toolchain_manifest.py
       - run: python scripts/release_preflight.py

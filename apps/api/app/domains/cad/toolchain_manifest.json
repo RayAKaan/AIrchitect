@@ -2,7 +2,7 @@
   "copyleft_components": [
     {
       "group": "direct",
-      "license": null,
+      "license": "LGPL-3.0-or-later",
       "markers": [
         "lgpl"
       ],

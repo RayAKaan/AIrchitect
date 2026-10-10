@@ -383,7 +383,7 @@ def build_manifest(
                     {
                         "package": row["package"],
                         "version": row.get("version"),
-                        "license": row.get("license"),
+                        "license": row.get("license_effective") or row.get("license"),
                         "markers": row["copyleft_markers"],
                         "group": group,
                     }
