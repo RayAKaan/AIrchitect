@@ -101,7 +101,7 @@ async def test_persisted_graph_and_explicit_propagation_are_atomic_and_scoped(ap
     payload = response.json()
     assert payload["atomic"] is True
     assert payload["recomputation_scheduled"] is False
-    assert payload["newly_stale_artifact_ids"] == ids[1:4]
+    assert payload["newly_stale_artifact_ids"] == sorted(ids[1:4])
     assert payload["affected"][0]["dependency_path"] == [ids[0], ids[1]]
     assert payload["affected"][-1]["dependency_path"] == [ids[0], ids[1], ids[2], ids[3]]
 
