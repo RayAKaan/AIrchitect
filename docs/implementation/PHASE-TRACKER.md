@@ -22,7 +22,8 @@
 | 17 | Testing and Release | Partial / Blocked | API unit suite and preflight exist; DB/E2E/security/container/deployment gates remain. |
 | 18 | CAD/BIM Geometry Pipeline | Delivered (pipeline implementation) | Isolated OCCT/FreeCAD worker, IFC/GLB/STEP export, bounded execution, durable job/artifact persistence, tenant-scoped APIs; remaining cross-domain authority work is tracked in Phase 19. |
 | 19 | Geometry Authority & Legacy Path Elimination | In progress (CAD-authority core merged; remaining audit items open) | CAD-only engineering/API/viewer, explicit geometry source, downstream dependency/staleness handling; remaining legacy-path retirement and production toolchain verification tracked in the Phase 19 audit. |
-| 20 | End-to-End MVP Integration | In progress | Phase 20 PR ensures the feasibility workflow generates or reuses current validated CAD before engineering, preserves evidence and mandatory human review, refreshes frontend caches, and adds end-to-end API coverage; final CI and full definition-of-done review remain required. |
+| 20 | End-to-End MVP Integration | Delivered (PR #2; CI run #71 passed) | Feasibility workflow generates/reuses current hash-bound CAD and GLB before engineering, assembles evidence, requires human review, refreshes frontend caches, and has end-to-end API coverage. Native production CAD toolchain remains deployment-specific. |
+| 21 | Production Hardening & MVP Release | In progress | Production configuration fails closed on weak secrets, default/local DB settings, or legacy geometry; API request IDs/security headers, Compose readiness, release-preflight evidence, and configuration/security regression tests are being added. Full CI and deployment rehearsal remain gates. |
 
 ## Rules
 - A phase is complete only with implementation evidence, tests, limitations, and Definition of Done confirmation.
