@@ -1,6 +1,6 @@
 # Phase 27 — Dependency-Aware Feasibility & Change Propagation
 
-**Status:** Implementation in progress on `feat/phase-27-dependency-aware-propagation`.
+**Status:** Implemented; PR #9 is open for review on `feat/phase-27-dependency-aware-propagation`.
 **Base:** `main` after Phase 26 merge.
 
 ## Objective
@@ -25,14 +25,14 @@ Make the persisted artifact dependency graph authoritative for change-impact ana
 
 ## Acceptance criteria
 
-- [ ] Graph analysis uses persisted edges, not client-supplied dependency topology.
-- [ ] Cross-tenant and cross-version dependencies are never traversed.
-- [ ] A stale expected World Model hash returns a conflict instead of mutating state.
-- [ ] A World Model hash change automatically invalidates prior derived artifacts and successful/in-flight CAD runs.
-- [ ] Downstream artifact and domain statuses change in one transaction; artifact payloads and hashes remain immutable.
-- [ ] Audit metadata preserves changed roots, source hash, dependency paths, and stale IDs.
-- [ ] No recomputation is claimed or automatically scheduled; stale work remains explicit until a separate workflow executes it.
-- [ ] Backend tests/lint, migration cycle, frontend tests/lint/build, Docker/Compose smoke, CAD/BIM licence policy, requirements benchmark, and release preflight pass.
+- [x] Graph analysis uses persisted edges, not client-supplied dependency topology.
+- [x] Cross-tenant and cross-version dependencies are never traversed.
+- [x] A stale expected World Model hash returns a conflict instead of mutating state.
+- [x] A World Model hash change automatically invalidates prior derived artifacts and successful/in-flight CAD runs.
+- [x] Downstream artifact and domain statuses change in one transaction; artifact payloads and hashes remain immutable.
+- [x] Audit metadata preserves changed roots, source hash, dependency paths, and stale IDs.
+- [x] No recomputation is claimed or automatically scheduled; stale work remains explicit until a separate workflow executes it.
+- [x] Backend Ruff and 449 tests passed (40 skipped, 2 warnings); PostgreSQL migration cycle, frontend lint/17 tests/build, API/web Docker builds, Compose readiness/smoke/teardown, CAD/BIM licence policy, requirements benchmark, and release preflight passed in CI run #342.
 
 ## Safety boundaries
 
