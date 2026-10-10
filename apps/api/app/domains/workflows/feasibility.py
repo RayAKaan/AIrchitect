@@ -3,7 +3,7 @@ from typing import Any
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.models import ArtifactVersion,BuildingBriefRecord,DecisionRecord,DesignAlternative,EvidenceLink,EvidenceNode,GeometryArtifact,Project,ProjectVersion,RequirementRecord,User,WorkflowEvent,WorkflowRecord,WorkflowTaskRecord
+from app.db.models import ArtifactVersion,BuildingBriefRecord,CadArtifact,DecisionRecord,DesignAlternative,EvidenceLink,EvidenceNode,GeometryArtifact,Project,ProjectVersion,RequirementRecord,User,WorkflowEvent,WorkflowRecord,WorkflowTaskRecord
 from app.domains.ai.runtime import LLMRuntime
 from app.domains.ai.schemas import BuildingBriefExtraction
 from app.domains.ai.service import deterministic_extraction
@@ -88,9 +88,14 @@ async def execute_run(session:AsyncSession,wf:WorkflowRecord,user:User)->Workflo
     ).order_by(GeometryArtifact.created_at.desc()))).all())
     latest_cad=cad_rows[0] if cad_rows else None
     cad_result=None
+    latest_run_id=(latest_cad.provenance_json or {}).get('cad_job_run_id') if latest_cad else None
+    has_viewer_glb=bool(latest_run_id and await session.scalar(select(CadArtifact.id).where(
+     CadArtifact.cad_job_run_id==latest_run_id,CadArtifact.kind=='glb'
+    )))
     if not (latest_cad and latest_cad.status=='CURRENT'
             and latest_cad.input_world_model_hash==(world.model_hash or '')
-            and latest_cad.design_hash==(selected.design_hash or '')):
+            and latest_cad.design_hash==(selected.design_hash or '')
+            and has_viewer_glb):
      config=CadConfig.from_settings()
      if config.geometry_engine!='cad_bim':raise ValueError('CAD_ENGINE_DISABLED')
      try:
