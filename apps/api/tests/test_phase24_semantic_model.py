@@ -65,6 +65,7 @@ def test_semantic_identity_survives_value_edits_but_source_hash_changes():
     original = sample_world_model()
     changed = sample_world_model()
     changed["building"]["height"] = {"value": 9.0, "unit": "m"}
+    changed["project_version_id"] = "version-789"
     a = compile_semantic_model(original)
     b = compile_semantic_model(changed)
     ids_a = {(e["element_type"], e["identity_key"]): e["id"] for e in a["elements"]}
@@ -102,6 +103,11 @@ def test_explicit_footprint_dimensions_unlock_deterministic_building_and_storey_
     }
     assert len(storey_intents) == 2
     assert all(i["status"] == "READY_FOR_CAD_ADAPTER" for i in storey_intents)
+    assert spec["status"] == "PARTIAL"  # walls/openings remain unmodelled, so the whole building is not falsely marked ready
+    assert building_intent["geometry"]["kind"] == "stacked_rectangular_prisms"
+    assert building_intent["geometry"]["total_height_m"] == 8.0
+    assert all(i["geometry"]["kind"] == "rectangular_prism" for i in storey_intents)
+    assert [i["geometry"]["origin_m"][2] for i in storey_intents] == [0.0, 4.0]
 
 
 @pytest.mark.asyncio
