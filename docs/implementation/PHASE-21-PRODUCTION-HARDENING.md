@@ -36,12 +36,12 @@
 - Regression tests cover the production guardrails and HTTP response headers.
 
 ## Exit criteria
-- [ ] All API Ruff/tests pass.
-- [ ] PostgreSQL migration upgrade/downgrade/upgrade passes.
-- [ ] Frontend lint/tests/build and API/web Docker builds pass.
-- [ ] Compose starts, API readiness and public smoke checks pass, and teardown succeeds.
-- [ ] Release preflight passes.
-- [ ] Review limitations: this is not a penetration test, SBOM/vulnerability scan, browser E2E suite, managed-database/TLS rehearsal, or validation of the native CAD worker toolchain on the target host.
+- [x] API Ruff passed; **389 tests passed, 40 skipped, 2 warnings**.
+- [x] PostgreSQL migration upgrade/downgrade/upgrade passes.
+- [x] Frontend lint passed; **4 test files / 17 tests passed**; production build and both API/web Docker builds passed.
+- [x] Compose images built, stack started, database-aware API readiness and public smoke checks passed, and teardown succeeded.
+- [x] Release preflight passed: **12 core files and 18 phase reports** present.
+- Remaining limitations: this is not a penetration test, SBOM/vulnerability scan, browser E2E suite, managed-database/TLS rehearsal, or validation of the native CAD worker toolchain on the target host.
 
 ## Operational boundary
 Structural calculations remain conceptual, not professional certification. Regulatory results without authoritative applicable rules remain `UNKNOWN`. A passing software pipeline does not make a feasibility package construction-ready.
