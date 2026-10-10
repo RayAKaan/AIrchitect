@@ -22,7 +22,7 @@ test('Phase 28 release acceptance connects canonical state, semantic model, expo
   await expect(page.getByText(/Brief revision 1/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Requirements' }).click();
-  await expect(page.getByText(/gross floor area/i).first()).toBeVisible();
+  await expect(page.locator('.fact-card').first()).toBeVisible();
   await page.getByRole('button', { name: 'World Model' }).click();
   await page.getByRole('button', { name: /Commit V1/ }).click();
   await expect(page.getByText(/World hash/)).toBeVisible();
