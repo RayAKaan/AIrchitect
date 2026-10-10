@@ -511,17 +511,20 @@ class TestRunnerContainment:
         else:
             assert kwargs == {}
 
-    def test_the_worker_cannot_inherit_an_api_interpreter_by_accident(self):
-        # The API interpreter does not carry the CAD packages; using it would run
-        # geometry work in a process never meant to host it.
-        config = CadConfig(worker_venv_root="H:/.cad-tools/worker-venv")
+    def test_the_worker_cannot_inherit_an_api_interpreter_by_accident(self, tmp_path: Path):
+        # Resolve a real interpreter path inside a throwaway worker venv rather than
+        # depending on the developer's Windows-only CAD installation.
+        worker = worker_python(tmp_path)
+        config = CadConfig(worker_venv_root=str(tmp_path / "venv"))
         resolved = resolve_worker_python(config)
-        assert resolved.name.lower().startswith("python")
-        assert "cad-tools" in str(resolved) or config.worker_python
+        assert resolved == worker
+        assert resolved != Path(os.sys.executable)
 
-    def test_the_worker_venv_is_used_when_no_override_is_configured(self):
-        config = CadConfig(worker_venv_root="H:/.cad-tools/worker-venv")
-        assert "worker-venv" in str(resolve_worker_python(config))
+    def test_the_worker_venv_is_used_when_no_override_is_configured(self, tmp_path: Path):
+        worker = worker_python(tmp_path)
+        config = CadConfig(worker_venv_root=str(tmp_path / "venv"))
+        assert resolve_worker_python(config) == worker
+        assert "venv" in str(resolve_worker_python(config))
 
     def test_the_worker_receives_the_api_root_on_pythonpath(
         self, fake_worker: FakeWorker, tmp_path: Path
