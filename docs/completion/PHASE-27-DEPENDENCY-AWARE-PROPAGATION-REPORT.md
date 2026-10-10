@@ -1,9 +1,9 @@
 # Phase 27 — Dependency-Aware Feasibility & Change Propagation
 
-**Status:** Implemented; PR #9 is open and has passing CI.
+**Status:** Delivered; PR #9 merged to `main`.
 **Branch:** `feat/phase-27-dependency-aware-propagation`
 **Pull request:** https://github.com/RayAKaan/AIrchitect/pull/9
-**Final verified CI run:** [#342](https://github.com/RayAKaan/AIrchitect/actions/runs/38084423669) — PASS on implementation commit `89d8dad2bbf9325304d925da47e36fae6e8ee3f7`.
+**Final PR-head GitHub Actions run:** [#348](https://github.com/RayAKaan/AIrchitect/actions/runs/38084669504) — PASS on implementation commit `89d8dad2bbf9325304d925da47e36fae6e8ee3f7`.
 
 ## Delivered
 
@@ -36,4 +36,4 @@ The benchmark remains limited to its ten committed fixtures. The CI run verifies
 - Current source hashes do not certify architectural correctness, structural adequacy, regulatory compliance, fire/life safety, or constructability.
 - Phase 22 native-host CAD smoke evidence and complete redistribution/source-material notices plus qualified legal sign-off remain open release gates.
 
-**Merge status:** PR #9 is open and not merged. Review and merge manually.
+**Merge evidence:** PR #9 was merged to `main` in commit `bb6a1b491cd7d4908a1f3ce3288793507a16a34e`. The merge-triggered CI run is tracked separately.
