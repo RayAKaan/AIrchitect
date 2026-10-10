@@ -118,7 +118,7 @@ async def dependency_graph_snapshot(
     }
 
 
-async def _mark_domain_rows_stale(session: AsyncSession, artifact_ids: set[str]) -> None:
+async def _mark_domain_rows_stale(\n    session: AsyncSession, artifact_ids: set[str], *, project_id: str, version_id: str\n) -> None:
     if not artifact_ids:
         return
     for model in (
@@ -133,7 +133,11 @@ async def _mark_domain_rows_stale(session: AsyncSession, artifact_ids: set[str])
     # Deliverables are immutable records; only their lifecycle status changes.
     await session.execute(
         update(DeliverableRecord)
-        .where(DeliverableRecord.artifact_id.in_(artifact_ids))
+        .where(
+            DeliverableRecord.project_id == project_id,
+            DeliverableRecord.project_version_id == version_id,
+            DeliverableRecord.artifact_id.in_(artifact_ids),
+        )
         .values(status="stale")
     )
 
@@ -168,7 +172,7 @@ async def propagate_artifact_change(
             row.status = "stale"
             newly_stale.add(artifact_id)
 
-    await _mark_domain_rows_stale(session, newly_stale)
+    await _mark_domain_rows_stale(\n        session, newly_stale, project_id=project.id, version_id=version.id\n    )
     if action == "WORLD_MODEL_CHANGE_PROPAGATED":
         await session.execute(
             update(CadJobRun)
