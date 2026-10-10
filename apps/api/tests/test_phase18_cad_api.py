@@ -610,3 +610,17 @@ async def test_cad_does_not_block_the_event_loop_while_a_job_runs(api, cad):
     body = response.json()
     assert body["status"] == "FAILED"
     assert body["error"]["code"] == "CAD_JOB_TIMEOUT"
+
+async def test_design_geometry_endpoint_requires_authoritative_cad(api):
+    """A legacy design IR must never be returned as a viewer geometry artifact."""
+    headers, _org, project, version = await _committed_project(api)
+    alternative = await _alternative(api, headers, project, version)
+    response = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}"
+        f"/design/alternatives/{alternative['id']}/geometry",
+        headers=headers,
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "CAD_REQUIRED"
+    assert "Generate a CAD/BIM model" in response.json()["error"]["message"]
+
