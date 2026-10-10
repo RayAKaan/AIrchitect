@@ -42,7 +42,7 @@ test('Phase 28 release acceptance connects canonical state, semantic model, expo
 
   await page.getByRole('button', { name: 'Release Validation' }).click();
   await expect(page.getByRole('heading', { name: 'Release validation checklist' })).toBeVisible();
-  await expect(page.getByText('Native CAD-host smoke verification')).toBeVisible();
-  await expect(page.getByText('Legal redistribution clearance')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Native CAD-host smoke verification' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Legal redistribution clearance' })).toBeVisible();
   await expect(page.getByText('Overall status: REVIEW REQUIRED')).toBeVisible();
 });
