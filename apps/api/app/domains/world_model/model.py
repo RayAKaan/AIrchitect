@@ -83,6 +83,8 @@ class BuildingWorldModel(BaseModel):
     provenance: dict[str, ValueProvenance] = Field(default_factory=dict)
     unknowns: list[str] = Field(default_factory=list)
     consistency_issues: list[dict[str, Any]] = Field(default_factory=list)
+    # Derived, deterministic semantic graph included in the revision hash.
+    semantic_model: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_quantities(self):

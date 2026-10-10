@@ -13,6 +13,7 @@ from app.db.models import (
     RequirementRecord, User, WorldModelRevision,
 )
 from app.domains.lifecycle.service import canonical_hash
+from app.domains.semantic_model.service import compile_semantic_model
 from app.domains.world_model.model import (
     Building, BuildingWorldModel, Level, Location, Parking, Quantity, Site, StructuralGrid,
     ValueProvenance,
@@ -147,6 +148,8 @@ async def persist_world_model(session: AsyncSession, project: Project, version: 
         AssumptionRecord.project_version_id == version.id).order_by(AssumptionRecord.created_at, AssumptionRecord.id))).all())
     model = build_world_model(project, version, requirements, assumptions)
     payload = model.model_dump(mode="json", exclude_none=False)
+    # Persist the semantic graph inside the hash-verified canonical revision.
+    payload["semantic_model"] = compile_semantic_model(payload)
     latest = await session.scalar(select(func.max(WorldModelRevision.revision)).where(WorldModelRevision.project_id == project.id)) or 0
     row = WorldModelRevision(organization_id=project.organization_id, project_id=project.id,
         project_version_id=version.id, revision=latest + 1, model_json=payload, model_hash=canonical_hash(payload),
