@@ -27,7 +27,9 @@ async def _workspace(api, suffix: str):
     })
     assert project_response.status_code == 201, project_response.text
     project = project_response.json()
-    version_id = project["current_version_id"]
+    versions_response = await api.get(f"/api/v1/projects/{project['id']}/versions", headers=headers)
+    assert versions_response.status_code == 200, versions_response.text
+    version_id = versions_response.json()["current_version_id"]
     world_response = await api.get(
         f"/api/v1/projects/{project['id']}/versions/{version_id}/world-model",
         headers=headers,
