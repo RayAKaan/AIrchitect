@@ -259,7 +259,25 @@ def main(argv):
             response_path.write_text(
                 json.dumps({"schema_version": "1.0", "pad": padding}), encoding="utf-8")
         else:
-            response_path.write_text(json.dumps(build(scenario)), encoding="utf-8")
+            document = build(scenario)
+            options = request.get("options", {})
+            # Honour the narrow-output contract for the end-to-end workflow. The
+            # normal default remains the STEP fixture so existing STEP-focused tests
+            # keep their historical behaviour.
+            if (
+                scenario == "ok"
+                and options.get("write_glb")
+                and not options.get("write_step")
+            ):
+                document["artifacts"] = [
+                    artifact(
+                        kind="glb",
+                        filename="test-job.glb",
+                        content_type="model/gltf-binary",
+                        data=b"glTF-fake",
+                    )
+                ]
+            response_path.write_text(json.dumps(document), encoding="utf-8")
 
     log = os.environ.get("AIRCHITECT_FAKE_LOG")
     if log:
