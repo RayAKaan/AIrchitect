@@ -75,7 +75,7 @@ async def test_intake_is_non_mutating_and_usage_is_auditable(api,cad):
 
 async def test_feasibility_workflow_evidence_review_gate_and_tenant_isolation(api,cad):
     client,factory=api
-    h,v,brief=await setup(client)
+    h,v,brief=await setup(client,cad)
     pid=v['project_id']
     run=await client.post(f"/api/v1/projects/{pid}/workflows/feasibility",headers={**h,'Idempotency-Key':'phase4-run-0001'},json={'version_ref':v['id']})
     assert run.status_code==201,run.text
@@ -102,7 +102,7 @@ async def test_feasibility_workflow_evidence_review_gate_and_tenant_isolation(ap
 
 async def test_assistant_is_read_only_and_grounded(api,cad):
     client,_=api
-    h,v,brief=await setup(client)
+    h,v,brief=await setup(client,cad)
     pid=v['project_id']
     answer=await client.post(f"/api/v1/projects/{pid}/assistant",headers=h,json={'question':'Summarize feasibility.','version_ref':v['id']})
     assert answer.status_code==200
