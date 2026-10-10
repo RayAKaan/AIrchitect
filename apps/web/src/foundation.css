@@ -36,6 +36,8 @@
 
 
 /* Phase 28 — persisted change-impact and release-validation workspace */
+.release-validation-workspace .phase-grid{width:100%;max-width:none;box-sizing:border-box;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))}
+
 .change-impact-workspace,.release-validation-workspace{display:grid;gap:1rem;min-width:0}
 .change-impact-summary{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap}
 .change-impact-summary .state{display:inline-flex;align-items:center}
