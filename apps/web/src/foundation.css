@@ -33,3 +33,28 @@
 .history-row>div{display:grid;gap:.2rem;min-width:0}
 .history-row time{font-size:.75rem;opacity:.7;white-space:nowrap}
 @media(max-width:800px){.semantic-editor-grid{grid-template-columns:1fr}.semantic-element-list{position:static;max-height:35vh}.semantic-edit-form{grid-template-columns:1fr}.semantic-edit-form label.wide{grid-column:auto}.semantic-editor-head{display:grid}.history-row{flex-direction:column;gap:.25rem}}
+
+
+/* Phase 28 — persisted change-impact and release-validation workspace */
+.change-impact-workspace,.release-validation-workspace{display:grid;gap:1rem;min-width:0}
+.change-impact-summary{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap}
+.change-impact-summary .state{display:inline-flex;align-items:center}
+.impact-node{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.7rem;align-items:center;padding:.85rem;border:1px solid var(--line,#dedbd4);border-radius:.65rem;background:#fff}
+.impact-node>span:first-of-type{display:grid;gap:.2rem;min-width:0}
+.impact-node small{overflow-wrap:anywhere;opacity:.72}
+.impact-node input{width:1rem;height:1rem;accent-color:var(--accent,#9b6a45)}
+.impact-node-list{display:grid;gap:.5rem;margin-top:1rem}
+.impact-reason{display:grid;gap:.4rem;margin:1rem 0;font-size:.88rem}
+.impact-reason textarea{box-sizing:border-box;width:100%;min-height:90px;padding:.7rem;border:1px solid var(--line,#dedbd4);border-radius:.55rem;font:inherit}
+.release-validation-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap}
+.release-validation-header h2{margin:.15rem 0 .35rem}
+.release-gate{background:#fff;border:1px solid #dfdcd2;border-radius:.65rem;padding:1rem;min-width:0}
+.release-gate-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem}
+.release-gate h3{margin:.1rem 0 .45rem;font:600 14px Manrope}
+.release-gate p{font-size:.86rem;line-height:1.5;color:#706d64;overflow-wrap:anywhere}
+.release-gate .state{white-space:nowrap;font-size:.68rem;font-weight:700}
+.release-gate .state.pass{background:#e8efe4;color:#58704d}
+.release-gate .state.blocked{background:#f7e5e1;color:#a04635}
+.release-gate .state.review_required,.release-gate .state.not_verified,.release-gate .state.not_run,.release-gate .state.unknown{background:#fff4e8;color:#8b5a38}
+.release-validation-note{padding:1rem;border:1px solid #c7a878;border-radius:.65rem;background:#fff8e9;font-size:.88rem;line-height:1.55}
+@media(max-width:700px){.impact-node{grid-template-columns:auto minmax(0,1fr)}.impact-node>.state{grid-column:2}.release-gate-head{flex-direction:column}}
