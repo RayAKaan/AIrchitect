@@ -20,6 +20,7 @@ PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (9,"3D-VIEWER"),(10,"QUANTITIES-COST"),(11,"STRUCTURAL-WORKFLOW"),
     (12,"REGULATORY-ENGINE"),(13,"CHANGE-IMPACT"),(14,"VALIDATION-EVIDENCE"),
     (15,"REVIEW-DELIVERABLES"),(16,"FRONTEND-INTEGRATION"),
+    (21,"PRODUCTION-HARDENING"),
 ]]
 missing = [p for p in REQUIRED + PHASE_REPORTS if not (ROOT / p).is_file()]
 if missing:
