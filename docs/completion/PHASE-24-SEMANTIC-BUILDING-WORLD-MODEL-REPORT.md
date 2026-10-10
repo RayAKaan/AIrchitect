@@ -1,7 +1,7 @@
 # Phase 24 Completion Report — Semantic Building World Model
 
 **Status:** Implementation committed to `feat/phase-24-semantic-building-world-model`; acceptance verification pending CI.  
-**Pull request:** To be opened after repository changes are complete.  
+**Pull request:** [#6 — Phase 24: add semantic Building World Model and parametric CAD intent](https://github.com/RayAKaan/AIrchitect/pull/6).  
 **Base:** `main` at Phase 23 merge commit `1780ccf9fe2424741745c09d1bf4e02b7f45e401`.
 
 ## Delivered in this branch
@@ -12,6 +12,7 @@
 - Persisted the graph inside new canonical World Model revision payloads before computing their content hash.
 - Added versioned IFC-class/CAD-feature mapping metadata and deterministic parametric feature-intent compilation.
 - Added tenant-scoped, version-scoped inspection APIs for the semantic graph and geometry-intent specification.
+- Added a Semantic Model workspace tab to inspect element properties, provenance, relationships, CAD mappings, and missing geometry inputs.
 - Added unit and API integration tests for determinism, identity stability, relationships, explicit limitations, and missing-input handling.
 
 ## Acceptance evidence
