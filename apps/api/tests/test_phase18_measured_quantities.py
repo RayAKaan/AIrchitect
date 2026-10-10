@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from app.db.models import CadJobRun, GeometryArtifact, QuantityArtifact
+from app.db.models import ArtifactDependency, CadJobRun, GeometryArtifact, QuantityArtifact, RegulatoryEvaluation, StructuralArtifact, ValidationRun
 from app.domains.engineering.engines import (
     MEASURED_DIVERGENCE_WARN,
     EngineeringError,
@@ -612,3 +612,87 @@ class TestConsumerAdaptation:
         assert result["observed_basis"]["basis"] == "QUANTITY_ARTIFACT"
         assert result["observed_basis"]["code"] == "BUILDING_HEIGHT"
         assert result["observed_basis"]["type"] == "EXACT_DERIVED"
+
+async def test_structural_and_regulatory_artifacts_depend_on_cad_quantities(api, cad, db):
+    """The dependency graph must encode the quantity inputs actually consumed."""
+    headers, _org, project, version, alternative, _run = await _measured_project(api, cad)
+    response = await _calculate(api, headers, project, version, alternative)
+    assert response.status_code == 201, response.text
+
+    async with db() as session:
+        quantity = await session.scalar(
+            select(QuantityArtifact).where(
+                QuantityArtifact.design_alternative_id == alternative["id"]
+            )
+        )
+        structural = await session.scalar(
+            select(StructuralArtifact).where(
+                StructuralArtifact.design_alternative_id == alternative["id"]
+            )
+        )
+        regulatory = await session.scalar(
+            select(RegulatoryEvaluation).where(
+                RegulatoryEvaluation.design_alternative_id == alternative["id"]
+            )
+        )
+        assert quantity is not None and structural is not None and regulatory is not None
+        quantity_version_id = quantity.artifact_version_id
+        for consumer in (structural, regulatory):
+            dependencies = list(
+                (
+                    await session.scalars(
+                        select(ArtifactDependency).where(
+                            ArtifactDependency.artifact_version_id == consumer.artifact_version_id
+                        )
+                    )
+                ).all()
+            )
+            assert quantity_version_id in {
+                dependency.depends_on_artifact_version_id for dependency in dependencies
+            }
+
+async def test_new_cad_geometry_marks_old_engineering_chain_stale(api, cad, db):
+    """Replacing a solid invalidates its prior quantity/structure/regulatory/validation chain."""
+    headers, _org, project, version, alternative, first_run = await _measured_project(api, cad)
+    calculated = await _calculate(api, headers, project, version, alternative)
+    assert calculated.status_code == 201, calculated.text
+
+    # Requesting a different export set creates a distinct CAD request/hash while
+    # preserving the same conceptual alternative and fake-kernel measurement fixture.
+    cad.worker_with("ok")
+    second_run = await api.post(
+        _cad_url(project, version, alternative),
+        headers=headers,
+        json={"requested_outputs": ["step"]},
+    )
+    assert second_run.status_code == 201, second_run.text
+    assert second_run.json()["geometry_artifact_id"] != first_run["geometry_artifact_id"]
+
+    async with db() as session:
+        old_geometry = await session.get(GeometryArtifact, first_run["geometry_artifact_id"])
+        quantity = await session.scalar(
+            select(QuantityArtifact).where(
+                QuantityArtifact.design_alternative_id == alternative["id"]
+            )
+        )
+        structural = await session.scalar(
+            select(StructuralArtifact).where(
+                StructuralArtifact.design_alternative_id == alternative["id"]
+            )
+        )
+        regulatory = await session.scalar(
+            select(RegulatoryEvaluation).where(
+                RegulatoryEvaluation.design_alternative_id == alternative["id"]
+            )
+        )
+        validation = await session.scalar(
+            select(ValidationRun).where(
+                ValidationRun.design_alternative_id == alternative["id"]
+            )
+        )
+        assert old_geometry is not None and old_geometry.status == "STALE"
+        assert quantity is not None and quantity.status == "STALE"
+        assert structural is not None and structural.status == "STALE"
+        assert regulatory is not None and regulatory.status == "STALE"
+        assert validation is not None and validation.status == "STALE"
+

@@ -1,6 +1,6 @@
 # Phase 19 — Geometry Authority & Legacy Path Elimination: S1 Dependency Audit
 
-**Status**: In Progress  
+**Status**: In progress — S1–S4 delivered; S5–S9 partially delivered; S10–S16 remain open  
 **Generated**: 2026-09-28  
 **Base Commit**: d9ca126 (Phase 18 S14 complete)
 
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Phase 18 (S1–S14) delivered a complete CAD/BIM pipeline: real OCCT/FreeCAD worker, IFC/GLB/STEP export, bounded worker execution, artifact persistence, CAD-derived quantities with measured/declared taxonomy, structural/regulatory consumers bound to quantity artifact, and frontend GLB integration. **However, the frontend still falls back to fabricated GeometryIR when CAD GLB is unavailable**, and **legacy GeometryIR paths remain in multiple authoritative locations**.
+Phase 18 delivered the isolated OCCT/FreeCAD worker, IFC/GLB/STEP export, bounded execution, artifact persistence, and CAD-derived measurements. Phase 19 S2–S3 added an explicit `CAD_BREP | LEGACY_IR` source discriminator and made engineering reject legacy IR. S4 removes the frontend IR renderer, makes the geometry endpoint CAD-only, and exposes an explicit CAD-generation action. S5–S7 now record quantity dependencies for structural/regulatory artifacts, and S8–S9 stale the old geometry and dependency-graph descendants when a replacement solid is committed. Legacy geometry generation and non-authoritative helper code still exist and must be retired or proven unreachable in S10–S16.
 
 This audit catalogs every reference to GeometryIR, GeometryArtifact, parametric massing engines, and fabricated geometry across the codebase. Each entry is classified: **KEEP**, **MIGRATE**, **DEPRECATE**, or **DELETE**.
 
@@ -119,14 +119,14 @@ This audit catalogs every reference to GeometryIR, GeometryArtifact, parametric 
 Phase 19 S1: Audit (THIS DOCUMENT)
     │
     ▼
-Phase 19 S2: Canonical Geometry Contract
-    │  (New type: CanonicalGeometryArtifact; source discriminator on GeometryArtifact)
+Phase 19 S2: Canonical Geometry Contract — DELIVERED
+    │  (source discriminator on GeometryArtifact)
     ▼
-Phase 19 S3: Enforce CAD Authority
-    │  (geom_input() → CAD only; from_ir() deleted; CAD_REQUIRED state)
+Phase 19 S3: Enforce CAD Authority — DELIVERED
+    │  (engineering source resolution is CAD-only; CAD_REQUIRED state)
     ▼
-Phase 19 S4: Remove Frontend Fabricated Geometry
-    │  (DesignViewer: GLB only; DesignWorkspace: no IR fallback)
+Phase 19 S4: Remove Frontend Fabricated Geometry — DELIVERED
+    │  (GLB-only viewer, CAD-only geometry API, explicit CAD generation action)
     ▼
 Phase 19 S5–S7: Migrate Engineering Consumers
     │  (QuantityEngine: from_solids only; Structural/Regulatory → QuantityArtifact)
@@ -142,12 +142,13 @@ Phase 19 S11–S16: Testing, PostgreSQL, Security, Documentation
 
 ---
 
-## Critical Path Items (Must Complete Before S4)
+## Phase 19 S4 Exit Evidence and Remaining Gates
 
-1. **`geom_input()` must return CAD-only** — currently returns LEGACY_IR for design-generated geometry
-2. **`QuantityEngine.from_ir()` must be removed** — currently called when `source != "CAD_BREP"`
-3. **`DesignEngine.generate()` must not create IR GeometryArtifact** — CAD Orchestrator must own geometry creation
-4. **Frontend must not render `GeometryIR`** — `DesignViewer` must load GLB or show status
+1. Engineering source resolution selects only `CAD_BREP` artifacts and returns `CAD_REQUIRED` when none exist.
+2. The design geometry endpoint exposes only CAD artifacts and never returns `geometry_ir`.
+3. The viewer renders persisted GLB only; without it, the UI states that CAD is unavailable rather than drawing a synthetic building.
+4. The workspace exposes a CAD generation action and refreshes geometry metadata after the job completes.
+5. Remaining: migrate structural/regulatory/validation/evidence dependencies to the canonical CAD-derived quantity chain; remove or isolate direct legacy-engine call paths; verify PostgreSQL, real worker toolchain, staleness, tenant isolation, and full CI.
 
 ---
 
@@ -178,10 +179,10 @@ Phase 19 S11–S16: Testing, PostgreSQL, Security, Documentation
 
 ## Next Steps
 
-1. **Complete this audit** with any remaining symbols found
-2. **Create `docs/architecture/PHASE-19-CANONICAL-GEOMETRY.md`** (S2)
-3. **Implement canonical geometry contract** with `source` discriminator
-4. **Begin S3 enforcement** — make `geom_input()` CAD-only
+1. Complete S5–S9 verification: assert the full geometry → quantity → cost/structure/regulation → validation/evidence chain, including CAD replacement and world-revision races.
+2. Complete S10: remove legacy GeometryIR from authoritative execution and explicitly deprecate non-authoritative generation paths.
+3. Complete S11–S16: replace remaining IR-only engine fixtures, test tenant isolation and artifact downloads, verify PostgreSQL migrations and real CAD worker behavior, and update release documentation.
+4. Run the complete repository CI and verify the final PR head before calling Phase 19 complete.
 
 ---
 

@@ -21,23 +21,6 @@ from app.domains.cad.protocol import CadJobResult, CadJobRequest, SolidMeasureme
 
 def _make_fake_cad_result():
     """Create a mock CAD job result with standard measurements for testing."""
-    from app.domains.cad.protocol import CadJobResult, SolidMeasurement
-    measurements = [
-        SolidMeasurement(
-            id="mass-1",
-            kind="building_mass",
-            volume_m3=3000.0,
-            surface_area_m2=1400.0,
-            centroid=[5.0, 5.0, 15.0],
-            bounding_box={"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 30.0]},
-            solid_count=1,
-            face_count=6,
-            edge_count=12,
-            vertex_count=8,
-            is_valid=True,
-            is_closed=True,
-        )
-    ]
     return CadJobResult(
         schema_version="1.0",
         job_id="test-job",
@@ -77,9 +60,6 @@ def _make_fake_cad_result():
 
 async def _create_cad_geometry(session, project, version, world, alt_id, user_id, design_hash="", alternative_id=None):
     """Create a CAD_BREP geometry artifact for testing."""
-    from app.domains.cad.persistence import record_cad_success
-    from app.domains.cad.protocol import CadJobRequest
-
     recorded = await record_cad_success(
         session=session,
         project=project,

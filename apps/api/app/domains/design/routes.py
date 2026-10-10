@@ -72,8 +72,10 @@ async def list_alternatives(project_id:str,version_ref:str,user:User=Depends(cur
     _,version=await resolve_project_version(session,project_id,version_ref,user.id)
     world=await resolve_world_model(session,version.id)
     rows=list((await session.scalars(select(DesignAlternative).where(DesignAlternative.project_version_id==version.id).order_by(DesignAlternative.created_at,DesignAlternative.id))).all())
-    geometries=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.project_version_id==version.id))).all())
-    by_alt={g.alternative_id:g for g in geometries}
+    geometries=list((await session.scalars(select(GeometryArtifact).where(GeometryArtifact.project_version_id==version.id,GeometryArtifact.source=="CAD_BREP").order_by(GeometryArtifact.created_at.desc()))).all())
+    by_alt={}
+    for geometry_row in geometries:
+        by_alt.setdefault(geometry_row.alternative_id,geometry_row)
     return {"project_version_id":version.id,"world_model_hash":world.model_hash,
         "alternatives":[alternative_out(row,by_alt.get(row.id),world.model_hash or "") for row in rows]}
 
@@ -81,7 +83,7 @@ async def list_alternatives(project_id:str,version_ref:str,user:User=Depends(cur
 @router.get("/projects/{project_id}/versions/{version_ref}/design/alternatives/{alternative_id}")
 async def get_alternative(project_id:str,version_ref:str,alternative_id:str,user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
     _,_,world,alt=await load_alt(session,project_id,version_ref,alternative_id,user)
-    geometry=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id))
+    geometry=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,GeometryArtifact.project_version_id==alt.project_version_id,GeometryArtifact.source=="CAD_BREP").order_by(GeometryArtifact.created_at.desc()))
     return alternative_out(alt,geometry,world.model_hash or "")
 
 
@@ -89,14 +91,14 @@ async def get_alternative(project_id:str,version_ref:str,alternative_id:str,user
 async def get_geometry(project_id:str,version_ref:str,alternative_id:str,user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
     _,_,world,alt=await load_alt(session,project_id,version_ref,alternative_id,user)
     geometry=await session.scalar(select(GeometryArtifact).where(GeometryArtifact.alternative_id==alt.id,
-        GeometryArtifact.project_version_id==alt.project_version_id))
-    if geometry is None:raise error(404,"GEOMETRY_NOT_FOUND","Geometry artifact not found")
+        GeometryArtifact.project_version_id==alt.project_version_id,GeometryArtifact.source=="CAD_BREP").order_by(GeometryArtifact.created_at.desc()))
+    if geometry is None:raise error(409,"CAD_REQUIRED","No authoritative CAD geometry exists for this alternative. Generate a CAD/BIM model before viewing geometry or running engineering analysis.")
     status="STALE" if geometry.input_world_model_hash!=(world.model_hash or "") and geometry.status=="CURRENT" else geometry.status
     return {"id":geometry.id,"alternative_id":alt.id,"project_version_id":alt.project_version_id,
         "world_model_revision_id":geometry.world_model_revision_id,"status":status,"geometry_hash":geometry.geometry_hash,
         "input_world_model_hash":geometry.input_world_model_hash,"design_hash":geometry.design_hash,
         "engine_name":geometry.engine_name,"engine_version":geometry.engine_version,"provenance":geometry.provenance_json,
-        "geometry_ir":geometry.payload_json.get("geometry_ir"),"validation":geometry.payload_json.get("validation"),
+        "validation":geometry.payload_json.get("validation"),
         "created_at":geometry.created_at,"updated_at":geometry.updated_at}
 
 

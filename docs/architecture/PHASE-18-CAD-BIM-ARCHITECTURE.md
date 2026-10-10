@@ -1,6 +1,6 @@
 # Phase 18 — CAD/BIM Architecture
 
-Status: in progress (S1–S9 delivered, S10–S14 open). Last updated 2026-09-27.
+Status: pipeline delivered; CAD authority hardening and legacy-path elimination are tracked in Phase 19. Last updated 2026-10-10.
 
 ## Why this phase exists
 

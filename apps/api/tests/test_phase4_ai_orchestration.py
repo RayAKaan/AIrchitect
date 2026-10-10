@@ -26,7 +26,7 @@ async def api():
     await engine.dispose()
 
 
-async def setup(client):
+async def setup(client,cad):
     email=f'p4-{uuid.uuid4().hex}@example.com'
     a=await client.post('/api/v1/auth/register',json={'email':email,'name':'Reviewer','password':'secure-phase-four','organization_name':'P4 Org'})
     h={'Authorization':'Bearer '+a.json()['access_token']}
@@ -38,8 +38,9 @@ async def setup(client):
     commit=await client.post(f"/api/v1/projects/{p['id']}/versions/{v['id']}/world-model",headers=h,json={'expected_revision':b.json()['version_revision'],'commit':True})
     g=await client.post(f"/api/v1/projects/{p['id']}/versions/{v['id']}/design/generate",headers=h)
     aid=g.json()['alternative_ids'][0]
-    cad=await client.post(f"/api/v1/projects/{p['id']}/versions/{v['id']}/design/alternatives/{aid}/cad",headers=h,json={'outputs':['glb']})
-    assert cad.status_code==201,cad.text
+    cad.worker_with("ok")
+    cad_response=await client.post(f"/api/v1/projects/{p['id']}/versions/{v['id']}/design/alternatives/{aid}/cad",headers=h,json={'requested_outputs':['glb']})
+    assert cad_response.status_code==201,cad_response.text
     return h,commit.json()['version'],brief
 
 
@@ -59,9 +60,9 @@ def test_policy_hard_blocker_and_confidence_only_route():
     assert policy.apply(low,rec).selected_option=='REVIEW'
 
 
-async def test_intake_is_non_mutating_and_usage_is_auditable(api):
+async def test_intake_is_non_mutating_and_usage_is_auditable(api,cad):
     client,factory=api
-    h,v,brief=await setup(client)
+    h,v,brief=await setup(client,cad)
     pid=v['project_id']
     r=await client.post(f"/api/v1/projects/{pid}/ai/intake",headers=h,json={'text':brief,'version_ref':v['id']})
     assert r.status_code==200,r.text
@@ -72,9 +73,9 @@ async def test_intake_is_non_mutating_and_usage_is_auditable(api):
     assert status.json()['keys_exposed'] is False
 
 
-async def test_feasibility_workflow_evidence_review_gate_and_tenant_isolation(api):
+async def test_feasibility_workflow_evidence_review_gate_and_tenant_isolation(api,cad):
     client,factory=api
-    h,v,brief=await setup(client)
+    h,v,brief=await setup(client,cad)
     pid=v['project_id']
     run=await client.post(f"/api/v1/projects/{pid}/workflows/feasibility",headers={**h,'Idempotency-Key':'phase4-run-0001'},json={'version_ref':v['id']})
     assert run.status_code==201,run.text
@@ -94,14 +95,14 @@ async def test_feasibility_workflow_evidence_review_gate_and_tenant_isolation(ap
         assert await s.scalar(select(func.count(DecisionRecord.id)))==1
         assert await s.scalar(select(func.count(EvidenceNode.id)))>0
         assert await s.scalar(select(func.count(ReviewRecord.id)))==1
-    other,_,_=await setup(client)
+    other,_,_=await setup(client,cad)
     denied=await client.get(f"/api/v1/projects/{pid}/evidence",headers=other)
     assert denied.status_code in {403,404}
 
 
-async def test_assistant_is_read_only_and_grounded(api):
+async def test_assistant_is_read_only_and_grounded(api,cad):
     client,_=api
-    h,v,brief=await setup(client)
+    h,v,brief=await setup(client,cad)
     pid=v['project_id']
     answer=await client.post(f"/api/v1/projects/{pid}/assistant",headers=h,json={'question':'Summarize feasibility.','version_ref':v['id']})
     assert answer.status_code==200

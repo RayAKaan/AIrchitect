@@ -30,7 +30,18 @@ async def setup_committed(api,suffix="a"):
     assert commit.status_code==200,commit.text
     return h,org,project,commit.json()["version"]
 
-async def test_design_api_generation_geometry_comparison_selection_and_tenant_isolation(api):
+async def generate_cad(api,cad,headers,project,version,alternative):
+    cad.worker_with("ok")
+    response=await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alternative['id']}/cad",
+        headers=headers,
+        json={"requested_outputs":["glb"]},
+    )
+    assert response.status_code==201,response.text
+    assert response.json()["geometry_artifact_id"]
+
+
+async def test_design_api_generation_geometry_comparison_selection_and_tenant_isolation(api,cad):
     h,_,project,version=await setup_committed(api)
     generated=await api.post(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/generate",headers=h)
     assert generated.status_code==201,generated.text
@@ -41,8 +52,9 @@ async def test_design_api_generation_geometry_comparison_selection_and_tenant_is
     listing=(await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives",headers=h)).json()
     assert len(listing["alternatives"])==3
     alt=listing["alternatives"][0]
+    await generate_cad(api,cad,h,project,version,alt)
     geometry=await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alt['id']}/geometry",headers=h)
-    assert geometry.status_code==200 and geometry.json()["geometry_ir"]["floor_plates"]
+    assert geometry.status_code==200 and geometry.json()["geometry_hash"] and "geometry_ir" not in geometry.json()
     comparison=(await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/comparison",headers=h)).json()
     assert len(comparison["alternatives"])==3 and "No single optimal" in comparison["notice"]
     selected=await api.post(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alt['id']}/select",headers=h,json={"reason":"Preferred open-site trade-off"})
@@ -51,9 +63,12 @@ async def test_design_api_generation_geometry_comparison_selection_and_tenant_is
     denied=await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives",headers=other_h)
     assert denied.status_code==404 and denied.json()["error"]["code"]=="PROJECT_NOT_FOUND"
 
-async def test_v2_has_no_v1_geometry_then_generates_new_hashes(api):
+async def test_v2_has_no_v1_geometry_then_generates_new_hashes(api,cad):
     h,_,project,v1=await setup_committed(api)
     await api.post(f"/api/v1/projects/{project['id']}/versions/{v1['id']}/design/generate",headers=h)
+    v1_alts=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v1['id']}/design/alternatives",headers=h)).json()["alternatives"]
+    for alternative in v1_alts:
+        await generate_cad(api,cad,h,project,v1,alternative)
     v1_alts=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v1['id']}/design/alternatives",headers=h)).json()["alternatives"]
     v1_hashes={a["geometry_hash"] for a in v1_alts}
     created=await api.post(f"/api/v1/projects/{project['id']}/versions",headers={**h,"Idempotency-Key":"p2-floor-change"},json={
@@ -65,6 +80,9 @@ async def test_v2_has_no_v1_geometry_then_generates_new_hashes(api):
     assert committed.status_code==200,committed.text
     generated=await api.post(f"/api/v1/projects/{project['id']}/versions/{v2['id']}/design/generate",headers=h)
     assert generated.status_code==201,generated.text
+    v2_alts=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v2['id']}/design/alternatives",headers=h)).json()["alternatives"]
+    for alternative in v2_alts:
+        await generate_cad(api,cad,h,project,v2,alternative)
     v2_alts=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v2['id']}/design/alternatives",headers=h)).json()["alternatives"]
     assert len(v2_alts)==3 and v1_hashes.isdisjoint({a["geometry_hash"] for a in v2_alts})
     v1_again=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v1['id']}/design/alternatives",headers=h)).json()["alternatives"]

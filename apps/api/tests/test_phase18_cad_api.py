@@ -610,3 +610,41 @@ async def test_cad_does_not_block_the_event_loop_while_a_job_runs(api, cad):
     body = response.json()
     assert body["status"] == "FAILED"
     assert body["error"]["code"] == "CAD_JOB_TIMEOUT"
+
+async def test_design_geometry_endpoint_requires_authoritative_cad(api):
+    """A legacy design IR must never be returned as a viewer geometry artifact."""
+    headers, _org, project, version = await _committed_project(api)
+    alternative = await _alternative(api, headers, project, version)
+    response = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}"
+        f"/design/alternatives/{alternative['id']}/geometry",
+        headers=headers,
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "CAD_REQUIRED"
+    assert "Generate a CAD/BIM model" in response.json()["error"]["message"]
+
+async def test_design_geometry_endpoint_returns_only_cad_artifacts(api, cad):
+    """The viewer endpoint returns the persisted CAD record, never the legacy IR payload."""
+    headers, _org, project, version = await _committed_project(api)
+    alternative = await _alternative(api, headers, project, version)
+    cad.worker_with("ok")
+    generated = await api.post(
+        _cad_url(project, version, alternative),
+        headers=headers,
+        json={"requested_outputs": ["glb"]},
+    )
+    assert generated.status_code == 201, generated.text
+    assert generated.json()["geometry_artifact_id"]
+
+    response = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}"
+        f"/design/alternatives/{alternative['id']}/geometry",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "CURRENT"
+    assert body["geometry_hash"]
+    assert "geometry_ir" not in body
+
