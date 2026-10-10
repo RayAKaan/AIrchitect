@@ -1,6 +1,6 @@
 # Phase 28 — Complete Designer Workspace & Release Validation
 
-**Status:** Implementation in progress on `feat/phase-28-workspace-release-validation`.
+**Status:** Implemented; PR #10 is open for review and CI run #375 passed on the current implementation head.
 **Base:** `main` after Phase 27 merge commit `bb6a1b491cd7d4908a1f3ce3288793507a16a34e`.
 
 ## Objective
@@ -31,7 +31,7 @@ Close the remaining cross-phase workspace integration gap and add an honest, ver
 - [x] Native CAD-host and legal gates remain explicitly unverified until deployment/legal evidence exists.
 - [x] Browser acceptance covers the cross-phase Foundation workflow and is required by CI.
 - [x] Unit tests cover current/stale hash binding, missing evidence, cross-scope findings, and the manual-gate override of an otherwise green automated result.
-- [ ] GitHub Actions CI passes on the final PR head; record the exact run and test counts after execution.
+- [x] GitHub Actions CI passes on the final PR head; run #375 passed with backend, frontend, browser E2E, release preflight, and Docker/Compose checks green.
 
 ## Boundaries
 

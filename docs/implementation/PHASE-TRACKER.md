@@ -36,4 +36,4 @@
 - Never count scaffolding, placeholders, simulated progress, or unverified external data as completion.
 - Keep this tracker updated as work progresses.
 
-| 28 | Complete Designer Workspace & Release Validation | In progress (`feat/phase-28-workspace-release-validation`) | Connect persisted Phase 27 impact propagation to the Foundation workspace; aggregate requirement, semantic-model, export, and dependency-graph evidence into a fail-honest release checklist; add browser acceptance to CI and retain native CAD-host/legal gates as explicit manual blockers. |
+| 28 | Complete Designer Workspace & Release Validation | Implemented (PR #10 open; CI run #375 passed) | Foundation workspace now exposes persisted change-impact propagation and a cross-phase release checklist; 449 backend tests passed, 40 skipped, 21 frontend tests passed, 1 Playwright acceptance test passed, Ruff, migrations, Docker/Compose smoke, licence policy, benchmark, and release preflight passed. Native CAD-host smoke and legal redistribution clearance remain open manual gates. |

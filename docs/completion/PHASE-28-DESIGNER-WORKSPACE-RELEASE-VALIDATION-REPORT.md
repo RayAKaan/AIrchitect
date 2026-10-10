@@ -1,8 +1,8 @@
 # Phase 28 — Complete Designer Workspace & Release Validation Report
 
-**Status:** Implementation committed; final CI verification pending.
+**Status:** Implemented; PR #10 is open for review and CI run #375 passed.
 **Branch:** `feat/phase-28-workspace-release-validation`
-**Pull request:** Pending creation after the implementation commit.
+**Pull request:** https://github.com/RayAKaan/AIrchitect/pull/10
 
 ## Delivered in this phase
 
@@ -16,7 +16,14 @@
 
 ## Verification
 
-Final GitHub Actions CI evidence will be recorded here after the browser-e2e and full existing CI matrix finish on the PR head.
+**Final GitHub Actions run:** [#375](https://github.com/RayAKaan/AIrchitect/actions/runs/38086482551) — all jobs passed on commit `48500fe5f8346f41506886e46eca8c3259b09b8f`.
+
+- Backend: **449 passed, 40 skipped**, 2 warnings; Ruff and PostgreSQL migration upgrade/downgrade/upgrade checks passed.
+- Frontend: **21 tests passed** across 5 test files; lint and production build passed.
+- Browser acceptance: **1 Playwright test passed** across the end-to-end Foundation workflow.
+- Docker API image and web image builds passed; Docker Compose startup/readiness/API smoke/teardown passed.
+- Release preflight passed; CAD/BIM licence policy passed with 3 copyleft components accounted for.
+- Requirements benchmark passed **10/10 exact-match cases**, precision **1.0000**, recall **1.0000**, F1 **1.0000**. These scores apply only to the committed ten-case fixture corpus.
 
 ## Limitations and remaining gates
 
@@ -26,4 +33,4 @@ Final GitHub Actions CI evidence will be recorded here after the browser-e2e and
 - Structural output remains conceptual; regulatory `UNKNOWN` is not a pass.
 - Complete redistribution/source-material notices and qualified legal sign-off remain separate release blockers.
 
-**Merge status:** The Phase 28 PR will remain open for your review; it will not be merged automatically.
+**Merge status:** PR #10 is open, mergeable status pending GitHub's final refresh, and not merged. Review and merge it manually.
