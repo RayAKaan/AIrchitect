@@ -85,7 +85,7 @@ def validate_production_settings(config: Settings) -> None:
         raise ValueError("DATABASE_URL must point to a PostgreSQL database in production")
     if database.hostname.lower() in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("DATABASE_URL must not point to localhost in production")
-    if database.username in {"", "building"} or database.password in {"", "building"}:
+    if not database.username or database.username == "building" or not database.password or database.password == "building":
         raise ValueError("DATABASE_URL must use explicit non-default credentials in production")
 
     if config.geometry_engine.lower() != "cad_bim":
