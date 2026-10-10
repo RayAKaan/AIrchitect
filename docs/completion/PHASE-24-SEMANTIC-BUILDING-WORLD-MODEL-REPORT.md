@@ -1,6 +1,6 @@
 # Phase 24 Completion Report — Semantic Building World Model
 
-**Status:** Implementation committed to `feat/phase-24-semantic-building-world-model`; acceptance verification pending CI.  
+**Status:** Delivered and merged via PR #6; GitHub Actions CI run #130 passed all jobs.  
 **Pull request:** [#6 — Phase 24: add semantic Building World Model and parametric CAD intent](https://github.com/RayAKaan/AIrchitect/pull/6).  
 **Base:** `main` at Phase 23 merge commit `1780ccf9fe2424741745c09d1bf4e02b7f45e401`.
 
@@ -17,16 +17,18 @@
 
 ## Acceptance evidence
 
+CI run [#130](https://github.com/RayAKaan/AIrchitect/actions/runs/38079210053) passed all jobs on the Phase 24 merge commit.
+
 | Gate | Result |
 |---|---|
-| Semantic graph and CAD mapping unit tests | Pending CI |
-| Canonical API integration tests | Pending CI |
-| Backend Ruff and full pytest suite | Pending CI |
-| PostgreSQL migration cycle | Pending CI |
-| Frontend lint, tests, and build | Pending CI |
-| API/web Docker builds | Pending CI |
-| Docker Compose readiness and smoke test | Pending CI |
-| Licence policy, requirements benchmark, release preflight | Pending CI |
+| Semantic graph and CAD mapping unit tests | Passed in full backend pytest suite |
+| Canonical API integration tests | Passed in full backend pytest suite |
+| Backend Ruff and full pytest suite | Passed |
+| PostgreSQL migration cycle | Upgrade/downgrade/upgrade passed |
+| Frontend lint, tests, and build | Passed |
+| API/web Docker builds | Passed |
+| Docker Compose readiness and smoke test | Passed |
+| Licence policy, requirements benchmark, release preflight | Passed |
 
 ## Limitations and remaining gates
 
@@ -38,4 +40,4 @@
 
 ## Final verification
 
-To be updated with the exact GitHub Actions run, test counts, benchmark result, and any remaining issues after CI completes. This phase must not be marked delivered until all required automated gates pass and any regressions are fixed.
+Phase 24 is delivered and merged. CI run #130 passed all required automated jobs. The requirement benchmark remains a ten-case fixture corpus and does not establish universal language-understanding accuracy. Native CAD-host smoke evidence and legal redistribution/source-material clearance remain separate deployment/release gates.
