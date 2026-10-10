@@ -18,13 +18,13 @@ Make preliminary requirements extraction measurable and safer before it influenc
 4. **Benchmark gate:** version ten representative/adversarial briefs; calculate micro precision/recall/F1 and per-case exact match; enforce 0.95 thresholds in CI.
 
 ## Acceptance criteria
-- [ ] Site parsing cannot consume a later GFA value; site-only briefs never infer site area as GFA.
-- [ ] Negated facts and inequalities are not asserted as exact facts.
-- [ ] Invalid quantities are visible and cannot enter/commit into the canonical World Model.
-- [ ] Warnings are visible but do not silently become approvals.
-- [ ] Validation persists with brief/provenance/audit evidence.
-- [ ] All fixture fact sets match exactly; precision, recall, F1 >= 0.95.
-- [ ] Backend Ruff/pytest, PostgreSQL migration cycle, frontend lint/tests/build, Docker builds, Compose readiness/smoke, licence gate, and release preflight pass.
+- [x] Site parsing cannot consume a later GFA value; site-only briefs never infer site area as GFA.
+- [x] Negated facts and inequalities are not asserted as exact facts.
+- [x] Invalid quantities are visible and cannot enter/commit into the canonical World Model.
+- [x] Warnings are visible but do not silently become approvals.
+- [x] Validation persists with brief/provenance/audit evidence.
+- [x] All fixture fact sets match exactly; precision, recall, F1 >= 0.95.
+- [x] Backend Ruff/pytest, PostgreSQL migration cycle, frontend lint/tests/build, Docker builds, Compose readiness/smoke, licence gate, and release preflight pass.
 
 ## Boundaries
 No LLM as source of truth; no regulatory/structural certification. The benchmark is a regression corpus, not a universal accuracy claim.
