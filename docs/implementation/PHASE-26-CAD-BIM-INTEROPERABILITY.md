@@ -1,6 +1,6 @@
 # Phase 26 — CAD/BIM Exports & Interoperability
 
-**Status:** Implementation in progress on `feat/phase-26-cad-bim-interoperability`.
+**Status:** Delivered; PR #8 merged to `main` (merge commit `09e40a76991b6ebf4f0b466bf93ac5b95c684ca2`).
 **Base:** `main` after Phase 25 PR #7 merged.
 
 ## Objective

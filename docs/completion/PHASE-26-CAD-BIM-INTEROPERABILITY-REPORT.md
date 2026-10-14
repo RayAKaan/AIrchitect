@@ -1,9 +1,9 @@
 # Phase 26 — CAD/BIM Exports & Interoperability Completion Report
 
-**Status:** Implemented; PR #8 is open and has passing CI.
+**Status:** Delivered; PR #8 merged to `main`.
 **Branch:** `feat/phase-26-cad-bim-interoperability`
 **Pull request:** https://github.com/RayAKaan/AIrchitect/pull/8
-**Final GitHub Actions run:** [#311](https://github.com/RayAKaan/AIrchitect/actions/runs/38083197945) — PASS on commit `171d69e38c5d927fd9e138958493cb1a05844620`.
+**Final PR-head GitHub Actions run:** [#314](https://github.com/RayAKaan/AIrchitect/actions/runs/38083432175) — PASS on commit `171d69e38c5d927fd9e138958493cb1a05844620`.
 
 ## Delivered
 
@@ -33,3 +33,6 @@ The requirements benchmark is limited to its ten committed fixtures. Passing CI 
 - A passing manifest does not certify architectural correctness, structural adequacy, code/zoning compliance, fire/life safety, or constructability.
 - Real CAD-host smoke evidence, complete redistribution/source-material notices, and qualified legal sign-off remain Phase 22 release gates.
 - No missing dimensions or semantic components are invented to make an export appear complete.
+
+
+**Merge evidence:** PR #8 was merged to `main` in commit `09e40a76991b6ebf4f0b466bf93ac5b95c684ca2`.

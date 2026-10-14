@@ -1,6 +1,6 @@
 # Phase 27 — Dependency-Aware Feasibility & Change Propagation
 
-**Status:** Implemented; PR #9 is open for review on `feat/phase-27-dependency-aware-propagation`.
+**Status:** Delivered; PR #9 merged to `main` in commit `bb6a1b491cd7d4908a1f3ce3288793507a16a34e`.
 **Base:** `main` after Phase 26 merge.
 
 ## Objective
