@@ -9,8 +9,9 @@ from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevisi
 from app.db.session import get_session
 from app.dependencies import current_user, require_membership
 from app.domains.site.analysis import RUNNER_VERSION, _hash, analyze_site
+from app.domains.site.diagrams import RUNNER_VERSION as DIAGRAM_RUNNER_VERSION, generate_diagram
 from app.domains.site.provider_runtime import fetch_context
-from app.domains.site.schemas import ContextFetchOut, SetSiteBoundaryCommand, SiteAnalysisOut, SiteRevisionOut
+from app.domains.site.schemas import ContextFetchOut, DiagramOut, SetSiteBoundaryCommand, SiteAnalysisOut, SiteRevisionOut
 from app.domains.site.service import set_site_boundary
 
 router = APIRouter(tags=["site"])
@@ -81,6 +82,28 @@ async def analyze_site_revision(site_id: str, revision_ref: str, user: User = De
     session.add(SiteEvidence(site_revision_id=revision.id, claim_type="site_analysis", value_json={"runner_version": RUNNER_VERSION, "source_context_hash": result["source_context_hash"], "result_hash": _hash(result)}, confidence=1.0 if snapshots else None, status=result["status"], method=RUNNER_VERSION))
     await session.commit(); await session.refresh(snapshot)
     return SiteAnalysisOut(analysis_snapshot_id=snapshot.id, site_revision_id=revision.id, source_context_hash=result["source_context_hash"], runner_version=RUNNER_VERSION, status=snapshot.status, result=result)
+
+
+@router.post("/sites/{site_id}/revisions/{revision_ref}/diagrams/{diagram_type}", response_model=DiagramOut)
+async def create_site_diagram(site_id: str, revision_ref: str, diagram_type: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> DiagramOut:
+    site = await session.get(Site, site_id)
+    if site is None: raise HTTPException(404, "Site not found")
+    await require_membership(site.organization_id, user, session, {"owner", "admin", "member"})
+    revision = await _load_revision(session, site_id, revision_ref)
+    allowed = {"figure_ground", "movement", "land_use", "green_water", "solar"}
+    if diagram_type not in allowed: raise HTTPException(422, "DIAGRAM_TYPE_UNSUPPORTED")
+    analysis = await session.scalar(select(SiteLayerSnapshot).where(SiteLayerSnapshot.site_revision_id == revision.id, SiteLayerSnapshot.layer_type == "ANALYSIS"))
+    if analysis is None: raise HTTPException(409, "SITE_ANALYSIS_REQUIRED")
+    spec = generate_diagram(diagram_type, revision.boundary_geojson, analysis.payload_json)
+    layer_type = f"DIAGRAM:{diagram_type}"
+    existing = await session.scalar(select(SiteLayerSnapshot).where(SiteLayerSnapshot.site_revision_id == revision.id, SiteLayerSnapshot.layer_type == layer_type))
+    if existing is not None and existing.payload_json.get("source_context_hash") == spec.get("source_context_hash") and existing.payload_json.get("runner_version") == DIAGRAM_RUNNER_VERSION:
+        return DiagramOut(diagram_snapshot_id=existing.id, site_revision_id=revision.id, diagram_type=diagram_type, runner_version=DIAGRAM_RUNNER_VERSION, source_context_hash=spec.get("source_context_hash"), svg=existing.payload_json["svg"], status=existing.status)
+    snapshot = SiteLayerSnapshot(site_revision_id=revision.id, layer_type=layer_type, provider="deterministic-diagram-studio", dataset_version=DIAGRAM_RUNNER_VERSION, payload_json=spec, status="SUPPORTED")
+    session.add(snapshot)
+    session.add(SiteEvidence(site_revision_id=revision.id, claim_type="site_diagram", value_json={"diagram_type": diagram_type, "runner_version": DIAGRAM_RUNNER_VERSION, "source_context_hash": spec.get("source_context_hash")}, confidence=1.0, status="SUPPORTED", method=DIAGRAM_RUNNER_VERSION))
+    await session.commit(); await session.refresh(snapshot)
+    return DiagramOut(diagram_snapshot_id=snapshot.id, site_revision_id=revision.id, diagram_type=diagram_type, runner_version=DIAGRAM_RUNNER_VERSION, source_context_hash=spec.get("source_context_hash"), svg=spec["svg"], status=snapshot.status)
 
 
 @router.get("/sites/{site_id}/evidence")
