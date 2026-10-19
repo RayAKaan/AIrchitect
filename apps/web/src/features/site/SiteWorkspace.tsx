@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import './site-workspace.css';
 
 type Point = [number, number];
 type SiteRevision = { site_id: string; site_revision_id: string; revision: number; boundary: { type: 'Polygon'; coordinates: Point[][] }; boundary_crs: string; calculation_crs: string; area_m2: number; perimeter_m: number; content_hash: string; parent_revision_id: string | null };
