@@ -66,12 +66,18 @@ async def request_context(request: Request, call_next):
             status_code=status_code,
             duration_ms=duration_ms,
         )
-        if 'response' in locals():
+        if "response" in locals():
             response.headers["X-Request-Id"] = context.request_id
             for header, field in _CONTEXT_HEADER_MAP.items():
                 value = getattr(context, field)
                 if value:
                     response.headers[header] = value
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+            response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+            response.headers["Cache-Control"] = "no-store"
         clear_context()
 
 
