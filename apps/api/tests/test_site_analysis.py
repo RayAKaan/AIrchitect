@@ -27,3 +27,6 @@ def test_site_analysis_is_deterministic_and_source_bound() -> None:
     assert first["metrics"]["building_feature_count"] == 1
     assert first["metrics"]["road_feature_count"] == 1
     assert first["metrics"]["land_use_counts"] == {"retail": 1}
+    assert 0 < first["metrics"]["site_compactness_ratio"] <= 1
+    assert first["metrics"]["road_frontage_m"] >= 0
+    assert first["metrics"]["road_density_m_per_ha"] > 0
