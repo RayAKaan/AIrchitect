@@ -29,6 +29,15 @@ REQUIRED = [
     "scripts/cad_toolchain_smoke.py",
     "scripts/check_compliance_registry.py",
     "scripts/generate_third_party_notices.py",
+    "benchmarks/manifest.json",
+    "benchmarks/README.md",
+    "benchmarks/briefs/cases.json",
+    "benchmarks/sites/cases.json",
+    "benchmarks/concepts/cases.json",
+    "benchmarks/layouts/cases.json",
+    "benchmarks/regeneration/cases.json",
+    "benchmarks/boards/cases.json",
+    "scripts/validate_benchmark_corpus.py",
 ]
 PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (0,"REPOSITORY-AUDIT"),(1,"DEVELOPMENT-FOUNDATION"),(2,"IDENTITY-PROJECT-CORE"),
@@ -48,10 +57,10 @@ if missing:
     print("\n".join(f" - {p}" for p in missing))
     sys.exit(1)
 
-# Compliance is a release invariant, not a manually maintained notice.
 for command in (
     [sys.executable, str(ROOT / "scripts/check_compliance_registry.py")],
     [sys.executable, str(ROOT / "scripts/generate_third_party_notices.py"), "--check"],
+    [sys.executable, str(ROOT / "scripts/validate_benchmark_corpus.py")],
 ):
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
     if result.stdout:
@@ -61,7 +70,6 @@ for command in (
     if result.returncode:
         sys.exit(result.returncode)
 
-# Prevent accidental inclusion of local secrets and bulky/generated state in a release archive.
 forbidden_dirs = {"node_modules", ".venv", "__pycache__", ".pytest_cache", "dist"}
 for path in ROOT.rglob("*"):
     if any(part in forbidden_dirs for part in path.parts):

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "corpus_version": "2026.10",
+  "purpose": "Regression corpus for deterministic-first architectural interpretation, site understanding, concept generation, regeneration and presentation.",
+  "categories": {
+    "briefs": {"path": "briefs", "count": 20},
+    "sites": {"path": "sites", "count": 10},
+    "concepts": {"path": "concepts", "count": 10},
+    "layouts": {"path": "layouts", "count": 10},
+    "regeneration": {"path": "regeneration", "count": 10},
+    "boards": {"path": "boards", "count": 10}
+  },
+  "coverage": {
+    "brief_types": ["student", "residential", "retail", "restaurant", "office", "hospitality", "institutional", "mixed_use", "commercial", "saudi_context"],
+    "site_contexts": ["dense_urban", "suburban", "corner_plot", "irregular_plot", "sloped", "large_commercial", "water_edge", "green_edge", "transit_edge", "saudi_urban"],
+    "hard_requirement_classes": ["site_area", "setback", "height", "far_fsi", "coverage", "parking", "space_area", "adjacency", "orientation", "access"],
+    "benchmark_dimensions": ["requirement_extraction", "requirement_traceability", "site_validation", "evidence_status", "concept_diversity", "metric_traceability", "semantic_layout_consistency", "regeneration_correctness", "board_staleness"]
+  },
+  "cases": {
+    "briefs": ["BR-001","BR-002","BR-003","BR-004","BR-005","BR-006","BR-007","BR-008","BR-009","BR-010","BR-011","BR-012","BR-013","BR-014","BR-015","BR-016","BR-017","BR-018","BR-019","BR-020"],
+    "sites": ["SITE-001","SITE-002","SITE-003","SITE-004","SITE-005","SITE-006","SITE-007","SITE-008","SITE-009","SITE-010"],
+    "concepts": ["CON-001","CON-002","CON-003","CON-004","CON-005","CON-006","CON-007","CON-008","CON-009","CON-010"],
+    "layouts": ["LAY-001","LAY-002","LAY-003","LAY-004","LAY-005","LAY-006","LAY-007","LAY-008","LAY-009","LAY-010"],
+    "regeneration": ["REG-001","REG-002","REG-003","REG-004","REG-005","REG-006","REG-007","REG-008","REG-009","REG-010"],
+    "boards": ["BOARD-001","BOARD-002","BOARD-003","BOARD-004","BOARD-005","BOARD-006","BOARD-007","BOARD-008","BOARD-009","BOARD-010"]
+  }
+}
