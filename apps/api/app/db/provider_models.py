@@ -1,10 +1,8 @@
 from __future__ import annotations
-
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from datetime import datetime
+from sqlalchemy import JSON, Boolean, DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
-
 from app.db.models import Base, now, uid
-
 
 class Provider(Base):
     __tablename__ = "providers"
@@ -15,9 +13,8 @@ class Provider(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     coverage_json: Mapped[dict] = mapped_column(JSON, default=dict)
     health_status: Mapped[str] = mapped_column(String(24), default="UNKNOWN")
-    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), default=now)
-    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
-
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 class ProviderTerms(Base):
     __tablename__ = "provider_terms"
@@ -32,9 +29,8 @@ class ProviderTerms(Base):
     commercial_use: Mapped[str] = mapped_column(String(80), default="UNKNOWN")
     caching_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    effective_at: Mapped[object] = mapped_column(DateTime(timezone=True), default=now)
-    review_due_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    review_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 class ProviderFetchLog(Base):
     __tablename__ = "provider_fetch_logs"
@@ -43,7 +39,7 @@ class ProviderFetchLog(Base):
     capability: Mapped[str] = mapped_column(String(80))
     dataset: Mapped[str | None] = mapped_column(String(200), nullable=True)
     dataset_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    fetched_at: Mapped[object] = mapped_column(DateTime(timezone=True), default=now)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     terms_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="SUCCESS")
