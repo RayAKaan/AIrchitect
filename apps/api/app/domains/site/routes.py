@@ -15,8 +15,10 @@ from app.domains.site.diagrams import RUNNER_VERSION as DIAGRAM_RUNNER_VERSION, 
 from app.domains.site.provider_runtime import fetch_context
 from app.domains.site.schemas import ContextFetchOut, DiagramOut, SetSiteBoundaryCommand, SiteAnalysisOut, SiteRevisionOut
 from app.domains.site.service import set_site_boundary
+from app.domains.site.freshness import router as freshness_router
 
 router = APIRouter(tags=["site"])
+router.include_router(freshness_router)
 
 
 def _revision_out(revision: SiteRevision) -> SiteRevisionOut:
