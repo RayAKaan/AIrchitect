@@ -13,6 +13,8 @@
 | cadquery-ocp | 7.9.3.1.1 | Apache-2.0 | INFRASTRUCTURE | CAD worker | 2027-09-26 |
 | cadquery-ocp-proxy | 7.9.3.1.1 | Apache-2.0 | INFRASTRUCTURE | CAD worker | 2027-09-26 |
 | VTK | 9.6.2 | BSD | INFRASTRUCTURE | CAD worker | 2027-09-26 |
+| Shapely | 2.1.2 | BSD-3-Clause | INFRASTRUCTURE | API | 2027-10-19 |
+| pyproj | 3.7.2 | MIT | INFRASTRUCTURE | API | 2027-10-19 |
 
 ## Redistribution controls
 

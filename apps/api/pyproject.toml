@@ -19,7 +19,9 @@ dependencies = [
   "alembic==1.16.2",
   "email-validator==2.2.0",
   "httpx==0.28.1",
-  "reportlab==4.4.2"
+  "reportlab==4.4.2",
+  "shapely==2.1.2",
+  "pyproj==3.7.2"
 ]
 
 [project.optional-dependencies]
