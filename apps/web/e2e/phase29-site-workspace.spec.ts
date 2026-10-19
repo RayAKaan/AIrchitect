@@ -22,6 +22,7 @@ test('Phase 29 site workspace connects canonical geometry, onboarding and board 
   await expect(template).toHaveValue('feasibility');
   await page.getByRole('button', { name: 'Next' }).click();
   await expect(page.getByText('Add evidence')).toBeVisible();
+  await page.getByRole('button', { name: 'Next' }).click();
   await page.getByRole('button', { name: 'Finish guide' }).click();
 
   await expect(page.getByText('BASEMAP NOT CONFIGURED')).toBeVisible();
