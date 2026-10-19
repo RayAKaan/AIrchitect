@@ -1,0 +1,10 @@
+import { useEffect, useState } from 'react';
+
+type Evidence = { id: string; site_revision_id: string; source_id: string | null; claim_type: string; value: Record<string, unknown>; confidence: number | null; status: string; method: string | null };
+
+export default function EvidencePanel({ api, token, siteId }: { api: string; token: string; siteId: string }) {
+  const [items, setItems] = useState<Evidence[]>([]);
+  const [error, setError] = useState('');
+  useEffect(() => { let cancelled = false; fetch(`${api}/sites/${siteId}/evidence`, { headers: { Authorization: `Bearer ${token}` } }).then(async response => { if (!response.ok) throw new Error('Could not load site evidence'); return response.json() as Promise<Evidence[]>; }).then(data => { if (!cancelled) setItems(data); }).catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load site evidence'); }); return () => { cancelled = true; }; }, [api, token, siteId]);
+  return <section className="evidence-panel" aria-label="Site evidence"><div className="section-head"><div><p className="eyebrow">EVIDENCE</p><h2>Claims and provenance</h2></div><span className="muted">{items.length} recorded</span></div>{error && <div className="alert" role="alert">{error}</div>}{items.length === 0 && !error ? <div className="empty-state compact"><h3>No evidence yet</h3><p>Provider context and deterministic analysis will appear here with status and provenance.</p></div> : <div className="evidence-list">{items.map(item => <article className="evidence-row" key={item.id}><div><strong>{item.claim_type.replaceAll('_', ' ')}</strong><p>{item.method ?? 'Method not recorded'}{item.source_id ? ` · source ${item.source_id.slice(0, 8)}` : ' · derived'}</p></div><div className="evidence-meta"><span className={`evidence-status evidence-${item.status.toLowerCase()}`}>{item.status}</span><span>{item.confidence == null ? 'confidence unknown' : `${Math.round(item.confidence * 100)}% confidence`}</span></div></article>)}</div>}</section>;
+}
