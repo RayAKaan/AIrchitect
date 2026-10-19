@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 import re
 from time import perf_counter
 from uuid import uuid4
@@ -18,6 +19,7 @@ from app.domains.identity.schemas import RegisterRequest, LoginRequest, AuthOut,
 from app.domains.projects.schemas import ProjectCreate, ProjectOut
 
 configure_logging()
+logger = logging.getLogger("airchitect.api")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -43,6 +45,7 @@ async def request_context(request: Request, call_next):
     supplied_id = request.headers.get("X-Request-Id", "")
     request_id = supplied_id if _REQUEST_ID_PATTERN.fullmatch(supplied_id) else str(uuid4())
     context = new_context(request_id)
+    request.state.request_id = request_id
     for header, field in _CONTEXT_HEADER_MAP.items():
         value = request.headers.get(header)
         if value and _REQUEST_ID_PATTERN.fullmatch(value):
@@ -56,7 +59,7 @@ async def request_context(request: Request, call_next):
     finally:
         duration_ms = round((perf_counter() - started) * 1000, 2)
         log_event(
-            app.logger,
+            logger,
             "http.request.completed",
             method=request.method,
             path=request.url.path,
@@ -123,6 +126,7 @@ async def login(body: LoginRequest, session: AsyncSession = Depends(get_session)
     user = await session.scalar(select(User).where(User.email == str(body.email).lower()))
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Invalid email or password")
+    set_context(actor_id=user.id)
     return AuthOut(access_token=issue_token(user.id), user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.get(f"{settings.api_prefix}/auth/me", response_model=UserOut, tags=["identity"])
@@ -154,7 +158,7 @@ async def create_project(body: ProjectCreate, user: User = Depends(current_user)
 
 @app.get(f"{settings.api_prefix}/projects", response_model=list[ProjectOut], tags=["projects"])
 async def list_projects(organization_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[Project]:
-    set_context(actor_id=user.id, project_id=None)
+    set_context(actor_id=user.id)
     await require_membership(organization_id, user, session)
     result = await session.scalars(select(Project).where(Project.organization_id == organization_id).order_by(Project.updated_at.desc()))
     return list(result.all())
