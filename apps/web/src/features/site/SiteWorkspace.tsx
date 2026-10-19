@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import './site-workspace.css';
 import DiagramStudio from './DiagramStudio';
 import EvidencePanel from './EvidencePanel';
+import SiteOnboarding from './SiteOnboarding';
 
 type Point = [number, number];
 type SiteRevision = { site_id: string; site_revision_id: string; revision: number; boundary: { type: 'Polygon'; coordinates: Point[][] }; boundary_crs: string; calculation_crs: string; area_m2: number; perimeter_m: number; content_hash: string; parent_revision_id: string | null };
@@ -16,6 +17,7 @@ export default function SiteWorkspace({ api, token, project }: { api: string; to
   async function commitBoundary() { setBusy(true); setError(''); try { const response = await fetch(`${api}/projects/${project.id}/sites`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ command_id: crypto.randomUUID(), idempotency_key: crypto.randomUUID(), boundary: toGeoJSON(points), reason: 'Set site boundary from workspace' }) }); const data = await response.json(); if (!response.ok) throw new Error(data.detail || data.error?.message || 'Could not set site boundary'); setRevision(data); setSelected(null); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not set site boundary'); } finally { setBusy(false); } }
   function movePoint(index: number, event: React.PointerEvent<SVGCircleElement>) { const svg = event.currentTarget.ownerSVGElement; if (!svg) return; const rect = svg.getBoundingClientRect(); const next: Point = [Math.max(30, Math.min(570, event.clientX - rect.left)), Math.max(30, Math.min(430, event.clientY - rect.top))]; setPoints(current => current.map((point, currentIndex) => currentIndex === index ? next : point)); }
   return <section className="site-workspace" aria-label="Site workspace">
+    <SiteOnboarding />
     <header className="site-workspace-header"><div><p className="eyebrow">SITE / WORLD MODEL</p><h1>{project.name}</h1><p className="muted">Draw a boundary in the workspace. Canonical validation remains server-authoritative.</p></div><button className="btn primary" disabled={busy} onClick={commitBoundary}>{busy ? 'Validating…' : 'Set site boundary'}</button></header>
     {error && <div className="alert" role="alert">{error}</div>}
     <div className="site-workspace-grid">
