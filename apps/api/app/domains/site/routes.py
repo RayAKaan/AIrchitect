@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project, User
+from app.db.provider_models import Provider, ProviderTerms
 from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevision
 from app.db.session import get_session
 from app.dependencies import current_user, require_membership
@@ -61,6 +62,19 @@ async def list_site_revisions(site_id: str, user: User = Depends(current_user), 
     revisions = list(await session.scalars(select(SiteRevision).where(SiteRevision.site_id == site_id).order_by(SiteRevision.revision.desc())))
     return [{"id": item.id, "revision": item.revision, "content_hash": item.content_hash, "parent_revision_id": item.parent_revision_id,
              "area_m2": item.area_m2, "perimeter_m": item.perimeter_m, "created_at": item.created_at.isoformat()} for item in revisions]
+
+
+@router.get("/sites/providers")
+async def list_site_providers(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[dict]:
+    rows = list(await session.scalars(select(Provider).where(Provider.enabled.is_(True)).order_by(Provider.provider_id, Provider.capability)))
+    output: list[dict] = []
+    for provider in rows:
+        terms = await session.scalar(select(ProviderTerms).where(ProviderTerms.provider_id == provider.provider_id, ProviderTerms.capability == provider.capability).order_by(ProviderTerms.effective_at.desc()))
+        output.append({"provider_id": provider.provider_id, "capability": provider.capability, "health_status": provider.health_status,
+            "coverage": provider.coverage_json or {}, "terms": None if terms is None else {"version": terms.version, "license": terms.license,
+            "attribution_required": terms.attribution_required, "commercial_use": terms.commercial_use, "caching_allowed": terms.caching_allowed,
+            "source_url": terms.source_url, "review_due_at": terms.review_due_at.isoformat() if terms.review_due_at else None}})
+    return output
 
 
 @router.get("/sites/{site_id}/revisions/{revision_ref}/layers")
