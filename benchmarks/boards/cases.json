@@ -1,0 +1,12 @@
+[
+{"id":"BOARD-001","source":"CON-001","size":"A1","items":["site_diagram","massing","metrics","evidence"],"required":["title","north","scale","legend","evidence_status"],"stale_behavior":"Show BOARD CONTAINS STALE DATA and require explicit acknowledgement before final export."},
+{"id":"BOARD-002","source":"CON-002","size":"A2","items":["site_diagram","ground_plan","massing","program_metrics"],"required":["title","north","scale","evidence"],"stale_behavior":"Stale analysis must be visible and block final export acknowledgement."},
+{"id":"BOARD-003","source":"CON-003","size":"A1","items":["site","plans","section","metrics"],"required":["title","north","scale","legend"],"stale_behavior":"Changing the site revision marks the board stale."},
+{"id":"BOARD-004","source":"CON-004","size":"A1","items":["site","two_frontages","massing","access_diagram"],"required":["title","north","scale","evidence"],"stale_behavior":"A stale concept cannot be exported as current."},
+{"id":"BOARD-005","source":"CON-005","size":"A2","items":["site","solar","massing","metrics","evidence"],"required":["title","north","scale","evidence"],"stale_behavior":"Unsupported Saudi planning claims remain UNKNOWN on the board."},
+{"id":"BOARD-006","source":"CON-006","size":"A1","items":["site","plan","circulation","massing"],"required":["title","north","scale","legend"],"stale_behavior":"Regenerated model views must replace stale projections atomically."},
+{"id":"BOARD-007","source":"CON-007","size":"A1","items":["site","plans","school_access","metrics"],"required":["title","north","scale","evidence"],"stale_behavior":"Site-analysis changes mark dependent diagrams stale."},
+{"id":"BOARD-008","source":"CON-008","size":"A2","items":["site","massing","terrain_status","metrics"],"required":["title","north","scale","evidence_status"],"stale_behavior":"Terrain-dependent content shows UNKNOWN until authoritative DEM evidence exists."},
+{"id":"BOARD-009","source":"CON-009","size":"A1","items":["site","program","massing","metrics","access"],"required":["title","north","scale","legend","evidence"],"stale_behavior":"Changed program areas visibly stale dependent views."},
+{"id":"BOARD-010","source":"CON-010","size":"A1","items":["site","program","plan","massing","evidence"],"required":["title","north","scale","legend","evidence"],"stale_behavior":"Final export requires acknowledgement if any dependency is stale."}
+]
