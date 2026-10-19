@@ -35,3 +35,12 @@ class ContextFetchOut(BaseModel):
     snapshot_id: str
     content_hash: str
     status: str
+
+
+class SiteAnalysisOut(BaseModel):
+    analysis_snapshot_id: str
+    site_revision_id: str
+    source_context_hash: str
+    runner_version: str
+    status: str
+    result: dict[str, Any]
