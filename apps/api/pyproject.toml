@@ -35,6 +35,10 @@ dev = [
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "postgres: requires a live PostgreSQL/PostGIS database",
+  "native_cad: requires the deployment's native CAD/BIM toolchain",
+]
 
 [tool.ruff]
 line-length = 120
