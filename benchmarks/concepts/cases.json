@@ -1,0 +1,12 @@
+[
+{"id":"CON-001","brief_id":"BR-002","site_id":"SITE-001","typologies":["BAR","L","U"],"required_metrics":["gfa","efficiency","coverage","frontage","violations"],"expectation":"Three materially different deterministic alternatives with traceable metrics."},
+{"id":"CON-002","brief_id":"BR-003","site_id":"SITE-003","typologies":["BAR","U","PODIUM_TOWER"],"required_metrics":["gfa","efficiency","coverage","frontage","violations"],"expectation":"Restaurant access and service constraints remain traceable."},
+{"id":"CON-003","brief_id":"BR-005","site_id":"SITE-002","typologies":["BAR","L","COURTYARD"],"required_metrics":["gfa","efficiency","coverage","parking"],"expectation":"Six-unit program and vertical circulation remain feasible or explicitly flagged."},
+{"id":"CON-004","brief_id":"BR-008","site_id":"SITE-003","typologies":["L","U","PODIUM_TOWER"],"required_metrics":["gfa","coverage","frontage","access"],"expectation":"Two-street frontage and secondary-street vehicle access are represented."},
+{"id":"CON-005","brief_id":"BR-009","site_id":"SITE-010","typologies":["BAR","U","PODIUM_TOWER"],"required_metrics":["gfa","coverage","frontage","parking"],"expectation":"Saudi planning facts remain evidence-dependent; no unsupported compliance score."},
+{"id":"CON-006","brief_id":"BR-012","site_id":"SITE-010","typologies":["BAR","L","U"],"required_metrics":["gfa","efficiency","access","service"],"expectation":"Family dining, kitchen and service circulation remain distinguishable."},
+{"id":"CON-007","brief_id":"BR-015","site_id":"SITE-002","typologies":["BAR","L","COURTYARD"],"required_metrics":["gfa","coverage","access","open_space"],"expectation":"Six classrooms and safe arrival are preserved."},
+{"id":"CON-008","brief_id":"BR-018","site_id":"SITE-005","typologies":["BAR","COURTYARD","CLUSTER"],"required_metrics":["site_disturbance","gfa","access"],"expectation":"Terrain-dependent claims are UNKNOWN without an approved DEM."},
+{"id":"CON-009","brief_id":"BR-019","site_id":"SITE-006","typologies":["BAR","L","PODIUM_TOWER"],"required_metrics":["gfa","efficiency","frontage","event_access"],"expectation":"Coworking, event and cafe program remain connected without opaque scoring."},
+{"id":"CON-010","brief_id":"BR-020","site_id":"SITE-010","typologies":["L","U","COURTYARD"],"required_metrics":["gfa","coverage","access","open_space"],"expectation":"Civic, library, classroom and prayer program relationships remain inspectable."}
+]
