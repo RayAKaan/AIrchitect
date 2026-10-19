@@ -6,6 +6,7 @@ from typing import Any
 
 from pyproj import CRS, Transformer
 from shapely.geometry import Polygon, shape
+from shapely.validation import explain_validity
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +34,7 @@ def validate_boundary(boundary: dict[str, Any], *, min_area_m2: float = 1.0, max
     except Exception as exc:
         raise ValueError("SITE_BOUNDARY_INVALID_GEOMETRY") from exc
     if not polygon.is_valid:
-        raise ValueError(f"SITE_BOUNDARY_INVALID_GEOMETRY: {polygon.explain_validity() if hasattr(polygon, 'explain_validity') else 'self-intersection or invalid ring'}")
+        raise ValueError(f"SITE_BOUNDARY_INVALID_GEOMETRY: {explain_validity(polygon)}")
     if polygon.geom_type != "Polygon":
         raise ValueError("SITE_BOUNDARY_MUST_BE_POLYGON")
     if any(len(point) != 2 or not all(isfinite(float(value)) for value in point) for point in ring):
