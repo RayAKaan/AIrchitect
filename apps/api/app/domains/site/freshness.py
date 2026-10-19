@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Server-authoritative freshness for revision-bound site artifacts."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
