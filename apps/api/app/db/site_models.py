@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from datetime import datetime
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models import Base, now, uid
@@ -13,7 +14,7 @@ class Site(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     name: Mapped[str] = mapped_column(String(200), default="Site")
-    created_at: Mapped[object] = mapped_column(default=now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class SiteRevision(Base):
@@ -34,7 +35,7 @@ class SiteRevision(Base):
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
     validation_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[object] = mapped_column(default=now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class SiteSource(Base):
@@ -45,7 +46,7 @@ class SiteSource(Base):
     dataset: Mapped[str | None] = mapped_column(String(200), nullable=True)
     dataset_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    retrieval_time: Mapped[object] = mapped_column(default=now)
+    retrieval_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     attribution: Mapped[str | None] = mapped_column(Text, nullable=True)
     license: Mapped[str | None] = mapped_column(String(160), nullable=True)
     geographic_scope: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -63,7 +64,7 @@ class SiteEvidence(Base):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="UNKNOWN")
     method: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    created_at: Mapped[object] = mapped_column(default=now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class SiteLayerSnapshot(Base):
@@ -75,7 +76,7 @@ class SiteLayerSnapshot(Base):
     dataset_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
     payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(24), default="UNKNOWN")
-    created_at: Mapped[object] = mapped_column(default=now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class SiteConstraint(Base):
