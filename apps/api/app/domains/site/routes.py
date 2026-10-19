@@ -9,6 +9,7 @@ from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevisi
 from app.db.session import get_session
 from app.dependencies import current_user, require_membership
 from app.domains.site.analysis import RUNNER_VERSION, _hash, analyze_site
+from app.domains.site.constraints import RUNNER_VERSION as CONSTRAINT_RUNNER_VERSION, detect_constraints
 from app.domains.site.diagrams import RUNNER_VERSION as DIAGRAM_RUNNER_VERSION, generate_diagram
 from app.domains.site.provider_runtime import fetch_context
 from app.domains.site.schemas import ContextFetchOut, DiagramOut, SetSiteBoundaryCommand, SiteAnalysisOut, SiteRevisionOut
@@ -60,8 +61,7 @@ async def get_site_layers(site_id: str, revision_ref: str, user: User = Depends(
     revision = await _load_revision(session, site_id, revision_ref)
     snapshots = list(await session.scalars(select(SiteLayerSnapshot).where(SiteLayerSnapshot.site_revision_id == revision.id).order_by(SiteLayerSnapshot.created_at.desc())))
     latest: dict[str, SiteLayerSnapshot] = {}
-    for snapshot in snapshots:
-        latest.setdefault(snapshot.layer_type, snapshot)
+    for snapshot in snapshots: latest.setdefault(snapshot.layer_type, snapshot)
     return [{"id": item.id, "layer_type": item.layer_type, "provider": item.provider, "dataset_version": item.dataset_version,
              "status": item.status, "created_at": item.created_at.isoformat(), "payload": item.payload_json} for item in latest.values()]
 
@@ -96,6 +96,19 @@ async def analyze_site_revision(site_id: str, revision_ref: str, user: User = De
     session.add(SiteEvidence(site_revision_id=revision.id, claim_type="site_analysis", value_json={"runner_version": RUNNER_VERSION, "source_context_hash": result["source_context_hash"], "result_hash": _hash(result)}, confidence=1.0 if snapshots else None, status=result["status"], method=RUNNER_VERSION))
     await session.commit(); await session.refresh(snapshot)
     return SiteAnalysisOut(analysis_snapshot_id=snapshot.id, site_revision_id=revision.id, source_context_hash=result["source_context_hash"], runner_version=RUNNER_VERSION, status=snapshot.status, result=result)
+
+
+@router.get("/sites/{site_id}/revisions/{revision_ref}/constraints")
+async def get_site_constraints(site_id: str, revision_ref: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> dict:
+    site = await session.get(Site, site_id)
+    if site is None: raise HTTPException(404, "Site not found")
+    await require_membership(site.organization_id, user, session)
+    revision = await _load_revision(session, site_id, revision_ref)
+    analysis = await session.scalar(select(SiteLayerSnapshot).where(SiteLayerSnapshot.site_revision_id == revision.id, SiteLayerSnapshot.layer_type == "ANALYSIS"))
+    if analysis is None: raise HTTPException(409, "SITE_ANALYSIS_REQUIRED")
+    constraints = detect_constraints(revision, analysis.payload_json)
+    return {"site_revision_id": revision.id, "site_revision_hash": revision.content_hash, "runner_version": CONSTRAINT_RUNNER_VERSION,
+            "source_context_hash": analysis.payload_json.get("source_context_hash", ""), "constraints": constraints}
 
 
 @router.post("/sites/{site_id}/revisions/{revision_ref}/diagrams/{diagram_type}", response_model=DiagramOut)
