@@ -12,9 +12,10 @@ REGISTRY_PATH = ROOT / "docs/legal/compliance-registry.json"
 def test_compliance_registry_has_reviewed_dependency_records() -> None:
     registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     dependencies = registry["third_party_dependencies"]
+    allowed = {"CORE", "INFRASTRUCTURE", "OPTIONAL", "EXPERIMENTAL", "REJECTED"}
 
     assert dependencies
-    assert all(item["classification"] in {"CORE", "INFRASTRUCTURE", "OPTIONAL", "EXPERIMENTAL", "REJECTED"} for item in dependencies)
+    assert all(item["classification"] in allowed for item in dependencies)
     assert all(item["license"] not in {"", None, "UNKNOWN"} for item in dependencies)
     assert all(date.fromisoformat(item["review_due"]) >= date.today() for item in dependencies)
 
