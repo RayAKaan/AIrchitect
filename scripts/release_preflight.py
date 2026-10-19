@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Offline release preflight: verifies repository hygiene and required phase evidence."""
+"""Offline release preflight: verifies repository hygiene, compliance and phase evidence."""
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,9 +23,12 @@ REQUIRED = [
     "apps/web/src/features/foundation/releaseValidationModel.ts",
     "apps/web/src/features/foundation/releaseValidationModel.test.ts",
     "docs/legal/cad-license-policy.json",
+    "docs/legal/compliance-registry.json",
     "docs/legal/THIRD-PARTY-NOTICES.md",
     "scripts/check_cad_toolchain_manifest.py",
     "scripts/cad_toolchain_smoke.py",
+    "scripts/check_compliance_registry.py",
+    "scripts/generate_third_party_notices.py",
 ]
 PHASE_REPORTS = [f"docs/implementation/PHASE-{n}-{slug}.md" for n, slug in [
     (0,"REPOSITORY-AUDIT"),(1,"DEVELOPMENT-FOUNDATION"),(2,"IDENTITY-PROJECT-CORE"),
@@ -43,6 +47,19 @@ if missing:
     print("FAIL: missing required repository evidence:")
     print("\n".join(f" - {p}" for p in missing))
     sys.exit(1)
+
+# Compliance is a release invariant, not a manually maintained notice.
+for command in (
+    [sys.executable, str(ROOT / "scripts/check_compliance_registry.py")],
+    [sys.executable, str(ROOT / "scripts/generate_third_party_notices.py"), "--check"],
+):
+    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode:
+        sys.exit(result.returncode)
 
 # Prevent accidental inclusion of local secrets and bulky/generated state in a release archive.
 forbidden_dirs = {"node_modules", ".venv", "__pycache__", ".pytest_cache", "dist"}
