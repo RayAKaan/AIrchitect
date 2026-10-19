@@ -1,4 +1,5 @@
 import React, { ErrorInfo, ReactNode } from 'react';
+import { reportClientError } from '../../shared/observability/clientTelemetry';
 
 type Props = { children: ReactNode };
 type State = { hasError: boolean; message: string };
@@ -11,7 +12,13 @@ export default class AppErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
-    console.error('AIrchitect application error', { error, componentStack: info.componentStack });
+    const message = error instanceof Error ? error.message : 'Unexpected application error';
+    reportClientError({
+      event: 'frontend.error_boundary',
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+      component_stack: info.componentStack,
+    });
   }
 
   render() {
