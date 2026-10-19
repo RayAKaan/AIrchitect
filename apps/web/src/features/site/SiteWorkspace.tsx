@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import './site-workspace.css';
 import DiagramStudio from './DiagramStudio';
+import EvidencePanel from './EvidencePanel';
 
 type Point = [number, number];
 type SiteRevision = { site_id: string; site_revision_id: string; revision: number; boundary: { type: 'Polygon'; coordinates: Point[][] }; boundary_crs: string; calculation_crs: string; area_m2: number; perimeter_m: number; content_hash: string; parent_revision_id: string | null };
@@ -23,6 +24,6 @@ export default function SiteWorkspace({ api, token, project }: { api: string; to
         {revision && <div className="layer-panel" aria-label="Site layers"><div className="layer-panel-title">LAYERS</div>{layers.length === 0 ? <p className="muted">No derived layers yet.</p> : layers.map(layer => <label className="layer-row" key={layer.layer_type}><input type="checkbox" checked={visibleLayers[layer.layer_type] ?? true} onChange={() => setVisibleLayers(current => ({ ...current, [layer.layer_type]: !(current[layer.layer_type] ?? true) }))}/><span>{LAYER_LABELS[layer.layer_type] ?? layer.layer_type}</span><small>{layer.status}</small></label>)}</div>}
       </aside>
     </div>
-    {revision && <DiagramStudio api={api} token={token} siteId={revision.site_id} revision={revision.site_revision_id} />}
+    {revision && <><DiagramStudio api={api} token={token} siteId={revision.site_id} revision={revision.site_revision_id} /><EvidencePanel api={api} token={token} siteId={revision.site_id} /></>}
   </section>;
 }
