@@ -1,30 +1,50 @@
-# Building feasibility platform
+# AIrchitect
 
-An AI-native, deterministic-first platform for versioned preliminary commercial/retail building feasibility. The product name is intentionally not fixed.
+AI-native architectural feasibility and design orchestration platform. The system is deterministic-first: AI can interpret and propose, while canonical project state is persisted, versioned and validated by domain logic.
 
 ## Current implementation
 
-Phase 1 establishes the canonical building brain:
+The current vertical slice establishes:
 
-`Organization -> Project -> Project Version -> Brief -> Requirements/Assumptions -> hash-verified World Model Revision`
+`Organization -> Project -> Project Version -> Brief -> Requirements/Assumptions -> World Model Revision -> Versioned Artifacts -> Dependency/Change Impact -> Validation/Release Checks`
 
-See [the Phase 1 report](docs/completion/PHASE-1-COMPLETION-REPORT.md) and [source audit](docs/implementation/PHASE-1-COMPLIANCE-AUDIT.md). Later-phase prototype modules remain in the repository, but direct client-owned canonical geometry and legacy project-scoped mutations are disabled until those consumers are refactored onto the central World Model resolver.
+Phase 27 established the authoritative artifact dependency graph and hash-guarded stale propagation. Phase 28 added workspace dependency/change-impact visibility and release validation.
 
-Important boundaries:
+The complete roadmap is intentionally incremental. Site World Model, provider-backed site analysis, program/concept generation, universal commands, complete semantic building model, drawing compiler, full analysis/review, BIM/CAD round-trip, collaboration and production scaling are **not** represented as complete merely because supporting infrastructure exists.
 
-- Structural output is conceptual and never certification.
-- Missing authoritative regulatory evidence produces `UNKNOWN`, never `PASS`.
-- Seeded demo rates are explicitly non-authoritative.
-- JEV is optional; deterministic operation is the default.
-- Historical project versions and artifact hashes remain inspectable.
+## Architectural rules
 
-See [the engineering report](docs/completion/ENGINEERING_COMPLETION_REPORT.md) for verified results and remaining limitations.
+- Canonical World Model/revisions are authoritative; UI, maps, renderers, drawings, analyses, exports and boards are projections/derived artifacts.
+- Derived artifacts retain source revision/hash and dependency lineage and can become stale.
+- AI proposals cannot directly mutate canonical state.
+- Evidence-backed factual claims retain source/date/dataset/scope/method/confidence/status/revision lineage; unknown remains `UNKNOWN`.
+- Coordinate systems and units are explicit; display coordinates are not calculation authority.
+- Existing Phase 27 dependency infrastructure is authoritative and must be reused for future regeneration.
+- Professional claims such as structural, fire, regulatory or certification approval require appropriate authoritative evidence and human/professional review.
+
+## Architecture truth
+
+The S0 repository-truth contract is documented in:
+
+- [Architecture overview](docs/architecture/overview.md)
+- [State ownership](docs/architecture/state-ownership.md)
+- [Coordinate systems](docs/architecture/coordinates.md)
+- [Evidence and provenance](docs/architecture/evidence.md)
+- [Command architecture](docs/architecture/commands.md)
+- [Dependency and regeneration architecture](docs/architecture/dependencies.md)
+- [Provider architecture](docs/architecture/providers.md)
+- [Rendering architecture](docs/architecture/rendering.md)
+- [Data sources and terms](docs/architecture/data-sources.md)
+- [Third-party architecture policy](docs/architecture/third-party.md)
+
+These documents describe current implementation boundaries unless a section explicitly says `planned`.
 
 ## Stack
 
-- API: FastAPI, async SQLAlchemy, PostgreSQL/PostGIS direction, Alembic
+- API: FastAPI, async SQLAlchemy, Alembic, PostgreSQL/PostGIS direction
 - Web: React, TypeScript, Vite, TanStack Query, Three.js, React Three Fiber
 - Workflow: persisted tasks/events, idempotency, leases, retries and PostgreSQL `SKIP LOCKED` claims
+- Geometry/CAD: existing geometry services and a dedicated CAD worker boundary
 
 ## Local run with Docker
 
