@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import './provider-catalog.css';
 
 type Provider = { provider_id: string; capability: string; health_status: string; coverage: Record<string, unknown>; terms: { version: string; license: string | null; attribution_required: boolean; commercial_use: string; caching_allowed: boolean; source_url: string | null; review_due_at: string | null } | null };
 
