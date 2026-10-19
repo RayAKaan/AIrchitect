@@ -47,4 +47,4 @@ async def test_postgres_postgis_and_schema_are_available() -> None:
     assert database == "building_test"
     assert postgis
     assert revision
-    assert {"organization", "project", "project_version"}.issubset(tables)
+    assert {"organizations", "projects", "project_versions"}.issubset(tables)
