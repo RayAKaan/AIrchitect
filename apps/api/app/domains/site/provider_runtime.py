@@ -15,6 +15,8 @@ from app.db.provider_models import Provider, ProviderFetchLog, ProviderTerms
 from app.db.site_models import SiteEvidence, SiteLayerSnapshot, SiteRevision, SiteSource
 
 MAX_CONTEXT_BYTES = 5 * 1024 * 1024
+USER_AGENT = "AIrchitect/0.1 (+https://github.com/RayAKaan/AIrchitect)"
+ALLOWED_CONTENT_TYPES = {"application/geo+json", "application/json"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,13 @@ def _validated_endpoint(provider: Provider) -> str:
     if parsed.scheme != "https" or not parsed.netloc:
         raise ValueError("PROVIDER_CONTEXT_ENDPOINT_MUST_USE_HTTPS")
     return endpoint
+
+
+def _validate_content_type(content_type: str | None) -> str:
+    media_type = (content_type or "").split(";", 1)[0].strip().lower()
+    if media_type not in ALLOWED_CONTENT_TYPES:
+        raise ValueError("PROVIDER_CONTEXT_RESPONSE_CONTENT_TYPE_INVALID")
+    return media_type
 
 
 def _validate_feature_collection(payload: Any) -> dict[str, Any]:
@@ -87,12 +96,16 @@ async def fetch_context(
     retrieved_at = datetime.now(timezone.utc)
     try:
         async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=False) as client:
-            response = await client.get(endpoint, params=request_params, headers={"Accept": "application/geo+json, application/json"})
+            response = await client.get(endpoint, params=request_params, headers={"Accept": "application/geo+json, application/json", "User-Agent": USER_AGENT})
             response.raise_for_status()
+            _validate_content_type(response.headers.get("content-type"))
             raw = await response.aread()
     except httpx.HTTPError as exc:
         await session.rollback()
         raise ValueError("PROVIDER_CONTEXT_FETCH_FAILED") from exc
+    except ValueError:
+        await session.rollback()
+        raise
     if len(raw) > MAX_CONTEXT_BYTES:
         await session.rollback()
         raise ValueError("PROVIDER_CONTEXT_RESPONSE_TOO_LARGE")
@@ -106,52 +119,15 @@ async def fetch_context(
 
     canonical_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     content_hash = hashlib.sha256(canonical_bytes).hexdigest()
-    source = SiteSource(
-        site_revision_id=revision.id,
-        provider=provider_id,
-        dataset=str(provider.coverage_json.get("dataset", provider_id)),
-        dataset_version=str(provider.coverage_json.get("dataset_version", terms.version)),
-        source_url=endpoint,
-        retrieval_time=retrieved_at,
-        attribution=str(provider.coverage_json.get("attribution", "")),
-        license=terms.license,
-        geographic_scope=str(provider.coverage_json.get("geographic_scope", "site_bbox")),
-        raw_reference=content_hash,
-    )
+    dataset_version = str(provider.coverage_json.get("dataset_version", terms.version))
+    source = SiteSource(site_revision_id=revision.id, provider=provider_id, dataset=str(provider.coverage_json.get("dataset", provider_id)), dataset_version=dataset_version, source_url=endpoint, retrieval_time=retrieved_at, attribution=str(provider.coverage_json.get("attribution", "")), license=terms.license, geographic_scope=str(provider.coverage_json.get("geographic_scope", "site_bbox")), raw_reference=content_hash)
     session.add(source)
     await session.flush()
-    snapshot = SiteLayerSnapshot(
-        site_revision_id=revision.id,
-        layer_type="CONTEXT",
-        provider=provider_id,
-        dataset_version=str(provider.coverage_json.get("dataset_version", terms.version)),
-        payload_json=payload,
-        status="SUPPORTED",
-    )
+    snapshot = SiteLayerSnapshot(site_revision_id=revision.id, layer_type="CONTEXT", provider=provider_id, dataset_version=dataset_version, payload_json=payload, status="SUPPORTED")
     session.add(snapshot)
-    evidence = SiteEvidence(
-        site_revision_id=revision.id,
-        source_id=source.id,
-        claim_type="site_context_layer",
-        value_json={"feature_count": len(payload["features"]), "content_hash": content_hash},
-        confidence=1.0,
-        status="SUPPORTED",
-        method="provider_context_fetch",
-    )
-    session.add(evidence)
-    session.add(ProviderFetchLog(
-        provider_id=provider_id,
-        capability="context",
-        dataset=str(provider.coverage_json.get("dataset", provider_id)),
-        dataset_version=str(provider.coverage_json.get("dataset_version", terms.version)),
-        fetched_at=retrieved_at,
-        source_url=endpoint,
-        terms_version=terms.version,
-        status="SUCCESS",
-        raw_reference=content_hash,
-        response_metadata_json={"feature_count": len(payload["features"]), "site_revision_id": revision.id},
-    ))
+    session.add(SiteEvidence(site_revision_id=revision.id, source_id=source.id, claim_type="site_context_layer", value_json={"feature_count": len(payload["features"]), "content_hash": content_hash}, confidence=1.0, status="SUPPORTED", method="provider_context_fetch"))
+    session.add(ProviderFetchLog(provider_id=provider_id, capability="context", dataset=str(provider.coverage_json.get("dataset", provider_id)), dataset_version=dataset_version, fetched_at=retrieved_at, source_url=endpoint, terms_version=terms.version, status="SUCCESS", raw_reference=content_hash, response_metadata_json={"feature_count": len(payload["features"]), "site_revision_id": revision.id}))
     await session.commit()
     await session.refresh(source)
     await session.refresh(snapshot)
-    return ContextFetchResult(provider_id, str(provider.coverage_json.get("dataset_version", terms.version)), len(payload["features"]), source.id, snapshot.id, content_hash, "SUPPORTED")
+    return ContextFetchResult(provider_id, dataset_version, len(payload["features"]), source.id, snapshot.id, content_hash, "SUPPORTED")
