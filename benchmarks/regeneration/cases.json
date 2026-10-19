@@ -1,0 +1,12 @@
+[
+{"id":"REG-001","trigger":"site_boundary_change","source":"site_revision","expected_stale":["site_analysis","diagram","board"],"expected_current":["new_site_revision"],"invariant":"No artifact derived from the previous site hash remains current."},
+{"id":"REG-002","trigger":"setback_change","source":"planning_rule","expected_stale":["envelope","concept","layout","drawing","board"],"expected_current":[],"invariant":"Dependency traversal is deterministic and cycle-safe."},
+{"id":"REG-003","trigger":"program_area_change","source":"program_space","expected_stale":["concept","layout","drawing","quantity","board"],"expected_current":["brief"],"invariant":"Only dependency descendants are invalidated."},
+{"id":"REG-004","trigger":"move_building","source":"semantic_building_model","expected_stale":["plan","section","elevation","analysis","board"],"expected_current":["command_log"],"invariant":"Command revision hash changes and dependent artifacts are stale."},
+{"id":"REG-005","trigger":"wall_edit","source":"wall","expected_stale":["3d_geometry","plan","section","elevation","quantities","cost"],"expected_current":["world_model_revision"],"invariant":"Every affected projection is either regenerated or explicitly stale."},
+{"id":"REG-006","trigger":"evidence_superseded","source":"site_evidence","expected_stale":["analysis_result","planning_rule","board"],"expected_current":[],"invariant":"Superseded evidence becomes STALE and cannot silently remain authoritative."},
+{"id":"REG-007","trigger":"drawing_annotation_change","source":"annotation","expected_stale":["board"],"expected_current":["semantic_model","geometry"],"invariant":"Presentation-only edits do not mutate canonical building state."},
+{"id":"REG-008","trigger":"world_model_hash_mismatch","source":"artifact_binding","expected_stale":["bound_artifact"],"expected_current":[],"invariant":"Hash guard prevents an artifact from being treated as current against a different source revision."},
+{"id":"REG-009","trigger":"provider_dataset_version_change","source":"provider_fetch","expected_stale":["site_analysis","diagram","board"],"expected_current":["site_revision"],"invariant":"Cache identity includes source revision hash, provider dataset version and runner version."},
+{"id":"REG-010","trigger":"undo_command","source":"command_log","expected_stale":["post_command_artifacts"],"expected_current":["new_revision"],"invariant":"Undo creates a new revision and never rewrites prior history."}
+]
