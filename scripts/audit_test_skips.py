@@ -37,21 +37,25 @@ def classify(reason: str) -> str:
     text = reason.lower()
     if any(term in text for term in ("postgres", "postgis", "postgresql")):
         return "POSTGRES_REQUIRED"
-    if any(term in text for term in ("freecad", "cad", "ifcopenshell", "occt", "native")):
+    if any(term in text for term in ("freecad", "ifcopenshell", "occt", "native cad", "native toolchain")):
         return "NATIVE_CAD_REQUIRED"
     if any(term in text for term in ("broken", "failing", "bug", "regression")):
         return "BROKEN"
     if any(term in text for term in ("obsolete", "superseded", "legacy")):
         return "OBSOLETE"
-    if any(term in text for term in ("environment", "env", "platform", "windows", "linux", "macos")):
+    if any(term in text for term in ("environment", "platform", "windows", "linux", "macos")):
         return "ENVIRONMENTAL"
     if any(term in text for term in ("intentional", "document", "slow", "manual", "release")):
         return "INTENTIONAL"
     return "UNCLASSIFIED"
 
 
-def literal_reason(node: ast.AST) -> str:
-    if isinstance(node, ast.Call) and node.args:
+def literal_reason(node: ast.Call) -> str:
+    for keyword in node.keywords:
+        if keyword.arg == "reason" and isinstance(keyword.value, ast.Constant):
+            if isinstance(keyword.value.value, str):
+                return keyword.value.value
+    if node.args:
         value = node.args[0]
         if isinstance(value, ast.Constant) and isinstance(value.value, str):
             return value.value
@@ -62,15 +66,18 @@ def decorator_skip(decorator: ast.expr) -> tuple[str, str] | None:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Attribute):
         if target.value.attr == "mark" and target.attr in {"skip", "skipif"}:
-            return target.attr, literal_reason(decorator) or ""
+            reason = literal_reason(decorator) if isinstance(decorator, ast.Call) else ""
+            return target.attr, reason
     if isinstance(target, ast.Attribute) and target.attr in {"skip", "skipIf"}:
-        return target.attr, literal_reason(decorator) or ""
+        reason = literal_reason(decorator) if isinstance(decorator, ast.Call) else ""
+        return target.attr, reason
     return None
 
 
 def audit(root: Path) -> list[Skip]:
     findings: list[Skip] = []
-    for path in sorted(root.rglob("test_*.py")) + sorted(root.rglob("*_test.py")):
+    paths = sorted(root.rglob("test_*.py")) + sorted(root.rglob("*_test.py"))
+    for path in sorted(set(paths)):
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         except SyntaxError:
