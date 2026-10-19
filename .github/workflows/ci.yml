@@ -101,13 +101,13 @@ jobs:
           cd apps/web && npm ci --no-audit --no-fund
       - name: Install Chromium for Playwright
         run: cd apps/web && npx playwright install --with-deps chromium
-      - name: Run Phase 28 browser acceptance
-        run: cd apps/web && npm run test:e2e -- e2e/phase28-release-acceptance.spec.ts
+      - name: Run Site and release browser acceptance
+        run: cd apps/web && npm run test:e2e -- e2e/phase28-release-acceptance.spec.ts e2e/phase29-site-workspace.spec.ts
       - name: Upload browser-test diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: phase28-playwright-diagnostics
+          name: browser-e2e-diagnostics
           path: |
             apps/web/test-results/
             apps/web/playwright-report/
