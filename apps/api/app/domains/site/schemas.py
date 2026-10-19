@@ -44,3 +44,13 @@ class SiteAnalysisOut(BaseModel):
     runner_version: str
     status: str
     result: dict[str, Any]
+
+
+class DiagramOut(BaseModel):
+    diagram_snapshot_id: str
+    site_revision_id: str
+    diagram_type: str
+    runner_version: str
+    source_context_hash: str | None
+    svg: str
+    status: str
