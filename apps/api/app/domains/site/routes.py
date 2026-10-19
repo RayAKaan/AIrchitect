@@ -52,6 +52,20 @@ async def get_site_revision(site_id: str, revision_ref: str, user: User = Depend
     return _revision_out(await _load_revision(session, site_id, revision_ref))
 
 
+@router.get("/sites/{site_id}/revisions/{revision_ref}/layers")
+async def get_site_layers(site_id: str, revision_ref: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[dict]:
+    site = await session.get(Site, site_id)
+    if site is None: raise HTTPException(404, "Site not found")
+    await require_membership(site.organization_id, user, session)
+    revision = await _load_revision(session, site_id, revision_ref)
+    snapshots = list(await session.scalars(select(SiteLayerSnapshot).where(SiteLayerSnapshot.site_revision_id == revision.id).order_by(SiteLayerSnapshot.created_at.desc())))
+    latest: dict[str, SiteLayerSnapshot] = {}
+    for snapshot in snapshots:
+        latest.setdefault(snapshot.layer_type, snapshot)
+    return [{"id": item.id, "layer_type": item.layer_type, "provider": item.provider, "dataset_version": item.dataset_version,
+             "status": item.status, "created_at": item.created_at.isoformat(), "payload": item.payload_json} for item in latest.values()]
+
+
 @router.post("/sites/{site_id}/revisions/{revision_ref}/context/{provider_id}", response_model=ContextFetchOut)
 async def fetch_site_context(site_id: str, revision_ref: str, provider_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> ContextFetchOut:
     site = await session.get(Site, site_id)
