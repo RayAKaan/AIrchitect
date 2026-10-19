@@ -25,3 +25,13 @@ class SiteRevisionOut(BaseModel):
     perimeter_m: float
     content_hash: str
     parent_revision_id: str | None
+
+
+class ContextFetchOut(BaseModel):
+    provider_id: str
+    dataset_version: str | None
+    feature_count: int
+    source_id: str
+    snapshot_id: str
+    content_hash: str
+    status: str
