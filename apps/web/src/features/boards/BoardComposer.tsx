@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import '../../foundation.css';
+import './board-composer.css';
 
 type Item = { id: string; title: string; kind: string; status: string };
 
