@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Generate THIRD-PARTY-NOTICES.md from the canonical compliance registry."""
+"""Generate or verify THIRD-PARTY-NOTICES.md from the canonical compliance registry."""
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -10,11 +11,9 @@ REGISTRY = ROOT / "docs/legal/compliance-registry.json"
 OUTPUT = ROOT / "docs/legal/THIRD-PARTY-NOTICES.md"
 
 
-def main() -> int:
-    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+def render(registry: dict) -> str:
     dependencies = registry.get("third_party_dependencies", [])
     reviews = registry.get("license_reviews", [])
-
     lines = [
         "# AIrchitect Third-Party Notices",
         "",
@@ -31,7 +30,6 @@ def main() -> int:
             f"| {item['name']} | {item['version']} | {item['license']} | {item['classification']} | "
             f"{item['runtime']} | {item['review_due']} |"
         )
-
     lines.extend([
         "",
         "## Redistribution controls",
@@ -50,8 +48,28 @@ def main() -> int:
             f"- **{review['scope']}** — {review['status']}; review due {review['review_due']}; commercial release cleared: `{str(review['commercial_release_cleared']).lower()}`.",
             f"  - {review['notes']}",
         ])
+    lines.extend([
+        "",
+        "The full dependency evidence remains in `docs/legal/PHASE-18-OPEN-SOURCE-LICENSE-AUDIT.md` and `apps/api/app/domains/cad/toolchain_manifest.json`.",
+        "",
+    ])
+    return "\n".join(lines)
 
-    OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="fail if the committed notices differ from generated output")
+    args = parser.parse_args()
+    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    generated = render(registry)
+    if args.check:
+        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
+        if current != generated:
+            print("FAIL: THIRD-PARTY-NOTICES.md is stale; regenerate it from the compliance registry")
+            return 1
+        print("PASS: THIRD-PARTY-NOTICES.md matches compliance registry")
+        return 0
+    OUTPUT.write_text(generated, encoding="utf-8")
     print(f"PASS: generated {OUTPUT.relative_to(ROOT)} from compliance registry")
     return 0
 
