@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 from datetime import datetime
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
-
 from app.db.models import Base, now, uid
-
 
 class Site(Base):
     __tablename__ = "sites"
@@ -15,7 +12,6 @@ class Site(Base):
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     name: Mapped[str] = mapped_column(String(200), default="Site")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-
 
 class SiteRevision(Base):
     __tablename__ = "site_revisions"
@@ -37,7 +33,6 @@ class SiteRevision(Base):
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
-
 class SiteSource(Base):
     __tablename__ = "site_sources"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -53,7 +48,6 @@ class SiteSource(Base):
     resolution: Mapped[str | None] = mapped_column(String(120), nullable=True)
     raw_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-
 class SiteEvidence(Base):
     __tablename__ = "site_evidence"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -66,7 +60,6 @@ class SiteEvidence(Base):
     method: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
-
 class SiteLayerSnapshot(Base):
     __tablename__ = "site_layer_snapshots"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -78,7 +71,6 @@ class SiteLayerSnapshot(Base):
     status: Mapped[str] = mapped_column(String(24), default="UNKNOWN")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
-
 class SiteConstraint(Base):
     __tablename__ = "site_constraints"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -88,7 +80,6 @@ class SiteConstraint(Base):
     value_json: Mapped[dict] = mapped_column(JSON, default=dict)
     evidence_id: Mapped[str | None] = mapped_column(ForeignKey("site_evidence.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="UNKNOWN")
-
 
 class SiteObservation(Base):
     __tablename__ = "site_observations"
