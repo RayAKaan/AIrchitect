@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import './site-onboarding.css';
 
 const steps = [
   ['1', 'Define the site', 'Draw a boundary. The backend validates geometry and creates the canonical revision.'],
