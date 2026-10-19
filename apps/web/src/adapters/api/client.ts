@@ -4,7 +4,7 @@ export type ApiClient = {
 
 export function createApiClient(baseUrl: string, getToken: () => string | null): ApiClient {
   return {
-    async request<T>(path, init = {}) {
+    async request<T>(path: string, init: RequestInit = {}) {
       const token = getToken();
       const response = await fetch(baseUrl + path, {
         ...init,
