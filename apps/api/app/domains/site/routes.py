@@ -53,6 +53,16 @@ async def get_site_revision(site_id: str, revision_ref: str, user: User = Depend
     return _revision_out(await _load_revision(session, site_id, revision_ref))
 
 
+@router.get("/sites/{site_id}/revisions")
+async def list_site_revisions(site_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[dict]:
+    site = await session.get(Site, site_id)
+    if site is None: raise HTTPException(404, "Site not found")
+    await require_membership(site.organization_id, user, session)
+    revisions = list(await session.scalars(select(SiteRevision).where(SiteRevision.site_id == site_id).order_by(SiteRevision.revision.desc())))
+    return [{"id": item.id, "revision": item.revision, "content_hash": item.content_hash, "parent_revision_id": item.parent_revision_id,
+             "area_m2": item.area_m2, "perimeter_m": item.perimeter_m, "created_at": item.created_at.isoformat()} for item in revisions]
+
+
 @router.get("/sites/{site_id}/revisions/{revision_ref}/layers")
 async def get_site_layers(site_id: str, revision_ref: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[dict]:
     site = await session.get(Site, site_id)
