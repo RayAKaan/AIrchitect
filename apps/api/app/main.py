@@ -58,20 +58,12 @@ async def request_context(request: Request, call_next):
         return response
     finally:
         duration_ms = round((perf_counter() - started) * 1000, 2)
-        log_event(
-            logger,
-            "http.request.completed",
-            method=request.method,
-            path=request.url.path,
-            status_code=status_code,
-            duration_ms=duration_ms,
-        )
+        log_event(logger, "http.request.completed", method=request.method, path=request.url.path, status_code=status_code, duration_ms=duration_ms)
         if "response" in locals():
             response.headers["X-Request-Id"] = context.request_id
             for header, field in _CONTEXT_HEADER_MAP.items():
                 value = getattr(context, field)
-                if value:
-                    response.headers[header] = value
+                if value: response.headers[header] = value
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -94,8 +86,7 @@ async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
 
 
 @app.get("/health", tags=["operations"])
-async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "api"}
+async def health() -> dict[str, str]: return {"status": "ok", "service": "api"}
 
 @app.get("/ready", tags=["operations"])
 async def readiness() -> JSONResponse:
@@ -106,97 +97,54 @@ async def readiness() -> JSONResponse:
     return JSONResponse(content={"status": "ready", "database": "available"})
 
 @app.get(f"{settings.api_prefix}/system", tags=["operations"])
-async def system_info() -> dict[str, str]:
-    return {"name": settings.app_name, "environment": settings.app_env, "decision_provider": settings.decision_provider}
+async def system_info() -> dict[str, str]: return {"name": settings.app_name, "environment": settings.app_env, "decision_provider": settings.decision_provider}
 
 @app.post(f"{settings.api_prefix}/auth/register", response_model=AuthOut, status_code=201, tags=["identity"])
 async def register(body: RegisterRequest, session: AsyncSession = Depends(get_session)) -> AuthOut:
-    email = str(body.email).lower()
-    user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password))
-    session.add(user)
+    email = str(body.email).lower(); user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password)); session.add(user)
     try:
-        await session.flush()
-        org = Organization(name=body.organization_name.strip(), created_by=user.id)
-        session.add(org)
-        await session.flush()
-        session.add(Membership(organization_id=org.id, user_id=user.id, role="owner"))
-        session.add(AuditEvent(organization_id=org.id, actor_user_id=user.id, action="organization.created", resource_type="organization", resource_id=org.id))
-        await session.commit()
+        await session.flush(); org = Organization(name=body.organization_name.strip(), created_by=user.id); session.add(org); await session.flush()
+        session.add(Membership(organization_id=org.id, user_id=user.id, role="owner")); session.add(AuditEvent(organization_id=org.id, actor_user_id=user.id, action="organization.created", resource_type="organization", resource_id=org.id)); await session.commit()
     except IntegrityError:
-        await session.rollback()
-        raise HTTPException(409, "An account with this email already exists") from None
+        await session.rollback(); raise HTTPException(409, "An account with this email already exists") from None
     return AuthOut(access_token=issue_token(user.id), user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.post(f"{settings.api_prefix}/auth/login", response_model=AuthOut, tags=["identity"])
 async def login(body: LoginRequest, session: AsyncSession = Depends(get_session)) -> AuthOut:
     user = await session.scalar(select(User).where(User.email == str(body.email).lower()))
-    if user is None or not verify_password(body.password, user.password_hash):
-        raise HTTPException(401, "Invalid email or password")
-    set_context(actor_id=user.id)
-    return AuthOut(access_token=issue_token(user.id), user=UserOut(id=user.id, email=user.email, name=user.name))
+    if user is None or not verify_password(body.password, user.password_hash): raise HTTPException(401, "Invalid email or password")
+    set_context(actor_id=user.id); return AuthOut(access_token=issue_token(user.id), user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.get(f"{settings.api_prefix}/auth/me", response_model=UserOut, tags=["identity"])
-async def me(user: User = Depends(current_user)) -> UserOut:
-    set_context(actor_id=user.id)
-    return UserOut(id=user.id, email=user.email, name=user.name)
+async def me(user: User = Depends(current_user)) -> UserOut: set_context(actor_id=user.id); return UserOut(id=user.id, email=user.email, name=user.name)
 
 @app.get(f"{settings.api_prefix}/organizations", tags=["organizations"])
 async def list_organizations(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[dict[str, str]]:
-    set_context(actor_id=user.id)
-    rows = await session.execute(select(Organization, Membership.role).join(Membership).where(Membership.user_id == user.id))
-    return [{"id": org.id, "name": org.name, "role": role} for org, role in rows]
+    set_context(actor_id=user.id); rows = await session.execute(select(Organization, Membership.role).join(Membership).where(Membership.user_id == user.id)); return [{"id": org.id, "name": org.name, "role": role} for org, role in rows]
 
 @app.post(f"{settings.api_prefix}/projects", response_model=ProjectOut, status_code=201, tags=["projects"])
 async def create_project(body: ProjectCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> Project:
-    set_context(actor_id=user.id)
-    await require_membership(body.organization_id, user, session, {"owner", "admin", "member"})
-    project = Project(organization_id=body.organization_id, name=body.name.strip(), description=body.description, building_type=body.building_type, location=body.location, created_by=user.id)
-    session.add(project)
-    await session.flush()
-    set_context(project_id=project.id, revision_id=project.current_version_id)
-    await create_initial_state(session, project, user.id)
-    session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id,
-        project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_CREATED",
-        resource_type="project", resource_id=project.id))
-    await session.commit()
-    await session.refresh(project)
-    return project
+    set_context(actor_id=user.id); await require_membership(body.organization_id, user, session, {"owner", "admin", "member"}); project = Project(organization_id=body.organization_id, name=body.name.strip(), description=body.description, building_type=body.building_type, location=body.location, created_by=user.id); session.add(project); await session.flush(); set_context(project_id=project.id, revision_id=project.current_version_id); await create_initial_state(session, project, user.id); session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id, project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_CREATED", resource_type="project", resource_id=project.id)); await session.commit(); await session.refresh(project); return project
 
 @app.get(f"{settings.api_prefix}/projects", response_model=list[ProjectOut], tags=["projects"])
 async def list_projects(organization_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[Project]:
-    set_context(actor_id=user.id)
-    await require_membership(organization_id, user, session)
-    result = await session.scalars(select(Project).where(Project.organization_id == organization_id).order_by(Project.updated_at.desc()))
-    return list(result.all())
+    set_context(actor_id=user.id); await require_membership(organization_id, user, session); result = await session.scalars(select(Project).where(Project.organization_id == organization_id).order_by(Project.updated_at.desc())); return list(result.all())
 
 @app.get(f"{settings.api_prefix}/projects/{{project_id}}", response_model=ProjectOut, tags=["projects"])
 async def get_project(project_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> Project:
-    set_context(actor_id=user.id, project_id=project_id)
-    project = await session.get(Project, project_id)
+    set_context(actor_id=user.id, project_id=project_id); project = await session.get(Project, project_id)
     if project is None: raise HTTPException(404, "Project not found")
-    await require_membership(project.organization_id, user, session)
-    set_context(revision_id=project.current_version_id)
-    return project
+    await require_membership(project.organization_id, user, session); set_context(revision_id=project.current_version_id); return project
 
 @app.patch(f"{settings.api_prefix}/projects/{{project_id}}", response_model=ProjectOut, tags=["projects"])
 async def update_project(project_id: str, body: ProjectCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> Project:
-    set_context(actor_id=user.id, project_id=project_id)
-    project = await session.get(Project, project_id)
+    set_context(actor_id=user.id, project_id=project_id); project = await session.get(Project, project_id)
     if project is None: raise HTTPException(404, "Project not found")
     membership = await require_membership(project.organization_id, user, session, {"owner", "admin", "member"})
     if body.organization_id != project.organization_id: raise HTTPException(422, "Project organization cannot be changed")
     if membership.role == "viewer": raise HTTPException(403, "Viewer cannot edit projects")
-    if body.building_type != project.building_type or body.location != project.location:
-        raise HTTPException(409, {"error": {"code": "CANONICAL_VERSION_REQUIRED",
-            "message": "Building type/location changes must create a new canonical project version."}})
-    project.name, project.description = body.name.strip(), body.description
-    session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id,
-        project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_UPDATED",
-        resource_type="project", resource_id=project.id))
-    await session.commit()
-    await session.refresh(project)
-    set_context(revision_id=project.current_version_id)
-    return project
+    if body.building_type != project.building_type or body.location != project.location: raise HTTPException(409, {"error": {"code": "CANONICAL_VERSION_REQUIRED", "message": "Building type/location changes must create a new canonical project version."}})
+    project.name, project.description = body.name.strip(), body.description; session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id, project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_UPDATED", resource_type="project", resource_id=project.id)); await session.commit(); await session.refresh(project); set_context(revision_id=project.current_version_id); return project
 
 from app.domains.world_model.routes import router as world_model_router
 app.include_router(world_model_router, prefix=settings.api_prefix)
@@ -238,3 +186,5 @@ from app.domains.ai.routes import router as ai_router
 app.include_router(ai_router, prefix=settings.api_prefix)
 from app.domains.evidence.routes import router as evidence_router
 app.include_router(evidence_router, prefix=settings.api_prefix)
+from app.domains.site.routes import router as site_router
+app.include_router(site_router, prefix=settings.api_prefix)
