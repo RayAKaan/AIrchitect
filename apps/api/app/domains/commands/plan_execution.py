@@ -30,5 +30,7 @@ def execute_plan(
     plan_command_ids = {node.command_id for node in plan.nodes}
     if set(by_id) != plan_command_ids:
         raise ValueError("plan and command set do not match")
-    ordered = [by_id[next(node.command_id for node in plan.nodes if node.node_id == node_id)] for node_id in plan.execution_order()]
+
+    command_by_node = {node.node_id: by_id[node.command_id] for node in plan.nodes}
+    ordered = [command_by_node[node_id] for node_id in plan.execution_order()]
     return execute_command_batch(model, state, ordered, actor_id, revision_hash)
