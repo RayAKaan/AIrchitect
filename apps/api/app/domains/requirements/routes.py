@@ -6,6 +6,7 @@ from app.domains.requirements.service import analyze_brief
 from app.domains.brief.routes import router as brief_router
 from app.domains.requirements.persistence import extract, list_requirements, set_status
 from app.domains.program.routes import router as program_router
+from app.domains.envelope.routes import router as envelope_router
 
 router = APIRouter(tags=["requirements"])
 
@@ -32,3 +33,4 @@ async def reject_requirement(project_id: str, version_ref: str, requirement_id: 
 
 router.include_router(brief_router)
 router.include_router(program_router)
+router.include_router(envelope_router)
