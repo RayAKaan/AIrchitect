@@ -3,7 +3,7 @@ from app.domains.commands.regeneration import build_regeneration_batch_plan, bui
 from app.domains.commands.schemas import CommandEnvelope
 
 
-def command(command_id: str, command_type: str = "MoveBuilding") -> CommandEnvelope:
+def command(command_id: str, command_type: str = "MoveBuilding", revision: str = "r") -> CommandEnvelope:
     payload = {"element_id": "building-1", "translation_m": {"x": 1.0, "y": 0.0}}
     if command_type == "LockEntity":
         payload = {"element_id": "building-1"}
@@ -13,7 +13,7 @@ def command(command_id: str, command_type: str = "MoveBuilding") -> CommandEnvel
         schema_version=1,
         project_id="p",
         version_id="v",
-        base_revision_hash="r",
+        base_revision_hash=revision,
         idempotency_key=f"idem-{command_id}",
         reason="regeneration",
         payload=payload,
@@ -44,7 +44,7 @@ def test_batch_regeneration_follows_dependency_order_and_aggregates_impact() -> 
 def test_batch_regeneration_rejects_wrong_revision() -> None:
     plan = CommandPlan("plan", "p", "v", "r", (PlanNode("a", "a"),))
     try:
-        build_regeneration_batch_plan(plan, [command("a") .model_copy(update={"base_revision_hash": "stale"})])
+        build_regeneration_batch_plan(plan, [command("a", revision="stale")])
     except ValueError as exc:
         assert "revision" in str(exc)
     else:
