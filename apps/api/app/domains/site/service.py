@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project, User
 from app.db.site_command_models import SiteCommandLog
-from app.db.site_models import Site, SiteRevision
+from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevision
 from app.domains.foundation.service import resolve_project_version
 from app.domains.site.schemas import SetSiteBoundaryCommand
 from app.domains.site.validation import validate_boundary
@@ -23,6 +23,47 @@ def _hash_payload(payload: dict[str, Any]) -> str:
 
 def _command_payload_hash(boundary: dict[str, Any], name: str, reason: str) -> str:
     return _hash_payload({"boundary": boundary, "name": name, "reason": reason})
+
+
+async def _materialize_stale_derived_state(
+    session: AsyncSession,
+    site_id: str,
+    current_revision_id: str,
+) -> None:
+    """Persist stale state for every derived artifact from an older site revision.
+
+    Freshness is still revision-authoritative, but materializing the state prevents
+    consumers that read a snapshot directly from mistaking historical output for
+    current output. Historical rows are preserved; only their lifecycle status is
+    updated to STALE.
+    """
+    old_snapshots = list(
+        await session.scalars(
+            select(SiteLayerSnapshot)
+            .where(
+                SiteLayerSnapshot.site_revision_id != current_revision_id,
+                SiteLayerSnapshot.site_revision_id.in_(
+                    select(SiteRevision.id).where(SiteRevision.site_id == site_id)
+                ),
+            )
+        )
+    )
+    for snapshot in old_snapshots:
+        snapshot.status = "STALE"
+
+    old_evidence = list(
+        await session.scalars(
+            select(SiteEvidence)
+            .where(
+                SiteEvidence.site_revision_id != current_revision_id,
+                SiteEvidence.site_revision_id.in_(
+                    select(SiteRevision.id).where(SiteRevision.site_id == site_id)
+                ),
+            )
+        )
+    )
+    for evidence in old_evidence:
+        evidence.status = "STALE"
 
 
 async def set_site_boundary(session: AsyncSession, project: Project, user: User, body: SetSiteBoundaryCommand) -> SiteRevision:
@@ -114,6 +155,7 @@ async def set_site_boundary(session: AsyncSession, project: Project, user: User,
     )
     session.add(revision)
     await session.flush()
+    await _materialize_stale_derived_state(session, site.id, revision.id)
     command_log.status = "COMMITTED"
     command_log.site_revision_id = revision.id
     await session.commit()
