@@ -12,6 +12,7 @@ from app.dependencies import current_user
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
 
 from .executor import execute_semantic_command
+from .intent_contract import contract_for
 from .intent_parser import parse_intent
 from .preview import preview_command
 from .schemas import CommandEnvelope, CommandPreview, CommandResult
@@ -29,18 +30,23 @@ class IntentPreviewResponse(BaseModel):
     confidence: float
     missing_fields: list[str]
     ambiguous: bool
+    executable: bool
+    reason: str | None = None
 
 
 @router.post("/commands/intent-preview", response_model=IntentPreviewResponse)
 async def intent_preview(body: IntentPreviewRequest, user: User = Depends(current_user)) -> IntentPreviewResponse:
-    """Parse natural-language intent without constructing or committing a command."""
+    """Expose intent interpretation without constructing or committing a command."""
     proposal = parse_intent(body.text)
+    contract = contract_for(proposal)
     return IntentPreviewResponse(
-        command_type=proposal.command_type,
-        payload=proposal.payload,
+        command_type=contract.command_type,
+        payload=contract.payload,
         confidence=proposal.confidence,
-        missing_fields=list(proposal.missing_fields),
+        missing_fields=list(contract.missing_fields),
         ambiguous=proposal.ambiguous,
+        executable=contract.executable,
+        reason=contract.reason,
     )
 
 
