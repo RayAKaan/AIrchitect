@@ -5,6 +5,7 @@ from app.domains.requirements.schemas import RequirementAnalysisRequest, Require
 from app.domains.requirements.service import analyze_brief
 from app.domains.brief.routes import router as brief_router
 from app.domains.requirements.persistence import extract, list_requirements, set_status
+from app.domains.program.routes import router as program_router
 
 router = APIRouter(tags=["requirements"])
 
@@ -30,3 +31,4 @@ async def reject_requirement(project_id: str, version_ref: str, requirement_id: 
     return await set_status(session, project_id, version_ref, requirement_id, "REJECTED", user)
 
 router.include_router(brief_router)
+router.include_router(program_router)
