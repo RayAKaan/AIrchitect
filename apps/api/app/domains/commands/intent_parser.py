@@ -27,37 +27,27 @@ _TARGET_REQUIRED = {"MoveBuilding", "RotateBuilding", "ResizeSpace", "MoveSpace"
 _NUMBER = r"(-?(?:\d+(?:\.\d*)?|\.\d+))"
 
 
-def _unique_matches(text: str) -> list[str]:
-    return [command for pattern, command in _PATTERNS if pattern.search(text)]
-
-
 def parse_intent(text: str) -> IntentProposal:
     normalized = normalize_intent_text(text).text
-    matches = _unique_matches(normalized)
+    matches = [command for pattern, command in _PATTERNS if pattern.search(normalized)]
     if len(matches) != 1:
         return IntentProposal(None, {}, 0.0, (), bool(matches))
-
     command_type = matches[0]
     payload: dict[str, object] = {}
     missing: list[str] = []
     element_match = re.search(r"\b(?:element|id)\s*[:#]?\s*([a-z0-9_.-]+)", normalized, re.I)
+    name_match = re.search(r"\b(?:name|named)\s*[:]?\s*([a-z0-9_. -]+?)(?=\s+(?:by|to|at|\d|$))", normalized, re.I)
     if element_match:
         payload["element_id"] = element_match.group(1)
+    elif name_match:
+        payload["target_name"] = name_match.group(1).strip()
     elif command_type in _TARGET_REQUIRED:
         missing.append("element_id")
 
     if command_type in {"MoveBuilding", "MoveSpace"}:
-        vector = re.search(
-            rf"{_NUMBER}\s*m\s*(?:x|by|,|and)\s*{_NUMBER}\s*m",
-            normalized,
-            re.I,
-        )
+        vector = re.search(rf"{_NUMBER}\s*m\s*(?:x|by|,|and)\s*{_NUMBER}\s*m", normalized, re.I)
         if vector:
-            payload["translation_m"] = {
-                "x": float(vector.group(1)),
-                "y": float(vector.group(2)),
-                "z": 0.0,
-            }
+            payload["translation_m"] = {"x": float(vector.group(1)), "y": float(vector.group(2)), "z": 0.0}
         else:
             missing.append("translation_m")
     elif command_type == "RotateBuilding":
@@ -79,5 +69,7 @@ def parse_intent(text: str) -> IntentProposal:
         else:
             missing.append("setback_m")
 
+    if "target_name" in payload and "element_id" in missing:
+        missing.remove("element_id")
     confidence = 0.95 if not missing else 0.65
     return IntentProposal(command_type, payload, confidence, tuple(missing), False)
