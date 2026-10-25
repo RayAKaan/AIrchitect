@@ -35,11 +35,15 @@ class RegenerationState:
 
 
 def invalidate(state: RegenerationState, source_revision_hash: str) -> RegenerationState:
-    if source_revision_hash == state.source_revision_hash and state.status == "CURRENT":
+    if source_revision_hash == state.source_revision_hash:
         return state
+    if state.status in {"QUEUED", "RUNNING"}:
+        raise ValueError("cannot retarget an active regeneration task")
     invalidated = replace(state, source_revision_hash=source_revision_hash, output_revision_hash=None)
     if state.status == "CURRENT":
-        invalidated = invalidated.transition("INVALIDATED")
-    elif state.status not in {"INVALIDATED", "STALE", "QUEUED", "RUNNING"}:
-        invalidated = invalidated.transition("INVALIDATED")
-    return invalidated
+        return invalidated.transition("INVALIDATED")
+    if state.status in {"INVALIDATED", "STALE", "FAILED"}:
+        return invalidated
+    if state.status == "SUCCEEDED":
+        return invalidated.transition("INVALIDATED")
+    raise ValueError(f"cannot invalidate regeneration state: {state.status}")
