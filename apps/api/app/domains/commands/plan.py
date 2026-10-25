@@ -23,6 +23,9 @@ class CommandPlan:
         ids = [node.node_id for node in self.nodes]
         if len(ids) != len(set(ids)):
             raise ValueError("plan node ids must be unique")
+        command_ids = [node.command_id for node in self.nodes]
+        if len(command_ids) != len(set(command_ids)):
+            raise ValueError("plan command ids must be unique")
         known = set(ids)
         for node in self.nodes:
             if node.node_id in node.depends_on:
