@@ -20,21 +20,64 @@ function parsePolygon(value: unknown): Point[] {
   return points;
 }
 
+function parseKml(value: string): Point[] {
+  const document = new DOMParser().parseFromString(value, 'application/xml');
+  if (document.querySelector('parsererror')) throw new Error('KML could not be parsed as XML');
+  const polygons = Array.from(document.getElementsByTagNameNS('*', 'Polygon'));
+  if (polygons.length !== 1) throw new Error('KML boundary import requires exactly one Polygon');
+  const ring = polygons[0].getElementsByTagNameNS('*', 'outerBoundaryIs')[0]?.getElementsByTagNameNS('*', 'LinearRing')[0];
+  const coordinates = ring?.getElementsByTagNameNS('*', 'coordinates')[0]?.textContent?.trim();
+  if (!coordinates) throw new Error('KML Polygon has no outer boundary coordinates');
+  const points = coordinates.split(/\s+/).map((token) => {
+    const values = token.split(',');
+    const longitude = Number(values[0]);
+    const latitude = Number(values[1]);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) throw new Error('KML coordinates must be numeric longitude/latitude pairs in EPSG:4326');
+    return [longitude, latitude] as Point;
+  });
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (points.length > 1 && first[0] === last[0] && first[1] === last[1]) points.pop();
+  if (points.length < 3) throw new Error('A site boundary requires at least three KML vertices');
+  return points;
+}
+
+function download(name: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function kmlFor(points: Point[]): string {
+  const ring = [...points, points[0]].map(([longitude, latitude]) => `${longitude},${latitude},0`).join(' ');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>AIrchitect site boundary</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${ring}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></Document></kml>`;
+}
+
 export default function SiteGeoJsonTools({ points, onImport }: { points: Point[]; onImport: (points: Point[]) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   function exportBoundary() {
     const ring = [...points, points[0]];
     const geometry: GeoJsonPolygon = { type: 'Polygon', coordinates: [ring] };
-    const blob = new Blob([JSON.stringify({ type: 'Feature', properties: {}, geometry }, null, 2)], { type: 'application/geo+json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'site-boundary.geojson'; anchor.click(); URL.revokeObjectURL(url);
+    download('site-boundary.geojson', JSON.stringify({ type: 'Feature', properties: {}, geometry }, null, 2), 'application/geo+json');
+  }
+  function exportKml() {
+    if (points.length < 3) return;
+    download('site-boundary.kml', kmlFor(points), 'application/vnd.google-earth.kml+xml');
   }
   async function importBoundary(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return;
     setError('');
-    try { onImport(parsePolygon(JSON.parse(await file.text()))); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not import GeoJSON'); }
+    try {
+      const text = await file.text();
+      const extension = file.name.toLowerCase().split('.').pop();
+      onImport(extension === 'kml' ? parseKml(text) : parsePolygon(JSON.parse(text)));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not import site boundary'); }
     finally { event.target.value = ''; }
   }
-  return <div className="site-geojson-tools" aria-label="GeoJSON boundary tools"><button type="button" className="btn" onClick={() => inputRef.current?.click()}>Import GeoJSON</button><input ref={inputRef} type="file" accept=".geojson,.json,application/geo+json,application/json" onChange={importBoundary} hidden /><button type="button" className="btn" onClick={exportBoundary} disabled={points.length < 3}>Export GeoJSON</button>{error && <p className="alert" role="alert">{error}</p>}</div>;
+  return <div className="site-geojson-tools" aria-label="Site boundary import and export tools"><button type="button" className="btn" onClick={() => inputRef.current?.click()}>Import GeoJSON / KML</button><input ref={inputRef} type="file" accept=".geojson,.json,.kml,application/geo+json,application/json,application/vnd.google-earth.kml+xml" onChange={importBoundary} hidden /><button type="button" className="btn" onClick={exportBoundary} disabled={points.length < 3}>Export GeoJSON</button><button type="button" className="btn" onClick={exportKml} disabled={points.length < 3}>Export KML</button>{error && <p className="alert" role="alert">{error}</p>}</div>;
 }
