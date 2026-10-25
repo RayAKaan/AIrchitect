@@ -188,3 +188,5 @@ from app.domains.evidence.routes import router as evidence_router
 app.include_router(evidence_router, prefix=settings.api_prefix)
 from app.domains.site.routes import router as site_router
 app.include_router(site_router, prefix=settings.api_prefix)
+from app.domains.commands.routes import router as commands_router
+app.include_router(commands_router, prefix=settings.api_prefix)
