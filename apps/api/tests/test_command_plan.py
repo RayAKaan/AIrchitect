@@ -21,3 +21,16 @@ def test_plan_rejects_cycles() -> None:
         assert "cycle" in str(exc)
     else:
         raise AssertionError("expected cycle rejection")
+
+
+def test_plan_rejects_duplicate_command_ids() -> None:
+    plan = CommandPlan("p", "project", "version", "rev", (
+        PlanNode("a", "cmd"),
+        PlanNode("b", "cmd"),
+    ))
+    try:
+        plan.validate()
+    except ValueError as exc:
+        assert "command ids" in str(exc)
+    else:
+        raise AssertionError("expected duplicate command-id rejection")
