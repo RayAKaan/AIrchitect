@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.domains.semantic_model.editing import edit_property
+from app.domains.semantic_model.editing import edit_property, undo
 
 from .schemas import CommandEnvelope
 
@@ -23,5 +23,7 @@ def semantic_edit_from_command(command: CommandEnvelope) -> tuple[str, str, Any]
 
 
 def apply_semantic_command(model: dict[str, Any], state: dict[str, Any], command: CommandEnvelope, actor_id: str) -> dict[str, Any]:
+    if command.type == "Undo":
+        return undo(model, state, actor_id)
     element_id, property_name, value = semantic_edit_from_command(command)
     return edit_property(model, state, element_id, property_name, value, actor_id, command.reason)
