@@ -8,14 +8,16 @@ The current vertical slice establishes:
 
 `Organization -> Project -> Project Version -> Brief -> Requirements/Assumptions -> World Model Revision -> Versioned Artifacts -> Dependency/Change Impact -> Validation/Release Checks`
 
+**S1 — Site World Model / Site Workspace is complete.** It now provides canonical site revisions and boundary commands, metric geometry validation, GeoJSON/KML boundary interchange, provider/terms controls, persisted context layers, deterministic site analysis, explicit environmental unknowns, revision freshness and persisted stale state, evidence/source provenance, deterministic diagrams, presentation boards, onboarding and browser acceptance.
+
 Phase 27 established the authoritative artifact dependency graph and hash-guarded stale propagation. Phase 28 added workspace dependency/change-impact visibility and release validation.
 
-The complete roadmap is intentionally incremental. Site World Model, provider-backed site analysis, program/concept generation, universal commands, complete semantic building model, drawing compiler, full analysis/review, BIM/CAD round-trip, collaboration and production scaling are **not** represented as complete merely because supporting infrastructure exists.
+The remaining roadmap is intentionally incremental. Program/concept generation, universal commands beyond the site boundary, complete semantic building model, drawing compiler, full analysis/review, BIM/CAD round-trip, collaboration and production scaling are **not** represented as complete merely because supporting infrastructure exists.
 
 ## Architectural rules
 
 - Canonical World Model/revisions are authoritative; UI, maps, renderers, drawings, analyses, exports and boards are projections/derived artifacts.
-- Derived artifacts retain source revision/hash and dependency lineage and can become stale.
+- Derived artifacts retain source revision/hash and can become stale; S1 also materializes historical site-derived state as `STALE` when a new site revision is committed.
 - AI proposals cannot directly mutate canonical state.
 - Evidence-backed factual claims retain source/date/dataset/scope/method/confidence/status/revision lineage; unknown remains `UNKNOWN`.
 - Coordinate systems and units are explicit; display coordinates are not calculation authority.
@@ -24,7 +26,7 @@ The complete roadmap is intentionally incremental. Site World Model, provider-ba
 
 ## Architecture truth
 
-The S0 repository-truth contract is documented in:
+The repository-truth contract is documented in:
 
 - [Architecture overview](docs/architecture/overview.md)
 - [State ownership](docs/architecture/state-ownership.md)
@@ -36,6 +38,7 @@ The S0 repository-truth contract is documented in:
 - [Rendering architecture](docs/architecture/rendering.md)
 - [Data sources and terms](docs/architecture/data-sources.md)
 - [Third-party architecture policy](docs/architecture/third-party.md)
+- [S1 completion contract](docs/roadmap/s1-completion.md)
 
 These documents describe current implementation boundaries unless a section explicitly says `planned`.
 
