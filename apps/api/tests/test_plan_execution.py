@@ -3,8 +3,18 @@ from app.domains.commands.plan_execution import execute_plan
 from app.domains.commands.schemas import CommandEnvelope
 
 
-def command(command_id: str) -> CommandEnvelope:
-    return CommandEnvelope(command_id=command_id, type="LockEntity", schema_version=1, project_id="p", version_id="v", base_revision_hash="r", idempotency_key=f"idem-{command_id}", reason="test", payload={"element_id": "e"})
+def command(command_id: str, *, project_id: str = "p", version_id: str = "v", revision: str = "r") -> CommandEnvelope:
+    return CommandEnvelope(
+        command_id=command_id,
+        type="LockEntity",
+        schema_version=1,
+        project_id=project_id,
+        version_id=version_id,
+        base_revision_hash=revision,
+        idempotency_key=f"idem-{command_id}",
+        reason="test",
+        payload={"element_id": "e"},
+    )
 
 
 def test_plan_execution_accepts_matching_commands() -> None:
@@ -22,3 +32,23 @@ def test_plan_execution_rejects_mismatched_command_set() -> None:
         assert "command set" in str(exc)
     else:
         raise AssertionError("expected command-set rejection")
+
+
+def test_plan_execution_rejects_mismatched_context() -> None:
+    plan = CommandPlan("p1", "p", "v", "r", (PlanNode("a", "a"),))
+    try:
+        execute_plan({}, {}, plan, [command("a", project_id="other")], "actor", "r")
+    except ValueError as exc:
+        assert "context" in str(exc)
+    else:
+        raise AssertionError("expected context rejection")
+
+
+def test_plan_execution_rejects_mismatched_revision() -> None:
+    plan = CommandPlan("p1", "p", "v", "r", (PlanNode("a", "a"),))
+    try:
+        execute_plan({}, {}, plan, [command("a")], "actor", "stale")
+    except ValueError as exc:
+        assert "revision" in str(exc)
+    else:
+        raise AssertionError("expected revision rejection")
