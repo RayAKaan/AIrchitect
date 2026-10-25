@@ -14,6 +14,7 @@ from app.domains.semantic_model.editing import check_expected_revision, load_edi
 from .executor import execute_semantic_command
 from .intent_contract import contract_for
 from .intent_parser import parse_intent
+from .plan_preview import preview_sequential_plan
 from .preview import preview_command
 from .schemas import CommandEnvelope, CommandPreview, CommandResult
 from .target_resolution import resolve_target
@@ -42,6 +43,25 @@ class IntentPreviewResponse(BaseModel):
     executable: bool
     reason: str | None = None
     model_revision_hash: str | None = None
+
+
+class PlanPreviewRequest(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=128)
+    commands: list[CommandEnvelope] = Field(min_length=1, max_length=100)
+
+
+class PlanPreviewResponse(BaseModel):
+    plan_id: str
+    project_id: str
+    version_id: str
+    base_revision_hash: str
+    executable: bool
+    command_ids: list[str]
+    execution_order: list[str]
+    impact_groups: list[str]
+    fingerprint: str | None
+    validation_errors: list[str]
+    warnings: list[str]
 
 
 _EXPECTED_TYPES = {
@@ -85,6 +105,25 @@ async def intent_preview(body: IntentPreviewRequest, user: User = Depends(curren
 @router.post("/commands/preview", response_model=CommandPreview)
 async def preview(body: CommandEnvelope, user: User = Depends(current_user)) -> CommandPreview:
     return preview_command(body)
+
+
+@router.post("/commands/plan-preview", response_model=PlanPreviewResponse)
+async def plan_preview(body: PlanPreviewRequest, user: User = Depends(current_user)) -> PlanPreviewResponse:
+    """Project a deterministic sequential command plan without mutating canonical state."""
+    preview = preview_sequential_plan(body.plan_id, body.commands)
+    return PlanPreviewResponse(
+        plan_id=preview.plan.plan_id,
+        project_id=preview.plan.project_id,
+        version_id=preview.plan.version_id,
+        base_revision_hash=preview.plan.base_revision_hash,
+        executable=preview.executable,
+        command_ids=list(preview.command_ids),
+        execution_order=list(preview.execution_order),
+        impact_groups=list(preview.impact_groups),
+        fingerprint=preview.fingerprint,
+        validation_errors=list(preview.validation_errors),
+        warnings=list(preview.warnings),
+    )
 
 
 @router.post("/commands/commit", response_model=CommandResult)
