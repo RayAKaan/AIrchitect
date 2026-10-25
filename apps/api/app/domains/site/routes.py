@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project, User
 from app.db.provider_models import Provider, ProviderTerms
-from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevision
+from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevision, SiteSource
 from app.db.session import get_session
 from app.dependencies import current_user, require_membership
 from app.domains.site.analysis import RUNNER_VERSION, _hash, analyze_site
@@ -164,6 +164,44 @@ async def get_site_evidence(site_id: str, user: User = Depends(current_user), se
     site = await session.get(Site, site_id)
     if site is None: raise HTTPException(404, "Site not found")
     await require_membership(site.organization_id, user, session)
-    rows = await session.scalars(select(SiteEvidence).join(SiteRevision, SiteEvidence.site_revision_id == SiteRevision.id).where(SiteRevision.site_id == site_id))
-    return [{"id": item.id, "site_revision_id": item.site_revision_id, "source_id": item.source_id, "claim_type": item.claim_type,
-             "value": item.value_json, "confidence": item.confidence, "status": item.status, "method": item.method} for item in rows]
+    evidence_rows = list(await session.scalars(select(SiteEvidence).join(SiteRevision, SiteEvidence.site_revision_id == SiteRevision.id).where(SiteRevision.site_id == site_id).order_by(SiteEvidence.created_at.desc())))
+    revision_ids = {item.site_revision_id for item in evidence_rows}
+    revisions = {}
+    if revision_ids:
+        revision_rows = await session.scalars(select(SiteRevision).where(SiteRevision.id.in_(revision_ids)))
+        revisions = {item.id: item for item in revision_rows}
+    source_ids = {item.source_id for item in evidence_rows if item.source_id}
+    sources = {}
+    if source_ids:
+        source_rows = await session.scalars(select(SiteSource).where(SiteSource.id.in_(source_ids)))
+        sources = {item.id: item for item in source_rows}
+    current = await session.scalar(select(SiteRevision).where(SiteRevision.site_id == site_id).order_by(SiteRevision.revision.desc()))
+    output = []
+    for item in evidence_rows:
+        revision = revisions.get(item.site_revision_id)
+        source = sources.get(item.source_id) if item.source_id else None
+        output.append({
+            "id": item.id,
+            "site_revision_id": item.site_revision_id,
+            "revision": revision.revision if revision else None,
+            "source_id": item.source_id,
+            "claim_type": item.claim_type,
+            "value": item.value_json,
+            "confidence": item.confidence,
+            "status": item.status,
+            "method": item.method,
+            "current_revision": bool(current and current.id == item.site_revision_id),
+            "source": None if source is None else {
+                "provider": source.provider,
+                "dataset": source.dataset,
+                "dataset_version": source.dataset_version,
+                "source_url": source.source_url,
+                "retrieval_time": source.retrieval_time.isoformat(),
+                "attribution": source.attribution,
+                "license": source.license,
+                "geographic_scope": source.geographic_scope,
+                "resolution": source.resolution,
+                "raw_reference": source.raw_reference,
+            },
+        })
+    return output
