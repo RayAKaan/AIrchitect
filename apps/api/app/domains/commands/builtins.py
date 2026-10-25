@@ -14,6 +14,7 @@ COMMANDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("MoveSpace", ("element_id", "translation_m")),
     ("SetProgramArea", ("space_type", "area_m2")),
     ("LockEntity", ("element_id",)),
+    ("Undo", ()),
 )
 
 
