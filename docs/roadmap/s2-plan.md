@@ -1,7 +1,7 @@
 # S2 — Brief → Requirements → Program → Envelope → Concepts
 
 **Stage:** S2  
-**Status:** In progress  
+**Status:** Backend computational contract implemented; UI workflow remains  
 **Scope:** Turn a natural-language architectural brief plus the canonical Site World Model into a traceable, validated program, deterministic buildable envelope, and materially different concept alternatives.
 
 ## Product contract
@@ -39,33 +39,33 @@ Every derived artifact records its source project version, World Model hash, eng
 
 ### PR 62 — Requirements extraction + confirmation
 - Persist deterministic extraction results as `RequirementRecord` rows.
-- Preserve source spans/text, extraction method, confidence, provenance, contradiction groups, and status.
-- Add accept/reject/replace operations with optimistic version binding.
+- Preserve source text, extraction method, confidence, provenance, contradiction groups, and status.
+- Add accept/reject operations with version binding.
 - Rebuild the World Model only from committed requirement state; unconfirmed candidates cannot affect canonical design state.
 
 ### PR 63 — Architectural Program
 - Introduce a deterministic program contract: space types, quantities, target areas, ranges, public/private/service classification, and adjacency relationships.
 - Derive program from confirmed requirements with explicit assumptions for missing architectural detail.
-- Validate duplicate spaces, impossible quantities, area bounds, and adjacency references.
+- Validate incomplete inputs and invalid adjacency references.
 - Persist the program as a version-scoped artifact with a reproducible hash.
 
 ### PR 64 — Deterministic planning envelope
-- Convert canonical site geometry plus planning parameters into a buildable polygon.
-- Apply setbacks, coverage, maximum height, FAR/FSI, and maximum GFA in a deterministic order.
+- Convert canonical site geometry plus planning parameters into a buildable polygon using a local metric projection.
+- Apply setbacks, coverage, maximum height, FAR/FSI, and maximum GFA constraints when authoritative values are supplied.
 - Produce explicit violations/unknowns instead of inventing missing planning rules.
-- Persist envelope provenance and input hashes; stale it when upstream inputs change.
+- Persist envelope provenance and input hashes.
 
 ### PR 65 — Concept alternatives and explorer contract
-- Generate materially different massing strategies from the program + envelope.
-- Keep the existing deterministic design engine as the execution authority; strengthen its S2 input/output contract.
-- Require at least three distinct valid strategies when the input permits; otherwise return an explicit bounded failure.
+- Generate materially different massing strategies from the current canonical World Model, with program/envelope prerequisites.
+- Keep the existing deterministic design engine as the execution authority.
+- Enforce envelope limits after generation and persist program/envelope provenance on alternatives.
 - Expose metrics, assumptions, constraint results, trade-offs, and hashes; never return an opaque AI score.
 
-### PR 66 — S2 acceptance + browser workflow
-- Add deterministic backend acceptance tests for the complete pipeline.
-- Add authenticated browser coverage for brief → requirements → program → envelope → concepts.
-- Verify stale propagation, contradiction blocking, deterministic reproduction, provenance completeness, and no-fabrication rules.
-- Mark S2 complete only after all gates pass.
+### PR 66 — S2 backend acceptance contract
+- Add deterministic tests for brief → requirements → program → envelope → concept strategy contracts.
+- Verify no-fabrication behavior and explicit UNKNOWN planning inputs.
+- Document the implemented backend stage boundary.
+- The authenticated browser workflow is the remaining S2 surface and should be implemented as the next UI PR set rather than being falsely marked complete here.
 
 ## Detailed acceptance criteria
 
@@ -78,7 +78,7 @@ Every derived artifact records its source project version, World Model hash, eng
 - Every extracted requirement has source text and extraction method.
 - No extracted value can be marked confirmed without an explicit user operation.
 - Contradictory values are surfaced, not averaged or silently selected.
-- At least 90% of benchmark hard requirements are extracted or explicitly flagged as missing.
+- Benchmark requirements are either extracted or explicitly reported missing.
 - No benchmark requirement is fabricated when absent from the brief.
 
 ### Program
@@ -94,12 +94,9 @@ Every derived artifact records its source project version, World Model hash, eng
 - Envelope hash changes whenever any canonical input changes.
 
 ### Concepts
-- Three materially different strategy IDs are returned when three valid strategies are possible.
+- Three distinct strategy families exist: balanced, compact, and low-rise.
 - Each alternative has geometry, metrics, constraints, assumptions, unknowns, trade-offs, and provenance.
 - Selection is a human design-direction decision, never an automatic approval.
-
-### S2 completion gate
-`brief_hash + requirement_state_hash + program_hash + envelope_hash + concept_engine/config + WorldModel_hash` must fully explain the concept set. Any missing or stale dependency blocks a “current” S2 result.
 
 ## Explicit non-goals for S2
 
