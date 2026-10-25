@@ -3,6 +3,7 @@ from app.dependencies import current_user
 from app.db.models import User
 from app.domains.requirements.schemas import RequirementAnalysisRequest, RequirementAnalysisResponse
 from app.domains.requirements.service import analyze_brief
+from app.domains.brief.routes import router as brief_router
 
 router = APIRouter(tags=["requirements"])
 
@@ -10,3 +11,5 @@ router = APIRouter(tags=["requirements"])
 async def analyze_requirements(body: RequirementAnalysisRequest, _user: User = Depends(current_user)) -> RequirementAnalysisResponse:
     requirements, missing, issues = analyze_brief(body.brief)
     return RequirementAnalysisResponse(requirements=requirements, missing_information=missing, issues=issues)
+
+router.include_router(brief_router)
