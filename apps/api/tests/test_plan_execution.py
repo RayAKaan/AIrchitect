@@ -24,7 +24,18 @@ def command(command_id: str, *, project_id: str = "p", version_id: str = "v", re
 def test_plan_execution_accepts_matching_commands() -> None:
     commands = [command("a"), command("b")]
     plan = CommandPlan("p1", "p", "v", "r", (PlanNode("a", "a"), PlanNode("b", "b", ("a",))))
-    model = {"semantic_model": {"elements": [{"id": "e", "type": "Building", "translation_m": {"x": 0.0, "y": 0.0, "z": 0.0}}]}}
+    model = {
+        "semantic_model": {
+            "elements": [
+                {
+                    "id": "e",
+                    "type": "Building",
+                    "element_type": "Building",
+                    "translation_m": {"x": 0.0, "y": 0.0, "z": 0.0},
+                }
+            ]
+        }
+    }
     result = execute_plan(model, {}, plan, commands, "actor", "r")
     assert len(result.results) == 2
 
