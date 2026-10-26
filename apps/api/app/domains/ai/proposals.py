@@ -31,6 +31,20 @@ class ProposedCommand(BaseModel):
         return value
 
 
+class AIProposalDraft(BaseModel):
+    """Provider-facing proposal shape; server-owned identity is added after parsing."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: str = "1.0.0"
+    intent: ProposalIntent
+    summary: str = Field(min_length=1, max_length=2000)
+    commands: tuple[ProposedCommand, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    confidence: float = Field(ge=0.0, le=1.0)
+    requires_confirmation: bool = True
+
+
 class AIProposal(BaseModel):
     """A bounded AI proposal anchored to one immutable project revision."""
 
@@ -91,12 +105,13 @@ def validate_ai_proposal(proposal: AIProposal) -> ProposalValidation:
     if len(command_ids) != len(set(command_ids)):
         errors.append("proposal command ids must be unique")
 
+    known_ids = set(command_ids)
     unknown_dependencies = sorted(
         {
             dependency
             for command in proposal.commands
             for dependency in command.depends_on
-            if dependency not in set(command_ids)
+            if dependency not in known_ids
         }
     )
     if unknown_dependencies:
