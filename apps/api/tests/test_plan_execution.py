@@ -6,7 +6,7 @@ from app.domains.commands.schemas import CommandEnvelope
 def command(command_id: str, *, project_id: str = "p", version_id: str = "v", revision: str = "r") -> CommandEnvelope:
     return CommandEnvelope(
         command_id=command_id,
-        type="LockEntity",
+        type="MoveBuilding",
         schema_version=1,
         project_id=project_id,
         version_id=version_id,
@@ -14,14 +14,17 @@ def command(command_id: str, *, project_id: str = "p", version_id: str = "v", re
         idempotency_key=f"idempotent-{command_id}",
         mode="commit",
         reason="test",
-        payload={"element_id": "e"},
+        payload={
+            "element_id": "e",
+            "translation_m": {"x": 1.0, "y": 0.0, "z": 0.0},
+        },
     )
 
 
 def test_plan_execution_accepts_matching_commands() -> None:
     commands = [command("a"), command("b")]
     plan = CommandPlan("p1", "p", "v", "r", (PlanNode("a", "a"), PlanNode("b", "b", ("a",))))
-    model = {"semantic_model": {"elements": [{"id": "e", "type": "Building"}]}}
+    model = {"semantic_model": {"elements": [{"id": "e", "type": "Building", "translation_m": {"x": 0.0, "y": 0.0, "z": 0.0}}]}}
     result = execute_plan(model, {}, plan, commands, "actor", "r")
     assert len(result.results) == 2
 
