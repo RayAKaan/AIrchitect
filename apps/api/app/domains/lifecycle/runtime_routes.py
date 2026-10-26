@@ -11,9 +11,16 @@ from app.domains.foundation.service import resolve_project_version
 
 from .release_gate import evaluate_release
 from .release_manifest import build_release_manifest
+from .runtime_health import check_runtime_health
 from .runtime_observability import collect_runtime_metrics
 
 router = APIRouter(tags=["runtime"])
+
+
+@router.get("/health")
+async def runtime_health(session: AsyncSession = Depends(get_session)):
+    health = await check_runtime_health(session)
+    return JSONResponse(content=health.as_dict(), status_code=200 if health.ready else 503)
 
 
 @router.get("/projects/{project_id}/versions/{version_ref}/release-readiness")
