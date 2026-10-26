@@ -46,7 +46,8 @@ def test_plan_execution_accepts_matching_commands() -> None:
                 }
             ],
             "spaces": [{"id": "e", "name": "e", "area_m2": 5.0}],
-        }
+        },
+        "spaces": [{"id": "e", "name": "e", "area_m2": 5.0}],
     }
     result = execute_plan(model, {}, plan, commands, "actor", "r")
     assert len(result.results) == 2
