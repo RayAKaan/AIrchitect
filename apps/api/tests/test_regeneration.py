@@ -14,7 +14,7 @@ def command(command_id: str, command_type: str = "MoveBuilding", revision: str =
         project_id="p",
         version_id="v",
         base_revision_hash=revision,
-        idempotency_key=f"idem-{command_id}",
+        idempotency_key=f"idempotent-{command_id}",
         reason="regeneration",
         payload=payload,
     )
