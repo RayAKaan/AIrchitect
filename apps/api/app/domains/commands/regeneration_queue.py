@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -16,8 +16,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _retry_delay(attempt_count: int) -> timedelta:
+    return timedelta(seconds=min(300, 5 * (2 ** max(0, attempt_count - 1))))
+
+
 class RegenerationQueue:
-    """Durable queue adapter with idempotent enqueue and transactional claims."""
+    """Durable queue adapter with idempotent enqueue, claims, retries, and leases."""
 
     def __init__(self, repository: RegenerationStateRepository | None = None) -> None:
         self._states = repository or RegenerationStateRepository()
@@ -90,12 +94,12 @@ class RegenerationQueue:
         if job is None:
             return None
 
-        state = await session.execute(
+        state_result = await session.execute(
             select(RegenerationStateRecord)
             .where(RegenerationStateRecord.id == job.regeneration_state_id)
             .with_for_update()
         )
-        regeneration_state = state.scalar_one()
+        regeneration_state = state_result.scalar_one()
         if regeneration_state.status != "QUEUED":
             raise ValueError("queued job does not reference a QUEUED regeneration state")
         await self._states.transition(session, regeneration_state, "RUNNING")
@@ -106,3 +110,68 @@ class RegenerationQueue:
         job.locked_by = worker_id
         await session.flush()
         return job
+
+    async def fail(
+        self,
+        session: AsyncSession,
+        job: RegenerationJobRecord,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> RegenerationJobRecord:
+        if job.status != "RUNNING":
+            raise ValueError(f"cannot fail job in {job.status} status")
+        state_result = await session.execute(
+            select(RegenerationStateRecord)
+            .where(RegenerationStateRecord.id == job.regeneration_state_id)
+            .with_for_update()
+        )
+        state = state_result.scalar_one()
+        if state.status != "RUNNING":
+            raise ValueError(f"running job has non-running state: {state.status}")
+
+        await self._states.transition(session, state, "FAILED")
+        job.error_code = error_code[:100]
+        job.error_message = error_message[:2000]
+        job.locked_at = None
+        job.locked_by = None
+        if job.attempt_count < job.max_attempts:
+            await self._states.transition(session, state, "QUEUED")
+            job.status = "QUEUED"
+            job.available_at = _now() + _retry_delay(job.attempt_count)
+        else:
+            job.status = "FAILED"
+            job.completed_at = _now()
+        await session.flush()
+        return job
+
+    async def recover_expired_leases(
+        self,
+        session: AsyncSession,
+        *,
+        lease_timeout: timedelta,
+    ) -> tuple[str, ...]:
+        if lease_timeout <= timedelta(0):
+            raise ValueError("lease_timeout must be positive")
+        cutoff = _now() - lease_timeout
+        result = await session.execute(
+            select(RegenerationJobRecord)
+            .where(
+                RegenerationJobRecord.status == "RUNNING",
+                RegenerationJobRecord.locked_at.is_not(None),
+                RegenerationJobRecord.locked_at < cutoff,
+            )
+            .order_by(RegenerationJobRecord.locked_at, RegenerationJobRecord.id)
+            .with_for_update(skip_locked=True)
+        )
+        recovered: list[str] = []
+        for job in result.scalars():
+            await self.fail(
+                session,
+                job,
+                error_code="worker_lease_expired",
+                error_message="worker lease expired before regeneration completed",
+            )
+            recovered.append(job.id)
+        await session.flush()
+        return tuple(recovered)
