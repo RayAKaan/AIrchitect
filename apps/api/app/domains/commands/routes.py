@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.lifecycle import canonical_hash
 from app.db.models import User
 from app.db.session import get_session
 from app.dependencies import current_user
+from app.domains.lifecycle.service import canonical_hash
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
 
 from .artifact_invalidation import ArtifactInvalidationService
