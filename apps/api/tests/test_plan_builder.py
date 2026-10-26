@@ -3,7 +3,16 @@ from app.domains.commands.schemas import CommandEnvelope
 
 
 def command(command_id: str) -> CommandEnvelope:
-    return CommandEnvelope(command_id=command_id, type="MoveBuilding", schema_version=1, project_id="p", version_id="v", base_revision_hash="r", idempotency_key=f"idem-{command_id}", reason="test")
+    return CommandEnvelope(
+        command_id=command_id,
+        type="MoveBuilding",
+        schema_version=1,
+        project_id="p",
+        version_id="v",
+        base_revision_hash="r",
+        idempotency_key=f"idempotent-{command_id}",
+        reason="test",
+    )
 
 
 def test_builder_links_commands_in_order() -> None:

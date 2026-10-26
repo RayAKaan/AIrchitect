@@ -69,7 +69,6 @@ class WorkflowTaskQueue:
                     )
                     .order_by(
                         WorkflowTaskRecord.available_at,
-                        WorkflowTaskRecord.created_at,
                         WorkflowTaskRecord.id,
                     )
                     .limit(candidate_limit)

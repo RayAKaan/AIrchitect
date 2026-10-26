@@ -14,7 +14,7 @@ async def test_regeneration_repository_persists_and_invalidates_state() -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     repository = RegenerationStateRepository()
     async with sessions() as session:
-        record = await repository.create_current(
+        await repository.create_current(
             session,
             organization_id="org",
             project_id="project",

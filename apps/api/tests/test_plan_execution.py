@@ -11,7 +11,7 @@ def command(command_id: str, *, project_id: str = "p", version_id: str = "v", re
         project_id=project_id,
         version_id=version_id,
         base_revision_hash=revision,
-        idempotency_key=f"idem-{command_id}",
+        idempotency_key=f"idempotent-{command_id}",
         reason="test",
         payload={"element_id": "e"},
     )

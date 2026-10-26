@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.models import ArtifactVersion
@@ -39,7 +40,11 @@ async def test_invalidation_marks_current_artifact_stale_and_persists_state() ->
 
         assert invalidated == (artifact.id,)
         assert artifact.status == "stale"
-        state = await session.get(RegenerationStateRecord, artifact.id, populate_existing=True)
+        state = await session.scalar(
+            select(RegenerationStateRecord).where(
+                RegenerationStateRecord.artifact_version_id == artifact.id
+            )
+        )
         assert state is not None
         assert state.status == "INVALIDATED"
         assert state.source_revision_hash == "rev-2"

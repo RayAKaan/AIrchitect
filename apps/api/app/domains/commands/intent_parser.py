@@ -36,7 +36,7 @@ def parse_intent(text: str) -> IntentProposal:
     payload: dict[str, object] = {}
     missing: list[str] = []
     element_match = re.search(r"\b(?:element|id)\s*[:#]?\s*([a-z0-9_.-]+)", normalized, re.I)
-    name_match = re.search(r"\b(?:name|named)\s*[:]?\s*([a-z0-9_. -]+?)(?=\s+(?:by|to|at|\d|$))", normalized, re.I)
+    name_match = re.search(r"\b(?:named|name)\s*[:]?\s*([a-z0-9_. -]+?)(?=\s+(?:by|to|at|\d|$))", normalized, re.I)
     if element_match:
         payload["element_id"] = element_match.group(1)
     elif name_match:
