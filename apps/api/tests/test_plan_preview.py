@@ -12,7 +12,7 @@ def command(command_id: str, *, command_type: str = "MoveBuilding", payload: dic
         base_revision_hash="r",
         idempotency_key=f"idempotent-{command_id}",
         reason="preview",
-        payload=payload or {"element_id": "building-1", "translation_m": {"x": 1.0, "y": 0.0}},
+        payload=payload or {"element_id": "building-1", "translation_m": {"x": 1.0, "y": 0.0, "z": 0.0}},
     )
 
 
@@ -25,7 +25,7 @@ def test_plan_preview_is_deterministic_and_non_mutating() -> None:
 
 
 def test_plan_preview_fails_closed_for_invalid_command() -> None:
-    invalid = command("a", payload={"element_id": "building-1", "translation_m": {"x": float("nan"), "y": 0.0}})
+    invalid = command("a", payload={"element_id": "building-1", "translation_m": {"x": float("nan"), "y": 0.0, "z": 0.0}})
     result = preview_sequential_plan("plan", [invalid])
     assert result.executable is False
     assert result.fingerprint is None
