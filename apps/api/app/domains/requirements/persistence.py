@@ -136,8 +136,18 @@ async def set_status(
     requirement_id: str,
     status: str,
     user: User,
+    *,
+    expected_revision: int | None = None,
 ) -> dict:
     project, version = await resolve_project_version(session, project_id, version_ref, user.id, write=True)
+    if expected_revision is not None and version.revision_number != expected_revision:
+        raise error(
+            409,
+            "VERSION_CONFLICT",
+            "The project version changed since it was read",
+            expected_revision=expected_revision,
+            current_revision=version.revision_number,
+        )
     row = await session.scalar(
         select(RequirementRecord)
         .where(
