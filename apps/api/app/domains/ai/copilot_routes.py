@@ -11,6 +11,7 @@ from app.db.models import EvidenceNode, Project, WorldModelRevision
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.ai.context import build_copilot_context
+from app.domains.ai.copilot_plan import preview_proposal_plan
 from app.domains.ai.proposal_compiler import compile_proposal_commands
 from app.domains.ai.proposals import (
     AIProposal,
@@ -29,6 +30,10 @@ router = APIRouter(tags=["ai-copilot"])
 class CopilotRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     version_ref: str | None = None
+
+
+class CopilotPlanRequest(BaseModel):
+    proposal: AIProposal
 
 
 @router.post("/projects/{project_id}/ai/copilot/preview")
@@ -139,5 +144,27 @@ async def copilot_preview(
         "commands": [command.model_dump(mode="json") for command in commands],
         "executable": True,
         "validation_errors": [],
+        "canonical_state_mutated": False,
+    }
+
+
+@router.post("/projects/{project_id}/ai/copilot/plan-preview")
+async def copilot_plan_preview(
+    project_id: str,
+    body: CopilotPlanRequest,
+    user=Depends(current_user),
+) -> dict:
+    if body.proposal.project_id != project_id:
+        raise HTTPException(status_code=422, detail="proposal project does not match route project")
+    preview = preview_proposal_plan(body.proposal)
+    return {
+        "proposal_id": body.proposal.proposal_id,
+        "executable": preview.executable,
+        "command_ids": list(preview.command_ids),
+        "execution_order": list(preview.execution_order),
+        "impact_groups": list(preview.impact_groups),
+        "fingerprint": preview.fingerprint,
+        "validation_errors": list(preview.validation_errors),
+        "warnings": list(preview.warnings),
         "canonical_state_mutated": False,
     }
