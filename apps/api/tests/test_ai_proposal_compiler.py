@@ -10,7 +10,7 @@ def base_proposal(commands: tuple[ProposedCommand, ...]) -> AIProposal:
         base_revision_hash="revision-1",
         context_hash="context-1",
         intent="EDIT",
-        summary="Update the courtyard ratio.",
+        summary="Update the courtyard program area.",
         commands=commands,
         confidence=0.9,
         provider="test",
@@ -22,9 +22,9 @@ def base_proposal(commands: tuple[ProposedCommand, ...]) -> AIProposal:
 def command(command_id: str, depends_on: tuple[str, ...] = ()) -> ProposedCommand:
     return ProposedCommand(
         command_id=command_id,
-        command_type="SetDesignParameter",
-        payload={"parameter": "courtyard_ratio", "value": 0.2},
-        reason="Apply the requested proportion.",
+        command_type="SetProgramArea",
+        payload={"space_type": "courtyard", "area_m2": 120},
+        reason="Apply the requested program area.",
         depends_on=depends_on,
     )
 
@@ -47,12 +47,21 @@ def test_compiler_idempotency_is_stable() -> None:
     assert first.startswith("ai-")
 
 
-def test_compiler_rejects_invalid_proposal() -> None:
-    proposal = base_proposal((command("a", ("missing",)),))
+def test_compiler_rejects_unsupported_command() -> None:
+    proposal = base_proposal(
+        (
+            ProposedCommand(
+                command_id="a",
+                command_type="UnsupportedAICommand",
+                payload={},
+                reason="Attempt an unsupported mutation.",
+            ),
+        )
+    )
 
     try:
         compile_proposal_commands(proposal)
     except ValueError as exc:
-        assert "unknown dependencies" in str(exc)
+        assert "unsupported commands" in str(exc)
     else:
-        raise AssertionError("expected invalid proposal rejection")
+        raise AssertionError("expected unsupported command rejection")
