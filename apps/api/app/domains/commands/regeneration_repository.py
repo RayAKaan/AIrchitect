@@ -46,6 +46,30 @@ class RegenerationStateRepository:
         await session.flush()
         return record
 
+    async def create_invalidated(
+        self,
+        session: AsyncSession,
+        *,
+        organization_id: str,
+        project_id: str,
+        project_version_id: str,
+        artifact_version_id: str,
+        source_revision_hash: str,
+        generation_key: str,
+    ) -> RegenerationStateRecord:
+        record = RegenerationStateRecord(
+            organization_id=organization_id,
+            project_id=project_id,
+            project_version_id=project_version_id,
+            artifact_version_id=artifact_version_id,
+            source_revision_hash=source_revision_hash,
+            status="INVALIDATED",
+            generation_key=generation_key,
+        )
+        session.add(record)
+        await session.flush()
+        return record
+
     async def invalidate(
         self,
         session: AsyncSession,
