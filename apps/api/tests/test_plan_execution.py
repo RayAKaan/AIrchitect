@@ -35,6 +35,7 @@ def test_plan_execution_accepts_matching_commands() -> None:
     )
     model = {
         "project_id": "p",
+        "project_version_id": "v",
         "semantic_model": {
             "elements": [
                 {
