@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,14 +28,21 @@ class StageInput:
         workflow_id: str,
         project_version_id: str,
         source_revision_hash: str,
-        payload: dict[str, Any],
+        payload: Mapping[str, Any],
     ) -> StageInput:
-        if not stage.strip():
-            raise ValueError("stage must not be empty")
-        if not source_revision_hash:
-            raise ValueError("source_revision_hash must not be empty")
-        canonical = _canonical_hash(payload)
-        return cls(stage, workflow_id, project_version_id, source_revision_hash, dict(payload), canonical)
+        _require_identity(stage, "stage")
+        _require_identity(workflow_id, "workflow_id")
+        _require_identity(project_version_id, "project_version_id")
+        _require_identity(source_revision_hash, "source_revision_hash")
+        canonical_payload = dict(payload)
+        return cls(
+            stage=stage,
+            workflow_id=workflow_id,
+            project_version_id=project_version_id,
+            source_revision_hash=source_revision_hash,
+            payload=canonical_payload,
+            input_hash=_canonical_hash(canonical_payload),
+        )
 
 
 @dataclass(frozen=True)
@@ -52,14 +59,20 @@ class StageOutput:
         *,
         stage: str,
         source_revision_hash: str,
-        payload: dict[str, Any],
+        payload: Mapping[str, Any],
         engine_version: str,
     ) -> StageOutput:
-        if not stage.strip():
-            raise ValueError("stage must not be empty")
-        if not engine_version.strip():
-            raise ValueError("engine_version must not be empty")
-        return cls(stage, source_revision_hash, dict(payload), _canonical_hash(payload), engine_version)
+        _require_identity(stage, "stage")
+        _require_identity(source_revision_hash, "source_revision_hash")
+        _require_identity(engine_version, "engine_version")
+        canonical_payload = dict(payload)
+        return cls(
+            stage=stage,
+            source_revision_hash=source_revision_hash,
+            payload=canonical_payload,
+            output_hash=_canonical_hash(canonical_payload),
+            engine_version=engine_version,
+        )
 
 
 StageHandler = Callable[[AsyncSession, StageInput], Awaitable[StageOutput]]
@@ -68,16 +81,14 @@ StageHandler = Callable[[AsyncSession, StageInput], Awaitable[StageOutput]]
 class PipelineStageRegistry:
     """Explicit stage registry with fail-closed lookup and output validation."""
 
-    def __init__(self, handlers: dict[str, StageHandler] | None = None) -> None:
+    def __init__(self, handlers: Mapping[str, StageHandler] | None = None) -> None:
         self._handlers = dict(handlers or {})
 
     def register(self, stage: str, handler: StageHandler) -> None:
-        normalized = stage.strip()
-        if not normalized:
-            raise ValueError("stage must not be empty")
-        if normalized in self._handlers:
-            raise ValueError(f"stage handler already registered: {normalized}")
-        self._handlers[normalized] = handler
+        _require_identity(stage, "stage")
+        if stage in self._handlers:
+            raise ValueError(f"stage handler already registered: {stage}")
+        self._handlers[stage] = handler
 
     def get(self, stage: str) -> StageHandler:
         handler = self._handlers.get(stage)
@@ -85,17 +96,33 @@ class PipelineStageRegistry:
             raise ValueError(f"no pipeline stage handler registered for {stage}")
         return handler
 
-    async def execute(self, session: AsyncSession, stage_input: StageInput) -> StageOutput:
+    async def execute(
+        self, session: AsyncSession, stage_input: StageInput
+    ) -> StageOutput:
         output = await self.get(stage_input.stage)(session, stage_input)
-        if output.stage != stage_input.stage:
-            raise ValueError("pipeline stage handler changed stage identity")
-        if output.source_revision_hash != stage_input.source_revision_hash:
-            raise ValueError("pipeline stage handler changed source revision identity")
-        if output.output_hash != _canonical_hash(output.payload):
-            raise ValueError("pipeline stage handler returned an invalid output hash")
+        validate_stage_output(stage_input, output)
         return output
 
 
-def _canonical_hash(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+def validate_stage_output(stage_input: StageInput, output: StageOutput) -> None:
+    if output.stage != stage_input.stage:
+        raise ValueError("pipeline stage handler changed stage identity")
+    if output.source_revision_hash != stage_input.source_revision_hash:
+        raise ValueError("pipeline stage handler changed source revision identity")
+    if output.output_hash != _canonical_hash(output.payload):
+        raise ValueError("pipeline stage handler returned an invalid output hash")
+
+
+def _require_identity(value: str, name: str) -> None:
+    if not value.strip():
+        raise ValueError(f"{name} must not be empty")
+
+
+def _canonical_hash(payload: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
