@@ -15,6 +15,7 @@ test('Phase 28 release acceptance connects canonical state, semantic model, expo
   await expect(page.getByText('Phase 28 Riyadh Retail').first()).toBeVisible();
   await page.getByRole('button', { name: /Open workspace/ }).click();
 
+  await page.getByRole('button', { name: 'Brief' }).click();
   await page.getByPlaceholder('Describe your building project…').fill(
     'Six-floor commercial retail building in Riyadh with 8,000 m2 GFA on a 2,000 m2 site and 40 parking spaces in basement parking.',
   );
