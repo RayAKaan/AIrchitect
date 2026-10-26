@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 
 from app.domains.lifecycle.service import canonical_hash
 
@@ -21,7 +21,7 @@ def build_copilot_context(
     version_id: str,
     revision_hash: str,
     world_model: Mapping[str, Any],
-    evidence: Sequence[Mapping[str, Any]] = (),
+    evidence: Iterable[Mapping[str, Any]] = (),
     max_evidence: int = 20,
 ) -> CopilotContext:
     """Build the smallest deterministic context envelope for AI reasoning."""
@@ -38,9 +38,10 @@ def build_copilot_context(
             "label": str(item.get("label", "")),
             "payload": item.get("payload", {}),
         }
-        for item in evidence[:max_evidence]
+        for item in evidence
     ]
     normalized_evidence.sort(key=lambda item: (item["type"], item["id"]))
+    normalized_evidence = normalized_evidence[:max_evidence]
     payload = {
         "schema_version": "1.0.0",
         "project_id": project_id.strip(),
