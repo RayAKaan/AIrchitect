@@ -3,10 +3,16 @@ from app.domains.commands.plan_execution import execute_plan
 from app.domains.commands.schemas import CommandEnvelope
 
 
-def command(command_id: str, *, project_id: str = "p", version_id: str = "v", revision: str = "r") -> CommandEnvelope:
+def command(
+    command_id: str,
+    *,
+    project_id: str = "p",
+    version_id: str = "v",
+    revision: str = "r",
+) -> CommandEnvelope:
     return CommandEnvelope(
         command_id=command_id,
-        type="EditProperty",
+        type="ResizeSpace",
         schema_version=1,
         project_id=project_id,
         version_id=version_id,
@@ -14,21 +20,27 @@ def command(command_id: str, *, project_id: str = "p", version_id: str = "v", re
         idempotency_key=f"idempotent-{command_id}",
         mode="commit",
         reason="test",
-        payload={"element_id": "e", "property": "height_m", "value": 10.0},
+        payload={"element_id": "e", "area_m2": 10.0},
     )
 
 
 def test_plan_execution_accepts_matching_commands() -> None:
     commands = [command("a"), command("b")]
-    plan = CommandPlan("p1", "p", "v", "r", (PlanNode("a", "a"), PlanNode("b", "b", ("a",))))
+    plan = CommandPlan(
+        "p1",
+        "p",
+        "v",
+        "r",
+        (PlanNode("a", "a"), PlanNode("b", "b", ("a",))),
+    )
     model = {
         "semantic_model": {
             "elements": [
                 {
                     "id": "e",
-                    "type": "Building",
-                    "element_type": "Building",
-                    "height_m": 5.0,
+                    "type": "Space",
+                    "element_type": "Space",
+                    "area_m2": 5.0,
                 }
             ]
         }
