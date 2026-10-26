@@ -6,16 +6,21 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.lifecycle import canonical_hash
 from app.db.models import User
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
 
+from .artifact_invalidation import ArtifactInvalidationService
 from .executor import execute_semantic_command
+from .impact import impact_for
 from .intent_contract import contract_for
 from .intent_parser import parse_intent
 from .plan_preview import preview_sequential_plan
 from .preview import preview_command
+from .regeneration_queue import RegenerationQueue
+from .regeneration_repository import RegenerationStateRepository
 from .schemas import CommandEnvelope, CommandPreview, CommandResult
 from .target_resolution import resolve_target
 
@@ -135,7 +140,37 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
         raise ValueError("STALE_WORLD_MODEL")
     await check_expected_revision(version, version.revision_number)
     result = execute_semantic_command(model, state, body, user.id, world.model_hash)
+
+    # The post-command canonical hash is the regeneration source revision. Build
+    # invalidation and queue state before the existing persistence primitive
+    # commits; its commit therefore covers the entire mutation atomically.
+    next_revision_hash = canonical_hash(model)
+    groups = impact_for(body)
+    invalidated_artifact_ids = await ArtifactInvalidationService().invalidate_groups(
+        session,
+        organization_id=project.organization_id,
+        project_id=project.id,
+        project_version_id=version.id,
+        source_revision_hash=next_revision_hash,
+        groups=groups,
+    )
+    states = RegenerationStateRepository()
+    queue = RegenerationQueue(states)
+    for artifact_id in invalidated_artifact_ids:
+        regeneration_state = await states.get_for_update(session, artifact_id)
+        if regeneration_state is None:
+            raise ValueError("artifact invalidation created no regeneration state")
+        await queue.enqueue(session, regeneration_state)
+
     persist_event = state["history"][-1].get("result") if state.get("history") else None
-    world = await persist_designer_mutation(session, project=project, version=version, user=user, model=model, action="COMMAND", event=persist_event)
+    world = await persist_designer_mutation(
+        session,
+        project=project,
+        version=version,
+        user=user,
+        model=model,
+        action="COMMAND",
+        event=persist_event,
+    )
     result.revision_hash = world.model_hash
     return result
