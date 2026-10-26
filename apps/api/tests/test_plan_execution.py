@@ -36,6 +36,16 @@ def test_plan_execution_accepts_matching_commands() -> None:
     model = {
         "project_id": "p",
         "project_version_id": "v",
+        "designer_elements": [
+            {
+                "id": "e",
+                "element_type": "Space",
+                "name": "e",
+                "properties": {"area_m2": {"value": 5.0, "unit": "m2", "data_type": "number"}},
+                "identity_key": "e",
+                "designer_authored": True,
+            }
+        ],
         "semantic_model": {
             "elements": [
                 {
