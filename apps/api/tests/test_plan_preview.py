@@ -10,7 +10,7 @@ def command(command_id: str, *, command_type: str = "MoveBuilding", payload: dic
         project_id="p",
         version_id="v",
         base_revision_hash="r",
-        idempotency_key=f"idem-{command_id}",
+        idempotency_key=f"idempotent-{command_id}",
         reason="preview",
         payload=payload or {"element_id": "building-1", "translation_m": {"x": 1.0, "y": 0.0}},
     )
