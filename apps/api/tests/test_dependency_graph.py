@@ -1,3 +1,5 @@
+import pytest
+
 from app.domains.commands.dependency_graph import DependencyEdge, graph_from_edges
 
 
@@ -8,12 +10,8 @@ def test_graph_returns_deterministic_dependencies_and_dependents() -> None:
 
 
 def test_graph_rejects_unknown_edge_nodes() -> None:
-    try:
+    with pytest.raises(ValueError, match="unknown node"):
         graph_from_edges(["a"], [DependencyEdge("a", "missing", "feeds")])
-    except ValueError as exc:
-        assert "unknown node" in str(exc)
-    else:
-        raise AssertionError("expected graph validation failure")
 
 
 def test_dependency_graph_orders_dependencies_deterministically() -> None:
@@ -29,26 +27,16 @@ def test_dependency_graph_orders_dependencies_deterministically() -> None:
 
 
 def test_dependency_graph_rejects_cycles() -> None:
-    graph = graph_from_edges(
-        ["a", "b"],
-        (DependencyEdge("a", "b", "derived"), DependencyEdge("b", "a", "derived")),
-    )
-    try:
-        graph.validate()
-    except ValueError as exc:
-        assert "cycle" in str(exc)
-    else:
-        raise AssertionError("expected cycle rejection")
+    with pytest.raises(ValueError, match="cycle"):
+        graph_from_edges(
+            ["a", "b"],
+            (DependencyEdge("a", "b", "derived"), DependencyEdge("b", "a", "derived")),
+        )
 
 
 def test_dependency_graph_rejects_duplicate_edges() -> None:
-    graph = graph_from_edges(
-        ["a", "b"],
-        (DependencyEdge("a", "b", "derived"), DependencyEdge("a", "b", "derived")),
-    )
-    try:
-        graph.validate()
-    except ValueError as exc:
-        assert "edges" in str(exc)
-    else:
-        raise AssertionError("expected duplicate-edge rejection")
+    with pytest.raises(ValueError, match="edges"):
+        graph_from_edges(
+            ["a", "b"],
+            (DependencyEdge("a", "b", "derived"), DependencyEdge("a", "b", "derived")),
+        )
