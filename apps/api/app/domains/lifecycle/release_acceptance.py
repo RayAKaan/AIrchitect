@@ -29,8 +29,9 @@ def evaluate_release_acceptance(
     missing = sorted(required_artifact_types - actual_types)
     if missing:
         reasons.append(f"missing required artifact types: {', '.join(missing)}")
+    snapshot_hashes = dict(snapshot.artifact_hashes)
     for artifact in manifest.artifacts:
-        expected_hash = dict(snapshot.artifact_hashes).get(artifact.artifact_id)
+        expected_hash = snapshot_hashes.get(artifact.id)
         if expected_hash is not None and expected_hash != artifact.output_hash:
-            reasons.append(f"artifact hash mismatch: {artifact.artifact_id}")
+            reasons.append(f"artifact hash mismatch: {artifact.id}")
     return ReleaseAcceptance(not reasons, tuple(reasons))
