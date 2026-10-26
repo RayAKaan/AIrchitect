@@ -38,7 +38,11 @@ class RegenerationWorker:
             await session.rollback()
             return WorkerRunResult(status="IDLE")
 
+        # The lease must survive execution. Claim and execution therefore have
+        # separate transactions: another worker must never see the job as queued
+        # while this worker is executing it.
         job_id = job.id
+        await session.commit()
         try:
             output = await self.service.execute_job(session, job_id)
             await session.commit()
