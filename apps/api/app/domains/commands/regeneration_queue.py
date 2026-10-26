@@ -145,6 +145,29 @@ class RegenerationQueue:
         await session.flush()
         return job
 
+    async def fail_by_id(
+        self,
+        session: AsyncSession,
+        job_id: str,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> RegenerationJobRecord:
+        result = await session.execute(
+            select(RegenerationJobRecord)
+            .where(RegenerationJobRecord.id == job_id)
+            .with_for_update()
+        )
+        job = result.scalar_one_or_none()
+        if job is None:
+            raise ValueError("regeneration job not found")
+        return await self.fail(
+            session,
+            job,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
     async def recover_expired_leases(
         self,
         session: AsyncSession,
