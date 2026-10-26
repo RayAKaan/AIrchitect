@@ -38,16 +38,27 @@ async def rebind_artifact(
         raise ValueError("artifact dependencies must belong to the same project version")
 
     output_hash = canonical_hash(payload)
-    current = await session.scalar(
-        select(ArtifactVersion)
-        .where(
-            ArtifactVersion.project_version_id == version.id,
-            ArtifactVersion.artifact_type == previous.artifact_type,
-            ArtifactVersion.status == "current",
-            ArtifactVersion.output_hash == output_hash,
-            ArtifactVersion.provenance_json["source_revision_hash"].as_string() == source_revision_hash,
-        )
-        .order_by(ArtifactVersion.version.desc())
+    candidates = list(
+        (
+            await session.scalars(
+                select(ArtifactVersion)
+                .where(
+                    ArtifactVersion.project_version_id == version.id,
+                    ArtifactVersion.artifact_type == previous.artifact_type,
+                    ArtifactVersion.status == "current",
+                    ArtifactVersion.output_hash == output_hash,
+                )
+                .order_by(ArtifactVersion.version.desc())
+            )
+        ).all()
+    )
+    current = next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.provenance_json.get("source_revision_hash") == source_revision_hash
+        ),
+        None,
     )
     if current is not None:
         previous.status = "stale"
