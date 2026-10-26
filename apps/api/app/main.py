@@ -182,6 +182,8 @@ from app.domains.engineering.routes import router as engineering_router
 app.include_router(engineering_router, prefix=settings.api_prefix)
 from app.domains.lifecycle.routes import router as lifecycle_router
 app.include_router(lifecycle_router, prefix=settings.api_prefix)
+from app.domains.lifecycle.runtime_routes import router as runtime_router
+app.include_router(runtime_router, prefix=settings.api_prefix)
 from app.domains.ai.routes import router as ai_router
 app.include_router(ai_router, prefix=settings.api_prefix)
 from app.domains.evidence.routes import router as evidence_router
