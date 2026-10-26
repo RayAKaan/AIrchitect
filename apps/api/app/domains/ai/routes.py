@@ -10,7 +10,6 @@ from app.db.session import get_session
 from app.dependencies import current_user, require_membership
 from app.domains.foundation.service import resolve_project_version
 
-from .copilot_routes import router as copilot_router
 from .providers import get_llm_provider
 from .runtime import LLMRuntime
 from .schemas import AssistantRequest, BuildingBriefExtraction, FeasibilityNarrative, IntakeRequest
@@ -192,6 +191,3 @@ async def usage(
             for provider, model, calls, tokens, cost in rows
         ],
     }
-
-
-router.include_router(copilot_router)
