@@ -6,8 +6,8 @@ def test_requirement_extraction_keeps_missing_information_explicit():
     parameters = {item.parameter for item in requirements}
     assert "floor_count" in parameters
     assert "site_area" in parameters
-    assert "budget" in missing
-    assert "parking" in missing
+    assert "budget or cost constraint" in missing
+    assert "parking requirement" in missing
     assert issues == []
 
 
