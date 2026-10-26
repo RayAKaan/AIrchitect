@@ -1,4 +1,4 @@
-from .contract import canonical_payload, validate_payload_contract
+from app.domains.commands.contract import canonical_payload, validate_payload_contract
 
 
 def test_translation_vectors_are_canonicalized():
