@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Collection
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -90,6 +90,20 @@ class AIProposal(BaseModel):
 class ProposalValidation:
     valid: bool
     errors: tuple[str, ...] = ()
+
+
+def validate_proposal_evidence(proposal: AIProposal, allowed_evidence_ids: Collection[str]) -> ProposalValidation:
+    """Ensure every cited evidence identifier belongs to the server-supplied context."""
+
+    allowed = set(allowed_evidence_ids)
+    cited = list(proposal.evidence_ids)
+    errors: list[str] = []
+    if len(cited) != len(set(cited)):
+        errors.append("proposal evidence ids must be unique")
+    unknown = sorted(set(cited) - allowed)
+    if unknown:
+        errors.append(f"proposal cites evidence outside supplied context: {unknown}")
+    return ProposalValidation(valid=not errors, errors=tuple(errors))
 
 
 def validate_ai_proposal(proposal: AIProposal) -> ProposalValidation:
