@@ -39,6 +39,7 @@ def test_plan_execution_accepts_matching_commands() -> None:
         "designer_elements": [
             {
                 "id": "e",
+                "type": "Space",
                 "element_type": "Space",
                 "name": "e",
                 "properties": {"area_m2": {"value": 5.0, "unit": "m2", "data_type": "number"}},
