@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 from app.dependencies import current_user
 from app.db.models import User
-from app.domains.requirements.schemas import RequirementAnalysisRequest, RequirementAnalysisResponse, RequirementDecision
+from app.domains.foundation.schemas import RequirementDecision
+from app.domains.requirements.schemas import RequirementAnalysisRequest, RequirementAnalysisResponse
 from app.domains.requirements.service import analyze_brief
 from app.domains.requirements.persistence import extract, list_requirements, set_status
 from app.domains.brief.routes import router as brief_router
