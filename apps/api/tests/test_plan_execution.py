@@ -34,15 +34,18 @@ def test_plan_execution_accepts_matching_commands() -> None:
         (PlanNode("a", "a"), PlanNode("b", "b", ("a",))),
     )
     model = {
+        "project_id": "p",
         "semantic_model": {
             "elements": [
                 {
                     "id": "e",
                     "type": "Space",
                     "element_type": "Space",
+                    "identity_key": "e",
                     "area_m2": 5.0,
                 }
-            ]
+            ],
+            "spaces": [{"id": "e", "name": "e", "area_m2": 5.0}],
         }
     }
     result = execute_plan(model, {}, plan, commands, "actor", "r")
