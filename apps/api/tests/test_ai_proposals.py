@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from app.domains.ai.proposals import AIProposal, ProposedCommand, validate_ai_proposal
+from app.domains.ai.proposals import (
+    AIProposal,
+    ProposedCommand,
+    validate_ai_proposal,
+    validate_proposal_evidence,
+)
 
 
 def proposal(**overrides: object) -> AIProposal:
@@ -78,6 +83,20 @@ def test_proposal_rejects_duplicate_command_ids() -> None:
 
     assert result.valid is False
     assert "command ids" in result.errors[0]
+
+
+def test_proposal_evidence_must_be_supplied_by_server() -> None:
+    result = validate_proposal_evidence(proposal(), {"evidence-2"})
+
+    assert result.valid is False
+    assert "outside supplied context" in result.errors[0]
+
+
+def test_proposal_evidence_ids_must_be_unique() -> None:
+    result = validate_proposal_evidence(proposal(evidence_ids=("evidence-1", "evidence-1")), {"evidence-1"})
+
+    assert result.valid is False
+    assert "evidence ids must be unique" in result.errors[0]
 
 
 def test_proposal_schema_forbids_extra_fields() -> None:
