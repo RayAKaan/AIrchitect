@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import cast
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.regeneration_models import RegenerationStateRecord
 
-from .regeneration_state import RegenerationState, invalidate
+from .regeneration_state import RegenerationState, RegenerationStatus, invalidate
 
 
 class RegenerationStateRepository:
@@ -76,15 +78,37 @@ class RegenerationStateRepository:
         record: RegenerationStateRecord,
         source_revision_hash: str,
     ) -> RegenerationStateRecord:
-        state = RegenerationState(
-            artifact_id=record.artifact_version_id,
-            source_revision_hash=record.source_revision_hash,
-            status=record.status,  # type: ignore[arg-type]
-            output_revision_hash=record.output_revision_hash,
-        )
+        state = self._domain_state(record)
         next_state = invalidate(state, source_revision_hash)
-        record.source_revision_hash = next_state.source_revision_hash
-        record.status = next_state.status
-        record.output_revision_hash = next_state.output_revision_hash
+        self._apply(record, next_state)
         await session.flush()
         return record
+
+    async def transition(
+        self,
+        session: AsyncSession,
+        record: RegenerationStateRecord,
+        status: RegenerationStatus,
+        *,
+        output_revision_hash: str | None = None,
+    ) -> RegenerationStateRecord:
+        state = self._domain_state(record)
+        next_state = state.transition(status, output_revision_hash=output_revision_hash)
+        self._apply(record, next_state)
+        await session.flush()
+        return record
+
+    @staticmethod
+    def _domain_state(record: RegenerationStateRecord) -> RegenerationState:
+        return RegenerationState(
+            artifact_id=record.artifact_version_id,
+            source_revision_hash=record.source_revision_hash,
+            status=cast(RegenerationStatus, record.status),
+            output_revision_hash=record.output_revision_hash,
+        )
+
+    @staticmethod
+    def _apply(record: RegenerationStateRecord, state: RegenerationState) -> None:
+        record.source_revision_hash = state.source_revision_hash
+        record.status = state.status
+        record.output_revision_hash = state.output_revision_hash
