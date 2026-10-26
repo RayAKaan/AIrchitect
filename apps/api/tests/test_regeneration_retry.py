@@ -1,5 +1,6 @@
-import pytest
 from datetime import timedelta
+
+import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.regeneration_job_models import RegenerationJobRecord
