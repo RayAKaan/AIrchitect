@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ProjectVersion, User
+from app.db.models import AuditEvent, ProjectVersion, User
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.foundation.service import resolve_project
@@ -51,6 +51,24 @@ async def commit_edit(
         raise
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    session.add(AuditEvent(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        project_version_id=version.id,
+        actor_user_id=user.id,
+        action="ARCHITECTURAL_MODEL_EDIT_COMMITTED",
+        resource_type="architectural_model_revision",
+        resource_id=row.id,
+        metadata_json={
+            "revision": row.revision,
+            "model_hash": row.model_hash,
+            "changed_elements": [
+                {"element_id": change.element_id, "change_type": change.change_type}
+                for change in impact.changed_elements
+            ],
+            "invalidated_artifacts": list(impact.invalidated_artifacts),
+        },
+    ))
     await session.commit()
     return {
         "read_only": False,
