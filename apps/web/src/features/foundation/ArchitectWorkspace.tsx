@@ -3,6 +3,7 @@ import FoundationWorkspace from './FoundationWorkspace';
 import VersionHistory from './VersionHistory';
 import WorkspaceFlow from './WorkspaceFlow';
 import './WorkspaceFlow.css';
+import './VersionHistory.css';
 
 export default function ArchitectWorkspace({api, token, project, onClose}:{api:string;token:string;project:any;onClose:()=>void}) {
   const [stage, setStage] = useState('Brief');
