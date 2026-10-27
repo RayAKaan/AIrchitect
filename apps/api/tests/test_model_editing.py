@@ -2,7 +2,7 @@ import pytest
 
 from app.domains.model.edit_commands import ResizeCommand, RotateCommand, TranslateCommand
 from app.domains.model.editing_service import apply_edit
-from app.domains.model.schemas import ArchitecturalModel, Point3D, Site, Space
+from app.domains.model.schemas import ArchitecturalModel, Building, Level, Point3D, Site, Space
 
 
 def model() -> ArchitecturalModel:
@@ -10,6 +10,8 @@ def model() -> ArchitecturalModel:
         project_id="project-1",
         revision=1,
         site=Site(id="site-1", width_m=20, depth_m=20),
+        buildings=(Building(id="building-1", name="Main", site_id="site-1"),),
+        levels=(Level(id="level-1", building_id="building-1", name="Ground", elevation_m=0, height_m=3),),
         spaces=(Space(
             id="space-1",
             level_id="level-1",
