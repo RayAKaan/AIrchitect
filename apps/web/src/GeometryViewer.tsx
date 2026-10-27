@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Bounds, Grid, Html, OrbitControls, useBounds } from '@react-three/drei';
 import * as THREE from 'three';
+import { emitWorkspaceSelection, WORKSPACE_SELECTION_EVENT, type WorkspaceSelectionEvent } from './features/foundation/workspaceEvents';
 
 type Artifact = { id:string; type:string; status:string; alternative_id:string|null; hash:string; payload:any };
 type Snapshot = { version:{number:number}; artifacts:Artifact[]; world_model:any };
@@ -30,6 +31,18 @@ export default function GeometryViewer({api,token,projectId,onClose}:{api:string
   if(!sr.ok)throw Error('Could not load canonical project snapshot'); const data=await sr.json(); setSnapshot(data);
   const first=data.artifacts.find((a:Artifact)=>a.type==='geometry'&&a.status!=='stale'); setSelected(first?.id||'');
  }catch(e){setError(e instanceof Error?e.message:'Viewer failed')}finally{setBusy(false)}})()},[api,token,projectId]);
+ useEffect(()=>{
+  if(!selected) return;
+  emitWorkspaceSelection({artifactId:selected,projectId});
+ },[selected,projectId]);
+ useEffect(()=>{
+  const onSelection=(event:Event)=>{
+    const detail=(event as CustomEvent<WorkspaceSelectionEvent>).detail;
+    if(detail?.projectId===projectId && detail.artifactId!==selected) setSelected(detail.artifactId);
+  };
+  window.addEventListener(WORKSPACE_SELECTION_EVENT,onSelection);
+  return()=>window.removeEventListener(WORKSPACE_SELECTION_EVENT,onSelection);
+ },[projectId,selected]);
  const geometries=useMemo(()=>snapshot?.artifacts.filter(a=>a.type==='geometry')||[],[snapshot]);
  const artifact=geometries.find(a=>a.id===selected)||geometries[0];
  return <section className="viewer-shell"><div className="viewer-head"><div><p className="eyebrow">PERSISTED GEOMETRY</p><h2>3D massing</h2><small>WebGL · project version {snapshot?.version.number??'—'} · canonical artifacts only</small></div><button className="btn outline" onClick={onClose}>Close</button></div>
