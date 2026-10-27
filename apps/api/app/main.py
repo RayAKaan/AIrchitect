@@ -196,3 +196,5 @@ from app.domains.commands.routes import router as commands_router
 app.include_router(commands_router, prefix=settings.api_prefix)
 from app.domains.model.transform_routes import router as transform_router
 app.include_router(transform_router, prefix=settings.api_prefix)
+from app.domains.model.persistence_routes import router as model_persistence_router
+app.include_router(model_persistence_router, prefix=settings.api_prefix)
