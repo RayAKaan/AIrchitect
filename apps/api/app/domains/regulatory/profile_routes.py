@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .checks import FactValue, RegulatoryCheckResult, evaluate_rule_pack
+from .evidence import EvidenceBindingResult, EvidenceRecord, bind_evidence
 from .profiles import get_profile, list_profiles
 from .rulepacks import RulePack, get_rule_pack, list_rule_packs
 
@@ -24,6 +25,11 @@ class RegulatoryCheckRequest(BaseModel):
     pack: RulePack
     facts: dict[str, FactValue | str | float | int | bool | None]
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvidenceBindingRequest(BaseModel):
+    result: RegulatoryCheckResult
+    records: tuple[EvidenceRecord, ...] = ()
 
 
 def _serialize(profile) -> JurisdictionProfileOut:
@@ -70,3 +76,8 @@ async def regulatory_checks(body: RegulatoryCheckRequest) -> RegulatoryCheckResu
         return evaluate_rule_pack(body.pack, body.facts, body.context)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/regulatory/evidence/bind", response_model=EvidenceBindingResult)
+async def regulatory_evidence(body: EvidenceBindingRequest) -> EvidenceBindingResult:
+    return bind_evidence(body.result, body.records)
