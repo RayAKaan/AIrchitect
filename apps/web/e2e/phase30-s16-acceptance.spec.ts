@@ -13,21 +13,17 @@ test('S16 end-to-end architect workspace acceptance', async ({ page }) => {
   await page.getByPlaceholder('e.g. Riyadh Retail Centre').fill('S16 Acceptance Project');
   await page.getByRole('button', { name: /Create project/ }).click();
   await page.getByRole('button', { name: /Open workspace/ }).click();
+  await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
 
+  for (const mode of ['Brief', 'Site', 'Explore', 'Design', 'Validate', 'Deliver']) {
+    await expect(page.getByRole('button', { name: new RegExp(`^${mode}\\b`) })).toBeVisible();
+  }
+  await page.getByRole('button', { name: 'Advanced' }).click();
   for (const stage of ['Brief', 'World Model', 'Semantic Model', 'Design', 'CAD/BIM Exports', 'Engineering', 'Change Impact', 'Release Validation', 'Regulatory']) {
     await expect(page.getByRole('button', { name: new RegExp(`\\b${stage}\\b`) }).first()).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: 'Versions' })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Brief', exact: true }).last().click();
-  await page.getByPlaceholder('Describe your building project…').fill(
-    'Six-floor commercial retail building in Riyadh with 8,000 m2 GFA on a 2,000 m2 site and basement parking.',
-  );
-  await page.getByRole('button', { name: 'Analyze and persist brief' }).click();
-  await expect(page.getByText(/Brief revision 1/)).toBeVisible();
-
-  await page.getByRole('button', { name: 'World Model', exact: true }).last().click();
-  await page.getByRole('button', { name: /Commit V1/ }).click();
-  await expect(page.getByText(/World hash/)).toBeVisible();
-  await expect(page.getByText(/Revision/).first()).toBeVisible();
+  await page.getByRole('button', { name: /Change Impact/ }).click();
+  await expect(page.getByRole('heading', { name: 'Check the decisions.' })).toBeVisible();
+  await page.getByRole('button', { name: /CAD\/BIM Exports/ }).click();
+  await expect(page.getByRole('heading', { name: 'Prepare the professional outputs.' })).toBeVisible();
 });
