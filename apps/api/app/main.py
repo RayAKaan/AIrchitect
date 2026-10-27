@@ -194,3 +194,5 @@ from app.domains.site.routes import router as site_router
 app.include_router(site_router, prefix=settings.api_prefix)
 from app.domains.commands.routes import router as commands_router
 app.include_router(commands_router, prefix=settings.api_prefix)
+from app.domains.model.transform_routes import router as transform_router
+app.include_router(transform_router, prefix=settings.api_prefix)
