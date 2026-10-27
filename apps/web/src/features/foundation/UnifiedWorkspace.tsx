@@ -14,7 +14,6 @@ import './UnifiedWorkspace.css';
 
 type Version = { id: string; version_number: number; label: string; status: string; revision_number: number; created_at: string };
 type Snapshot = { project: any; version: Version; brief: any; requirements: any[]; assumptions: any[]; world_model: any; world_model_revision: any };
-
 const MODE_COPY: Record<ProductMode, { title: string; description: string }> = {
   Brief: { title: 'Tell AIrchitect what you are building.', description: 'Start with intent. AIrchitect will keep the source brief separate from extracted facts and decisions.' },
   Site: { title: 'Understand the place.', description: 'Review the site boundary and site intelligence before shaping the building.' },
@@ -25,7 +24,12 @@ const MODE_COPY: Record<ProductMode, { title: string; description: string }> = {
 };
 
 export default function UnifiedWorkspace({ api, token, project, onClose }: { api: string; token: string; project: any; onClose: () => void }) {
-  const [state, dispatch] = useReducer(workspaceReducer, project.id, (projectId) => createWorkspaceState(projectId, readPersistedWorkspace(projectId)));
+  const [state, dispatch] = useReducer(workspaceReducer, project.id, (projectId) => {
+    const query = new URLSearchParams(window.location.search);
+    const persisted = readPersistedWorkspace(projectId) || {};
+    const mode = PRODUCT_MODES.includes(query.get('mode') as ProductMode) ? query.get('mode') as ProductMode : persisted.mode;
+    return createWorkspaceState(projectId, { ...persisted, mode, versionId: query.get('version') || persisted.versionId });
+  });
   const [versions, setVersions] = useState<Version[]>([]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,42 +38,42 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
 
   useEffect(() => {
     persistWorkspace(state);
-    window.history.replaceState({}, '', `?project=${encodeURIComponent(project.id)}&mode=${encodeURIComponent(state.mode)}`);
+    const query = new URLSearchParams(window.location.search);
+    query.set('project', project.id); query.set('mode', state.mode);
+    if (state.versionId) query.set('version', state.versionId); else query.delete('version');
+    window.history.replaceState({}, '', `${window.location.pathname}?${query.toString()}`);
     window.dispatchEvent(new CustomEvent('airchitect:workspace-state', { detail: state }));
   }, [project.id, state]);
 
-  async function request(path: string, init: RequestInit = {}) {
-    const response = await fetch(api + path, { ...init, headers: { ...headers, ...init.headers } });
+  async function request(path: string, init: RequestInit = {}, signal?: AbortSignal) {
+    const response = await fetch(api + path, { ...init, signal, headers: { ...headers, ...init.headers } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error?.message || data.detail?.error?.message || data.detail || `Request failed (${response.status})`);
     return data;
   }
 
-  async function loadVersions(prefer?: string | null) {
-    const data = await request(`/projects/${project.id}/versions`);
-    const nextVersions = data.versions || [];
+  async function loadVersions(prefer?: string | null, signal?: AbortSignal) {
+    const data = await request(`/projects/${project.id}/versions`, {}, signal);
+    const nextVersions: Version[] = data.versions || [];
     setVersions(nextVersions);
-    const nextId = prefer || state.versionId || data.current_version_id || nextVersions[0]?.id || null;
+    const preferred = prefer || state.versionId || data.current_version_id || nextVersions[0]?.id || null;
+    const nextId = nextVersions.some((version) => version.id === preferred) ? preferred : nextVersions[0]?.id || null;
     if (nextId !== state.versionId) dispatch({ type: 'select-version', versionId: nextId });
   }
 
-  async function loadSnapshot(versionId = state.versionId) {
-    if (!versionId) return;
+  async function loadSnapshot(versionId: string | null, signal?: AbortSignal) {
+    if (!versionId) { setSnapshot(null); return; }
     setBusy(true);
-    try { setSnapshot(await request(`/projects/${project.id}/versions/${versionId}/snapshot`)); setError(''); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load canonical project state.'); }
-    finally { setBusy(false); }
+    try { const data = await request(`/projects/${project.id}/versions/${versionId}/snapshot`, {}, signal); setSnapshot(data); setError(''); }
+    catch (cause) { if ((cause as Error).name !== 'AbortError') setError(cause instanceof Error ? cause.message : 'Could not load canonical project state.'); }
+    finally { if (!signal?.aborted) setBusy(false); }
   }
 
-  useEffect(() => { void loadVersions(); }, [project.id]);
-  useEffect(() => { void loadSnapshot(); }, [state.versionId]);
+  useEffect(() => { const controller = new AbortController(); void loadVersions(undefined, controller.signal); return () => controller.abort(); }, [project.id]);
+  useEffect(() => { const controller = new AbortController(); void loadSnapshot(state.versionId, controller.signal); return () => controller.abort(); }, [project.id, state.versionId]);
 
-  function selectStage(stage: string) {
-    if (ADVANCED_STAGES.includes(stage as AdvancedStage)) dispatch({ type: 'select-stage', stage: stage as AdvancedStage });
-  }
-
+  function selectStage(stage: string) { if (ADVANCED_STAGES.includes(stage as AdvancedStage)) dispatch({ type: 'select-stage', stage: stage as AdvancedStage }); }
   async function refresh() { await loadVersions(state.versionId); await loadSnapshot(state.versionId); }
-
   const currentVersion = snapshot?.version || versions.find((version) => version.id === state.versionId) || null;
   const advanced = state.advancedOpen;
 
@@ -83,7 +87,6 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
   </section>;
 
   function requireSnapshot() { return !snapshot || !currentVersion ? <div className="unified-empty"><h3>Canonical state is loading</h3><p>AIrchitect is loading the selected project version. Nothing is changed while this is happening.</p></div> : null; }
-
   function renderMode(mode: ProductMode) {
     const loading = requireSnapshot(); if (loading) return loading;
     if (mode === 'Site') return <SiteWorkspace api={api} token={token} project={project} />;
@@ -93,7 +96,6 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
     if (mode === 'Explore') return <div className="unified-stack"><S2ConceptGenerationWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} /><S2ConceptExplorer api={api} token={token} projectId={project.id} version={currentVersion!} /></div>;
     return <S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh} />;
   }
-
   function renderAdvancedStage(stage: AdvancedStage) {
     const loading = requireSnapshot(); if (loading) return loading;
     switch (stage) {
