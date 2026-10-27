@@ -95,6 +95,7 @@ def test_opening_requires_existing_wall() -> None:
                 Door(
                     id="door-1",
                     name="Entry",
+                    level_id="level-1",
                     host_wall_id="missing-wall",
                     offset_m=0,
                     width_m=0.9,
