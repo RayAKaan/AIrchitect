@@ -165,7 +165,7 @@ async def commit_approved_proposal(
             },
             outputs_json={
                 "revision_hash": persisted_world.model_hash,
-                "results": list(execution.results),
+                "results": [result.model_dump(mode="json") for result in execution.results],
                 "invalidated_artifact_ids": list(invalidated_artifact_ids),
                 "impact_groups": list(plan.impact_groups),
             },
