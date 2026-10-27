@@ -15,9 +15,10 @@ def _model(name: str = "Room") -> ArchitecturalModel:
 
 def test_changed_space_propagates_to_dependent_artifacts() -> None:
     result = plan_change_impact(_model(), _model("Changed Room"))
-    assert result.changed_elements == (result.changed_elements[0],)
+    assert len(result.changed_elements) == 1
     assert result.changed_elements[0].element_id == "room"
-    assert "room" in result.affected_elements
+    assert result.changed_elements[0].change_type == "updated"
+    assert result.affected_elements == ("room",)
     assert result.invalidated_artifacts == ("geometry", "quantities", "cost", "engineering", "regulatory")
     assert result.previous_hash != result.current_hash
 
