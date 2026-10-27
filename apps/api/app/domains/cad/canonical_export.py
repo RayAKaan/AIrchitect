@@ -32,6 +32,7 @@ from app.domains.cad.persistence import (
 from app.domains.cad.protocol import CadJobOptions, CadJobRequest, CadJobResult
 from app.domains.cad.runner import run_cad_job
 from app.domains.cad.storage import ContentAddressedStore, StoredBlob
+from app.domains.model import model_hash
 from app.domains.model.schemas import ArchitecturalModel
 
 
@@ -212,7 +213,7 @@ async def run_canonical_cad_export(
         result=result,
         stored=stored,
         alternative_id=None,
-        design_hash=model.model_dump_json(),
+        design_hash=model_hash(model),
         capabilities=capabilities,
         duration_ms=duration_ms,
     )
