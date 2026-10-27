@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.domains.model import ArchitecturalModel, canonical_model_payload, model_hash
-from app.domains.model.dependencies import build_dependency_graph
+from app.domains.model.dependencies import build_model_dependency_graph
 
 
 @dataclass(frozen=True)
@@ -38,18 +38,10 @@ def plan_change_impact(previous: ArchitecturalModel, current: ArchitecturalModel
         elif old[element_id] != new[element_id]:
             changes.append(ModelChange(element_id, "updated"))
 
-    graph = build_dependency_graph(current)
-    affected = set(item.element_id for item in changes)
-    for item in tuple(affected):
-        affected.update(graph.affected_by(item))
-    artifact_map = {
-        "geometry": bool(changes),
-        "quantities": bool(changes),
-        "cost": bool(changes),
-        "engineering": bool(changes),
-        "regulatory": bool(changes),
-    }
-    invalidated = tuple(name for name, enabled in artifact_map.items() if enabled)
+    graph = build_model_dependency_graph(current)
+    changed_ids = {change.element_id for change in changes}
+    affected = set(graph.affected_by(changed_ids))
+    invalidated = ("geometry", "quantities", "cost", "engineering", "regulatory") if changes else ()
     return ChangeImpact(
         previous_hash=model_hash(previous),
         current_hash=model_hash(current),
