@@ -9,6 +9,7 @@ from .impact import ChangedNode, RegulatoryImpactResult, calculate_regulatory_im
 from .profiles import get_profile, list_profiles
 from .regeneration import RegenerationResult, SelectiveRegenerationRequest, execute_selective_regeneration
 from .rulepacks import RulePack, get_rule_pack, list_rule_packs
+from .verification import RegulatoryVerification, verify_regulatory_state
 
 router = APIRouter(tags=["regulatory"])
 
@@ -37,6 +38,14 @@ class EvidenceBindingRequest(BaseModel):
 class RegulatoryImpactRequest(BaseModel):
     revision_id: str = Field(min_length=1)
     changed_nodes: tuple[ChangedNode, ...]
+
+
+class RegulatoryVerificationRequest(BaseModel):
+    revision_id: str = Field(min_length=1)
+    check_result: RegulatoryCheckResult
+    evidence: EvidenceBindingResult
+    impact: RegulatoryImpactResult
+    regeneration: RegenerationResult | None = None
 
 
 def _serialize(profile) -> JurisdictionProfileOut:
@@ -101,3 +110,8 @@ async def regulatory_regenerate(body: SelectiveRegenerationRequest) -> Regenerat
         return execute_selective_regeneration(body)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/regulatory/verify", response_model=RegulatoryVerification)
+async def regulatory_verify(body: RegulatoryVerificationRequest) -> RegulatoryVerification:
+    return verify_regulatory_state(body.revision_id, body.check_result, body.evidence, body.impact, body.regeneration)
