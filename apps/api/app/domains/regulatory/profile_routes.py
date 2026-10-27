@@ -1,6 +1,9 @@
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .checks import FactValue, RegulatoryCheckResult, evaluate_rule_pack
 from .profiles import get_profile, list_profiles
 from .rulepacks import RulePack, get_rule_pack, list_rule_packs
 
@@ -15,6 +18,12 @@ class JurisdictionProfileOut(BaseModel):
     code_family: str
     default_unit_system: str
     status: str
+
+
+class RegulatoryCheckRequest(BaseModel):
+    pack: RulePack
+    facts: dict[str, FactValue | str | float | int | bool | None]
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 def _serialize(profile) -> JurisdictionProfileOut:
@@ -53,3 +62,11 @@ async def rule_pack(pack_id: str) -> RulePack:
     if value is None:
         raise HTTPException(404, "Regulatory rule pack not found")
     return value
+
+
+@router.post("/regulatory/checks", response_model=RegulatoryCheckResult)
+async def regulatory_checks(body: RegulatoryCheckRequest) -> RegulatoryCheckResult:
+    try:
+        return evaluate_rule_pack(body.pack, body.facts, body.context)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
