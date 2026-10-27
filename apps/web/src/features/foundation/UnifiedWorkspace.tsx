@@ -10,6 +10,7 @@ import SiteWorkspace from '../site/SiteWorkspace';
 import CadExports from './CadExports';
 import WorkspaceFlow from './WorkspaceFlow';
 import { ADVANCED_STAGES, createWorkspaceState, persistWorkspace, PRODUCT_MODES, readPersistedWorkspace, workspaceReducer, type AdvancedStage, type ProductMode } from '../../state/productWorkspace';
+import { buildWorkspaceUrl, parseWorkspaceUrl } from '../../state/workspaceNavigation';
 import './UnifiedWorkspace.css';
 
 type Version = { id: string; version_number: number; label: string; status: string; revision_number: number; created_at: string };
@@ -25,10 +26,9 @@ const MODE_COPY: Record<ProductMode, { title: string; description: string }> = {
 
 export default function UnifiedWorkspace({ api, token, project, onClose }: { api: string; token: string; project: any; onClose: () => void }) {
   const [state, dispatch] = useReducer(workspaceReducer, project.id, (projectId) => {
-    const query = new URLSearchParams(window.location.search);
+    const query = parseWorkspaceUrl(window.location.search);
     const persisted = readPersistedWorkspace(projectId) || {};
-    const mode = PRODUCT_MODES.includes(query.get('mode') as ProductMode) ? query.get('mode') as ProductMode : persisted.mode;
-    return createWorkspaceState(projectId, { ...persisted, mode, versionId: query.get('version') || persisted.versionId });
+    return createWorkspaceState(projectId, { ...persisted, mode: query.mode || persisted.mode, versionId: query.versionId || persisted.versionId });
   });
   const [versions, setVersions] = useState<Version[]>([]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -38,12 +38,19 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
 
   useEffect(() => {
     persistWorkspace(state);
-    const query = new URLSearchParams(window.location.search);
-    query.set('project', project.id); query.set('mode', state.mode);
-    if (state.versionId) query.set('version', state.versionId); else query.delete('version');
-    window.history.replaceState({}, '', `${window.location.pathname}?${query.toString()}`);
+    window.history.replaceState({}, '', buildWorkspaceUrl(window.location.pathname, state));
     window.dispatchEvent(new CustomEvent('airchitect:workspace-state', { detail: state }));
   }, [project.id, state]);
+
+  useEffect(() => {
+    function onPopState() {
+      const next = parseWorkspaceUrl(window.location.search);
+      if (next.mode && next.mode !== state.mode) dispatch({ type: 'select-mode', mode: next.mode });
+      if (next.versionId !== state.versionId) dispatch({ type: 'select-version', versionId: next.versionId });
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [state.mode, state.versionId]);
 
   async function request(path: string, init: RequestInit = {}, signal?: AbortSignal) {
     const response = await fetch(api + path, { ...init, signal, headers: { ...headers, ...init.headers } });
@@ -51,7 +58,6 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
     if (!response.ok) throw new Error(data.error?.message || data.detail?.error?.message || data.detail || `Request failed (${response.status})`);
     return data;
   }
-
   async function loadVersions(prefer?: string | null, signal?: AbortSignal) {
     const data = await request(`/projects/${project.id}/versions`, {}, signal);
     const nextVersions: Version[] = data.versions || [];
@@ -60,7 +66,6 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
     const nextId = nextVersions.some((version) => version.id === preferred) ? preferred : nextVersions[0]?.id || null;
     if (nextId !== state.versionId) dispatch({ type: 'select-version', versionId: nextId });
   }
-
   async function loadSnapshot(versionId: string | null, signal?: AbortSignal) {
     if (!versionId) { setSnapshot(null); return; }
     setBusy(true);
@@ -68,10 +73,8 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
     catch (cause) { if ((cause as Error).name !== 'AbortError') setError(cause instanceof Error ? cause.message : 'Could not load canonical project state.'); }
     finally { if (!signal?.aborted) setBusy(false); }
   }
-
   useEffect(() => { const controller = new AbortController(); void loadVersions(undefined, controller.signal); return () => controller.abort(); }, [project.id]);
   useEffect(() => { const controller = new AbortController(); void loadSnapshot(state.versionId, controller.signal); return () => controller.abort(); }, [project.id, state.versionId]);
-
   function selectStage(stage: string) { if (ADVANCED_STAGES.includes(stage as AdvancedStage)) dispatch({ type: 'select-stage', stage: stage as AdvancedStage }); }
   async function refresh() { await loadVersions(state.versionId); await loadSnapshot(state.versionId); }
   const currentVersion = snapshot?.version || versions.find((version) => version.id === state.versionId) || null;
