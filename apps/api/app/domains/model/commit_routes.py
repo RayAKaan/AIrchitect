@@ -47,9 +47,9 @@ async def commit_edit(
             commands=request.commands,
             change_summary=request.change_summary,
         )
-    except (ValueError, HTTPException) as exc:
-        if isinstance(exc, HTTPException):
-            raise
+    except HTTPException:
+        raise
+    except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     await session.commit()
     return {
@@ -58,7 +58,10 @@ async def commit_edit(
         "impact": {
             "previous_hash": impact.previous_hash,
             "current_hash": impact.current_hash,
-            "changed_elements": [change.__dict__ for change in impact.changed_elements],
+            "changed_elements": [
+                {"element_id": change.element_id, "change_type": change.change_type}
+                for change in impact.changed_elements
+            ],
             "affected_elements": list(impact.affected_elements),
             "invalidated_artifacts": list(impact.invalidated_artifacts),
         },
