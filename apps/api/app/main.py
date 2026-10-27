@@ -210,3 +210,5 @@ from app.domains.cad_exchange.semantic_routes import router as cad_exchange_sema
 app.include_router(cad_exchange_semantic_router, prefix=settings.api_prefix)
 from app.domains.engineering.s14_routes import router as engineering_s14_router
 app.include_router(engineering_s14_router, prefix=settings.api_prefix)
+from app.domains.ai.mcp_server import mcp_app
+app.mount(f"{settings.api_prefix}/mcp", mcp_app)
