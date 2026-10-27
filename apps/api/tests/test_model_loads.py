@@ -1,5 +1,5 @@
 from app.domains.engineering.model_loads import derive_preliminary_loads
-from app.domains.model import ArchitecturalModel, Building, Level, Site, Space
+from app.domains.model import ArchitecturalModel, Building, Level, Point3D, Site, Space
 
 
 def test_preliminary_loads_are_area_based_and_deterministic() -> None:
@@ -9,7 +9,10 @@ def test_preliminary_loads_are_area_based_and_deterministic() -> None:
         site=Site(id="s", width_m=20, depth_m=20),
         buildings=(Building(id="b", name="Main", site_id="s"),),
         levels=(Level(id="l", building_id="b", name="Ground", elevation_m=0, height_m=3),),
-        spaces=(Space(id="room", level_id="l", name="Room", boundary=((0, 0, 0), (5, 0, 0), (5, 4, 0), (0, 4, 0))),),
+        spaces=(Space(id="room", level_id="l", name="Room", boundary=(
+            Point3D(x=0, y=0, z=0), Point3D(x=5, y=0, z=0),
+            Point3D(x=5, y=4, z=0), Point3D(x=0, y=4, z=0),
+        )),),
     )
     result = derive_preliminary_loads(model)
     assert result.is_screening_only is True
