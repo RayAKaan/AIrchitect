@@ -29,7 +29,12 @@ async def commit_approved_proposal(
     approval_token: str,
     user: User,
 ) -> tuple[ProjectVersion, tuple[Any, ...], str]:
-    """Commit an approved AI proposal through the canonical command boundary."""
+    """Commit an approved AI proposal through the canonical command boundary.
+
+    The project-version lock makes a successful proposal commit idempotent: a
+    retry with the same proposal returns the immutable prior execution record,
+    while a different proposal must pass the current revision guard again.
+    """
 
     validation = validate_ai_proposal(proposal)
     if not validation.valid:
@@ -53,6 +58,22 @@ async def commit_approved_proposal(
         proposal.version_id,
         user,
     )
+
+    prior = await session.scalar(
+        select(DecisionRecord)
+        .where(
+            DecisionRecord.project_version_id == version.id,
+            DecisionRecord.request_id == proposal.proposal_id,
+            DecisionRecord.decision_type == "COPILOT_EXECUTION",
+            DecisionRecord.decision == "COMMITTED",
+        )
+        .order_by(DecisionRecord.created_at.desc())
+        .limit(1)
+    )
+    if prior is not None:
+        outputs = prior.outputs_json or {}
+        return version, tuple(outputs.get("results", ())), str(outputs.get("revision_hash") or "")
+
     if world.model_hash != proposal.base_revision_hash:
         raise ValueError("STALE_WORLD_MODEL")
     await check_expected_revision(version, version.revision_number)
