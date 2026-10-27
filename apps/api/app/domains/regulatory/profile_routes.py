@@ -22,7 +22,7 @@ class JurisdictionProfileOut(BaseModel):
 
 class RegulatoryCheckRequest(BaseModel):
     pack: RulePack
-    facts: dict[str, FactValue | Any]
+    facts: dict[str, FactValue | str | float | int | bool | None]
     context: dict[str, Any] = Field(default_factory=dict)
 
 
