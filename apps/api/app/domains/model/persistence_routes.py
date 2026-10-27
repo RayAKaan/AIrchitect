@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import User
+from app.db.models import ProjectVersion, User
 from app.db.session import get_session
 from app.dependencies import current_user
-from app.domains.foundation.service import resolve_project, resolve_world_model
+from app.domains.foundation.service import resolve_project
 
 from .persistence import get_current_model, get_model_revision, model_summary, persist_model
 from .schemas import ArchitecturalModel
@@ -62,7 +62,7 @@ async def commit_canonical_model(
         raise HTTPException(403, "Viewer cannot edit projects")
     if request.model.project_id != project_id:
         raise HTTPException(422, "Model project_id does not match route project_id")
-    version = await session.get(type(project).current_version.property.columns[0].type.python_type if False else __import__("app.db.models", fromlist=["ProjectVersion"]).ProjectVersion, project.current_version_id)
+    version = await session.get(ProjectVersion, project.current_version_id)
     if version is None:
         raise HTTPException(409, {"error": {"code": "VERSION_NOT_READY", "message": "Project has no current version"}})
     current = await get_current_model(session, project_id)
