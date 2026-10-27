@@ -7,6 +7,7 @@ from .checks import FactValue, RegulatoryCheckResult, evaluate_rule_pack
 from .evidence import EvidenceBindingResult, EvidenceRecord, bind_evidence
 from .impact import ChangedNode, RegulatoryImpactResult, calculate_regulatory_impact
 from .profiles import get_profile, list_profiles
+from .regeneration import RegenerationResult, SelectiveRegenerationRequest, execute_selective_regeneration
 from .rulepacks import RulePack, get_rule_pack, list_rule_packs
 
 router = APIRouter(tags=["regulatory"])
@@ -92,3 +93,11 @@ async def regulatory_evidence(body: EvidenceBindingRequest) -> EvidenceBindingRe
 @router.post("/regulatory/impact", response_model=RegulatoryImpactResult)
 async def regulatory_impact(body: RegulatoryImpactRequest) -> RegulatoryImpactResult:
     return calculate_regulatory_impact(body.revision_id, body.changed_nodes)
+
+
+@router.post("/regulatory/regenerate", response_model=RegenerationResult)
+async def regulatory_regenerate(body: SelectiveRegenerationRequest) -> RegenerationResult:
+    try:
+        return execute_selective_regeneration(body)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
