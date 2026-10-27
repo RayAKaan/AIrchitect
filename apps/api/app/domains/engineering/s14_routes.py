@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +34,6 @@ async def structural_screening(
         "model_hash": result.model_hash,
         "screening_only": result.screening_only,
         "assumptions": list(result.assumptions),
-        "nodes": [node.__dict__ for node in result.nodes],
-        "members": [member.__dict__ for member in result.members],
+        "nodes": [asdict(node) for node in result.nodes],
+        "members": [asdict(member) for member in result.members],
     }
