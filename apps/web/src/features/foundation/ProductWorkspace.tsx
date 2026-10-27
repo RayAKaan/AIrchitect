@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import FoundationWorkspace from './FoundationWorkspace';
+import WorkspaceFlow from './WorkspaceFlow';
 import './ProductWorkspace.css';
 
 type Mode = 'Brief' | 'Site' | 'Explore' | 'Design' | 'Validate' | 'Deliver';
@@ -23,12 +24,13 @@ const MODE_TABS: Record<Mode, string> = {
 };
 
 export default function ProductWorkspace({ api, token, project, onClose }: { api: string; token: string; project: any; onClose: () => void }) {
-  const active = useMemo<Mode>(() => {
+  const [active, setActive] = useState<Mode>(() => {
     const raw = sessionStorage.getItem(`airchitect:mode:${project.id}`) as Mode | null;
     return raw && MODES.some((mode) => mode.id === raw) ? raw : 'Brief';
-  }, [project.id]);
+  });
 
   function selectMode(mode: Mode) {
+    setActive(mode);
     sessionStorage.setItem(`airchitect:mode:${project.id}`, mode);
     window.dispatchEvent(new CustomEvent('airchitect:product-mode', { detail: { mode, tab: MODE_TABS[mode], projectId: project.id } }));
   }
@@ -50,17 +52,17 @@ export default function ProductWorkspace({ api, token, project, onClose }: { api
 
       <nav className="product-mode-bar" aria-label="Project workflow">
         {MODES.map((mode, index) => (
-          <button
-            key={mode.id}
-            className={`product-mode ${mode.id === active ? 'active' : ''}`}
-            onClick={() => selectMode(mode.id)}
-            title={mode.hint}
-          >
+          <button key={mode.id} className={`product-mode ${mode.id === active ? 'active' : ''}`} onClick={() => selectMode(mode.id)} title={mode.hint}>
             <span className="product-mode-number">{index + 1}</span>
             <span><b>{mode.label}</b><small>{mode.hint}</small></span>
           </button>
         ))}
       </nav>
+
+      <div className="product-advanced-flow">
+        <span className="product-advanced-label">Advanced workflow</span>
+        <WorkspaceFlow active="Brief" onSelect={(stage) => window.dispatchEvent(new CustomEvent('airchitect:workspace-stage', { detail: { stage, projectId: project.id } }))} />
+      </div>
 
       <FoundationWorkspace api={api} token={token} project={project} onClose={onClose} />
     </section>
