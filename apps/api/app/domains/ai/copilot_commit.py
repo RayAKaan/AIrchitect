@@ -22,6 +22,18 @@ from app.domains.semantic_model.editing import (
 )
 
 
+def replay_result(record: DecisionRecord) -> tuple[tuple[Any, ...], str]:
+    """Decode one immutable Copilot execution record, failing closed on corruption."""
+    outputs = record.outputs_json or {}
+    revision_hash = outputs.get("revision_hash")
+    results = outputs.get("results")
+    if not isinstance(revision_hash, str) or not revision_hash:
+        raise ValueError("COPILOT_AUDIT_CORRUPT")
+    if not isinstance(results, list):
+        raise ValueError("COPILOT_AUDIT_CORRUPT")
+    return tuple(results), revision_hash
+
+
 async def commit_approved_proposal(
     session: AsyncSession,
     *,
@@ -29,7 +41,12 @@ async def commit_approved_proposal(
     approval_token: str,
     user: User,
 ) -> tuple[ProjectVersion, tuple[Any, ...], str]:
-    """Commit an approved AI proposal through the canonical command boundary."""
+    """Commit an approved AI proposal through the canonical command boundary.
+
+    The project-version lock makes a successful proposal commit idempotent: a
+    retry with the same proposal returns the immutable prior execution record,
+    while a different proposal must pass the current revision guard again.
+    """
 
     validation = validate_ai_proposal(proposal)
     if not validation.valid:
@@ -53,6 +70,22 @@ async def commit_approved_proposal(
         proposal.version_id,
         user,
     )
+
+    prior = await session.scalar(
+        select(DecisionRecord)
+        .where(
+            DecisionRecord.project_version_id == version.id,
+            DecisionRecord.request_id == proposal.proposal_id,
+            DecisionRecord.decision_type == "COPILOT_EXECUTION",
+            DecisionRecord.decision == "COMMITTED",
+        )
+        .order_by(DecisionRecord.created_at.desc())
+        .limit(1)
+    )
+    if prior is not None:
+        results, revision_hash = replay_result(prior)
+        return version, results, revision_hash
+
     if world.model_hash != proposal.base_revision_hash:
         raise ValueError("STALE_WORLD_MODEL")
     await check_expected_revision(version, version.revision_number)
