@@ -47,6 +47,19 @@ export interface CopilotPlanPreviewResponse {
   canonical_state_mutated: boolean;
 }
 
+export interface CopilotImpactExplanation {
+  group: string;
+  artifact_type: string;
+  description: string;
+  regeneration_required: boolean;
+}
+
+export interface CopilotImpactPreviewResponse {
+  proposal_id: string;
+  impact_groups: CopilotImpactExplanation[];
+  canonical_state_mutated: boolean;
+}
+
 export interface CopilotApprovalTokenResponse {
   proposal_id: string;
   plan_fingerprint: string;
@@ -110,6 +123,13 @@ export class CopilotApiClient {
     });
   }
 
+  async impactPreview(projectId: string, proposal: AIProposal): Promise<CopilotImpactPreviewResponse> {
+    return this.request<CopilotImpactPreviewResponse>(`/projects/${encodeURIComponent(projectId)}/ai/copilot/impact-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ proposal }),
+    });
+  }
+
   async issueApprovalToken(projectId: string, proposal: AIProposal): Promise<CopilotApprovalTokenResponse> {
     return this.request<CopilotApprovalTokenResponse>(
       `/projects/${encodeURIComponent(projectId)}/ai/copilot/approval-token`,
@@ -117,22 +137,14 @@ export class CopilotApiClient {
     );
   }
 
-  async acceptance(
-    projectId: string,
-    proposal: AIProposal,
-    approvalToken: string,
-  ): Promise<CopilotAcceptanceResponse> {
+  async acceptance(projectId: string, proposal: AIProposal, approvalToken: string): Promise<CopilotAcceptanceResponse> {
     return this.request<CopilotAcceptanceResponse>(`/projects/${encodeURIComponent(projectId)}/ai/copilot/acceptance`, {
       method: 'POST',
       body: JSON.stringify({ proposal, approval_token: approvalToken }),
     });
   }
 
-  async commit(
-    projectId: string,
-    proposal: AIProposal,
-    approvalToken: string,
-  ): Promise<CopilotCommitResponse> {
+  async commit(projectId: string, proposal: AIProposal, approvalToken: string): Promise<CopilotCommitResponse> {
     return this.request<CopilotCommitResponse>(`/projects/${encodeURIComponent(projectId)}/ai/copilot/commit`, {
       method: 'POST',
       body: JSON.stringify({ proposal, approval_token: approvalToken }),
@@ -149,7 +161,6 @@ export class CopilotApiClient {
         ...init.headers,
       },
     });
-
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const detail = typeof payload === 'object' && payload !== null && 'detail' in payload
