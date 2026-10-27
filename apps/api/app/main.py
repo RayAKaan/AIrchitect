@@ -190,6 +190,8 @@ from app.domains.lifecycle.runtime_routes import router as runtime_router
 app.include_router(runtime_router, prefix=settings.api_prefix)
 from app.domains.ai.routes import router as ai_router
 app.include_router(ai_router, prefix=settings.api_prefix)
+from app.domains.ai.copilot_loop_routes import router as copilot_loop_router
+app.include_router(copilot_loop_router, prefix=settings.api_prefix)
 from app.domains.evidence.routes import router as evidence_router
 app.include_router(evidence_router, prefix=settings.api_prefix)
 from app.domains.site.routes import router as site_router
