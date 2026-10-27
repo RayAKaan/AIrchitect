@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     app_env: str = "local"
     api_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://building:building@localhost:5432/building"
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
+    database_pool_timeout_seconds: int = 30
     decision_provider: str = "deterministic"
     llm_provider: str = "deterministic"
     llm_model: str = "deterministic-local"
@@ -28,20 +31,11 @@ class Settings(BaseSettings):
     assistant_rate_limit_per_minute: int = 20
     auth_secret: str = "local-only-change-this-secret"
 
-    # --- Phase 18 CAD/BIM toolchain -------------------------------------------------
-    # "cad_bim" is the real OpenCASCADE/FreeCAD/IfcOpenShell pipeline. "legacy" is the
-    # pre-Phase-18 scratch cuboid generator, retained only as a migration aid and
-    # scheduled for deletion once parity and acceptance gates pass.
     geometry_engine: str = "cad_bim"
-    # Interpreter for the isolated worker virtualenv. Empty means auto-discover from
-    # CAD_WORKER_VENV_ROOT; the API interpreter is never used for CAD work.
     cad_worker_python: str = ""
     cad_worker_venv_root: str = "H:/.cad-tools/worker-venv"
     cad_freecad_root: str = "H:/.cad-tools/freecad-1.1.3/FreeCAD_1.1.3-Windows-x86_64-py311"
-    # Where generated binaries (FCStd/STEP/IFC/GLB) are written before upload.
     cad_artifact_root: str = "H:/.cad-tools/artifacts"
-    # "freecad" drives FreeCADCmd for native documents; "occt" uses the standalone
-    # OCP kernel only. "auto" prefers freecad and falls back to occt.
     cad_provider: str = "auto"
     cad_ifc_schema: str = "IFC4"
     cad_job_timeout_seconds: float = 180.0
@@ -87,6 +81,8 @@ def validate_production_settings(config: Settings) -> None:
         raise ValueError("DATABASE_URL must not point to localhost in production")
     if not database.username or database.username == "building" or not database.password or database.password == "building":
         raise ValueError("DATABASE_URL must use explicit non-default credentials in production")
+    if config.database_pool_size < 1 or config.database_max_overflow < 0 or config.database_pool_timeout_seconds <= 0:
+        raise ValueError("Production database pool settings are invalid")
 
     if config.geometry_engine.lower() != "cad_bim":
         raise ValueError("GEOMETRY_ENGINE must be cad_bim in production")
