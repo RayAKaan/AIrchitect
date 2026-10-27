@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "Building Feasibility Platform"
     app_env: str = "local"
     api_prefix: str = "/api/v1"
+    mcp_server_url: str = "http://127.0.0.1:8000/api/v1/mcp"
     database_url: str = "postgresql+asyncpg://building:building@localhost:5432/building"
     database_pool_size: int = 10
     database_max_overflow: int = 20
