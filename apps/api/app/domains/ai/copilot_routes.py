@@ -10,12 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import EvidenceNode, Project, WorldModelRevision
 from app.db.session import get_session
 from app.dependencies import current_user
-from app.domains.foundation.service import resolve_project_version
 from app.domains.ai.context import build_copilot_context
 from app.domains.ai.proposal_compiler import compile_proposal_commands
-from app.domains.ai.proposals import AIProposal, AIProposalDraft, validate_ai_proposal
-from app.domains.ai.runtime import LLMRuntime
+from app.domains.ai.proposals import (
+    AIProposal,
+    AIProposalDraft,
+    validate_ai_proposal,
+    validate_proposal_evidence,
+)
 from app.domains.ai.providers import get_llm_provider
+from app.domains.ai.runtime import LLMRuntime
+from app.domains.foundation.service import resolve_project_version
 
 
 router = APIRouter(tags=["ai-copilot"])
@@ -36,11 +41,10 @@ async def copilot_preview(
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-
     if body.version_ref is None:
         raise HTTPException(status_code=422, detail="version_ref is required for Copilot preview")
-    _, version = await resolve_project_version(session, project_id, body.version_ref, user.id)
 
+    _, version = await resolve_project_version(session, project_id, body.version_ref, user.id)
     world = await session.scalar(
         select(WorldModelRevision)
         .where(WorldModelRevision.project_version_id == version.id)
@@ -63,6 +67,7 @@ async def copilot_preview(
             )
         ).all()
     )
+    evidence_ids = [node.id for node in evidence_rows]
     context = build_copilot_context(
         project_id=project.id,
         version_id=version.id,
@@ -113,14 +118,17 @@ async def copilot_preview(
         model=get_llm_provider().status().get("model", "unknown"),
         model_version="runtime",
     )
+
     validation = validate_ai_proposal(proposal)
-    if not validation.valid:
+    evidence_validation = validate_proposal_evidence(proposal, evidence_ids)
+    errors = [*validation.errors, *evidence_validation.errors]
+    if errors:
         await session.commit()
         return {
             "proposal": proposal.model_dump(mode="json"),
             "commands": [],
             "executable": False,
-            "validation_errors": list(validation.errors),
+            "validation_errors": errors,
             "canonical_state_mutated": False,
         }
 
