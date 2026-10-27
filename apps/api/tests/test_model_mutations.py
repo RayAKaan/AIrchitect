@@ -2,7 +2,7 @@ import pytest
 
 from app.domains.model.commands import ModelCommand
 from app.domains.model.mutations import ModelMutationError, apply_commands
-from app.domains.model.schemas import ArchitecturalModel, Building, Level, Site
+from app.domains.model.schemas import ArchitecturalModel, Building, Site
 
 
 def base_model() -> ArchitecturalModel:
