@@ -4,7 +4,7 @@ import hashlib
 import json
 from collections import defaultdict
 
-from app.domains.model import ArchitecturalModel, Wall
+from app.domains.model import ArchitecturalModel, Point3D, Wall
 
 
 Edge = tuple[tuple[float, float, float], tuple[float, float, float]]
@@ -38,15 +38,14 @@ def derive_walls_from_spaces(model: ArchitecturalModel, *, thickness_m: float = 
         if len(level_ids) != 1:
             raise ValueError("a wall edge cannot connect spaces on different levels")
         level_id = next(iter(level_ids))
-        start, end = edge
         wall_id = _wall_id(model.project_id, level_id, edge)
         walls.append(
             Wall(
                 id=wall_id,
                 name="Generated Wall",
                 level_id=level_id,
-                start=_point(start),
-                end=_point(end),
+                start=_point(edge[0]),
+                end=_point(edge[1]),
                 thickness_m=thickness_m,
                 height_m=_level_height(model, level_id),
                 space_ids=tuple(sorted(owner[1] for owner in owners)),
@@ -66,9 +65,7 @@ def _canonical_edge(start: tuple[float, float, float], end: tuple[float, float, 
     return (start, end) if start <= end else (end, start)
 
 
-def _point(value: tuple[float, float, float]):
-    from app.domains.model import Point3D
-
+def _point(value: tuple[float, float, float]) -> Point3D:
     return Point3D(x=value[0], y=value[1], z=value[2])
 
 
