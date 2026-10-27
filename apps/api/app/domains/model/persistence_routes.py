@@ -184,3 +184,5 @@ async def commit_canonical_model(
 
 from .commit_routes import router as commit_router
 router.include_router(commit_router)
+from .scene_routes import router as scene_router
+router.include_router(scene_router)
