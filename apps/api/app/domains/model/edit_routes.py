@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User
+from app.db.session import get_session
 from app.dependencies import current_user
+from app.domains.foundation.service import resolve_project
 
 from .edit_batch import apply_edit_batch
 from .edit_commands import EditCommand
@@ -25,12 +28,18 @@ async def edit_preview(
     project_id: str,
     request: EditPreviewRequest,
     user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> dict[str, object]:
-    # The preview endpoint deliberately reads a durable revision and never accepts
-    # an arbitrary client-supplied model as authoritative state.
-    from app.db.session import get_session
-    from fastapi import Request
-    from sqlalchemy.ext.asyncio import AsyncSession
-    from fastapi import Depends as _Depends
-
-    raise RuntimeError("route dependency placeholder")
+    await resolve_project(session, project_id, user.id)
+    _, model = await get_model_revision(session, project_id, request.expected_revision)
+    try:
+        preview = apply_edit_batch(model, request.commands)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        "read_only": True,
+        "source_revision": model.revision,
+        "result_revision": preview.revision,
+        "commands": [command.model_dump(mode="json") for command in request.commands],
+        "model": preview.model_dump(mode="json", exclude_none=False),
+    }
