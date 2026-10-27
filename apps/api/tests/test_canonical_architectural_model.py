@@ -86,16 +86,21 @@ def test_unknown_level_reference_is_rejected() -> None:
 def test_opening_requires_existing_wall() -> None:
     from app.domains.model.schemas import Door
 
+    site = Site(id="site-1", width_m=20, depth_m=30)
+    building = Building(id="building-1", name="Main Building", site_id=site.id)
+    level = Level(id="level-1", building_id=building.id, name="Ground", elevation_m=0, height_m=3)
     with pytest.raises(ValidationError, match="unknown wall"):
         ArchitecturalModel(
             project_id="project-1",
             revision=1,
-            site=Site(id="site-1", width_m=20, depth_m=30),
+            site=site,
+            buildings=(building,),
+            levels=(level,),
             doors=(
                 Door(
                     id="door-1",
                     name="Entry",
-                    level_id="level-1",
+                    level_id=level.id,
                     host_wall_id="missing-wall",
                     offset_m=0,
                     width_m=0.9,
