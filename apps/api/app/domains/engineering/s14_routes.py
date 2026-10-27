@@ -11,6 +11,7 @@ from app.domains.foundation.service import error, resolve_project
 from app.domains.model.persistence import get_current_model
 from .load_combinations import LoadCase, build_default_combinations
 from .model_loads import derive_preliminary_loads
+from .provenance import build_provenance
 from .screening_validation import validate_screening_model
 from .structural_model import build_structural_model
 from .visualization import build_structural_scene
@@ -60,3 +61,13 @@ async def engineering_scene(project_id: str, user: User = Depends(current_user),
     structural = build_structural_model(model)
     scene = build_structural_scene(structural)
     return {"model_revision": model.revision, "model_hash": structural.model_hash, "screening_only": structural.screening_only, "primitives": [asdict(item) for item in scene]}
+
+
+@router.get("/projects/{project_id}/engineering/provenance")
+async def engineering_provenance(project_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> dict[str, object]:
+    _, _, model = await _committed_model(project_id, user, session)
+    structural = build_structural_model(model)
+    loads = derive_preliminary_loads(model)
+    validation = validate_screening_model(member_count=len(structural.members), total_factored_load_kn=loads.total_factored_load_kn, model_hash=structural.model_hash)
+    provenance = build_provenance(model=model, structural=structural, loads=loads, result_payload={"status": validation.status, "findings": [asdict(item) for item in validation.findings]}, status=validation.status)
+    return asdict(provenance)
