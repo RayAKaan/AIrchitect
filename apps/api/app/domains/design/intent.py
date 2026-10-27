@@ -65,6 +65,9 @@ class DesignIntent(BaseModel):
         room_ids = [room.room_id for room in self.rooms]
         if len(room_ids) != len(set(room_ids)):
             raise ValueError("room_id values must be unique")
+        invalid_levels = [room.room_id for room in self.rooms if room.level_index >= self.floors]
+        if invalid_levels:
+            raise ValueError(f"room level_index must be less than floors: {invalid_levels}")
         known = set(room_ids)
         for adjacency in self.adjacencies:
             if adjacency.first_room_id not in known or adjacency.second_room_id not in known:
