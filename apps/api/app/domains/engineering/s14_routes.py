@@ -13,6 +13,7 @@ from .load_combinations import LoadCase, build_default_combinations
 from .model_loads import derive_preliminary_loads
 from .screening_validation import validate_screening_model
 from .structural_model import build_structural_model
+from .visualization import build_structural_scene
 
 router = APIRouter(tags=["s14-engineering"])
 
@@ -51,3 +52,11 @@ async def engineering_validation(project_id: str, user: User = Depends(current_u
     loads = derive_preliminary_loads(model)
     result = validate_screening_model(member_count=len(structural.members), total_factored_load_kn=loads.total_factored_load_kn, model_hash=structural.model_hash)
     return {"model_revision": model.revision, "model_hash": structural.model_hash, "screening_only": True, "status": result.status, "findings": [asdict(finding) for finding in result.findings]}
+
+
+@router.get("/projects/{project_id}/engineering/scene")
+async def engineering_scene(project_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> dict[str, object]:
+    _, _, model = await _committed_model(project_id, user, session)
+    structural = build_structural_model(model)
+    scene = build_structural_scene(structural)
+    return {"model_revision": model.revision, "model_hash": structural.model_hash, "screening_only": structural.screening_only, "primitives": [asdict(item) for item in scene]}
