@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.domains.model.persistence import model_summary
 from app.domains.model.schemas import ArchitecturalModel, Building, Point3D, Site
 
@@ -13,6 +15,7 @@ def make_model(revision: int = 1) -> ArchitecturalModel:
 
 def test_model_summary_is_json_stable() -> None:
     model = make_model()
+
     class Row:
         revision = 1
         model_hash = "a" * 64
@@ -20,7 +23,7 @@ def test_model_summary_is_json_stable() -> None:
         parent_revision_id = None
         source = "user"
         change_summary = "Initial model"
-        created_at = __import__("datetime").datetime(2026, 1, 1, tzinfo=__import__("datetime").timezone.utc)
+        created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
     summary = model_summary(Row(), model)
     assert summary["revision"] == 1
