@@ -12,6 +12,7 @@ from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.ai.approval import issue_approval_token
 from app.domains.ai.context import build_copilot_context
+from app.domains.ai.copilot_commit import commit_approved_proposal
 from app.domains.ai.copilot_plan import preview_proposal_plan
 from app.domains.ai.proposal_compiler import compile_proposal_commands
 from app.domains.ai.proposals import (
@@ -35,6 +36,11 @@ class CopilotRequest(BaseModel):
 
 class CopilotPlanRequest(BaseModel):
     proposal: AIProposal
+
+
+class CopilotCommitRequest(BaseModel):
+    proposal: AIProposal
+    approval_token: str = Field(min_length=20, max_length=4096)
 
 
 @router.post("/projects/{project_id}/ai/copilot/preview")
@@ -188,4 +194,33 @@ async def copilot_approval_token(
         "plan_fingerprint": preview.fingerprint,
         "approval_token": token,
         "canonical_state_mutated": False,
+    }
+
+
+@router.post("/projects/{project_id}/ai/copilot/commit")
+async def copilot_commit(
+    project_id: str,
+    body: CopilotCommitRequest,
+    user=Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    if body.proposal.project_id != project_id:
+        raise HTTPException(status_code=422, detail="proposal project does not match route project")
+    try:
+        _, version, results, revision_hash = await commit_approved_proposal(
+            session,
+            proposal=body.proposal,
+            approval_token=body.approval_token,
+            user=user,
+        )
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "proposal_id": body.proposal.proposal_id,
+        "status": "committed",
+        "version_id": version.id,
+        "revision_hash": revision_hash,
+        "results": list(results),
+        "canonical_state_mutated": True,
     }
