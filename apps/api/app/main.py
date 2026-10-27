@@ -202,3 +202,5 @@ from app.domains.model.edit_routes import router as model_edit_router
 app.include_router(model_edit_router, prefix=settings.api_prefix)
 from app.domains.cad_exchange.routes import router as cad_exchange_router
 app.include_router(cad_exchange_router, prefix=settings.api_prefix)
+from app.domains.cad_exchange.semantic_routes import router as cad_exchange_semantic_router
+app.include_router(cad_exchange_semantic_router, prefix=settings.api_prefix)
