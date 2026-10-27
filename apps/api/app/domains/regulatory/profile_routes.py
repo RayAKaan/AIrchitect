@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .profiles import get_profile, list_profiles
+from .rulepack_routes import router as rulepack_router
 
 router = APIRouter(prefix="/regulatory/profiles", tags=["regulatory-profiles"])
+router.include_router(rulepack_router)
 
 
 class JurisdictionProfileOut(BaseModel):
