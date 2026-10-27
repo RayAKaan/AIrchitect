@@ -1,6 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { Bounds, Grid, OrbitControls } from '@react-three/drei';
 import { useMemo } from 'react';
+import * as THREE from 'three';
 import type { SceneMesh, ModelScene, SceneNode } from './sceneContract';
 
 type SceneCanvasProps = Readonly<{ scene: ModelScene; selectedNodeId?: string | null; onSelect?: (node: SceneNode) => void }>;
@@ -19,12 +20,7 @@ function MeshGeometry({ mesh }: { mesh: SceneMesh }) {
 }
 
 function NodeMesh({ node, mesh, selected, onSelect }: { node: SceneNode; mesh: SceneMesh; selected: boolean; onSelect?: (node: SceneNode) => void }) {
-  return (
-    <mesh onClick={(event) => { event.stopPropagation(); onSelect?.(node); }}>
-      <MeshGeometry mesh={mesh} />
-      <meshStandardMaterial color={selected ? '#b97847' : '#8b8177'} roughness={0.82} metalness={0.02} side={2} />
-    </mesh>
-  );
+  return <mesh onClick={(event) => { event.stopPropagation(); onSelect?.(node); }}><MeshGeometry mesh={mesh} /><meshStandardMaterial color={selected ? '#b97847' : '#8b8177'} roughness={0.82} metalness={0.02} side={THREE.DoubleSide} /></mesh>;
 }
 
 export function SceneCanvas({ scene, selectedNodeId = null, onSelect }: SceneCanvasProps) {
@@ -33,22 +29,5 @@ export function SceneCanvas({ scene, selectedNodeId = null, onSelect }: SceneCan
     (scene.bounds.minimum[1] + scene.bounds.maximum[1]) / 2,
     (scene.bounds.minimum[2] + scene.bounds.maximum[2]) / 2,
   ], [scene.bounds]);
-
-  return (
-    <Canvas camera={{ position: [18, 14, 18], fov: 42 }}>
-      <color attach="background" args={['#eeece5']} />
-      <ambientLight intensity={1.5} />
-      <directionalLight position={[20, 30, 15]} intensity={2} />
-      <Bounds fit clip observe margin={1.25}>
-        <group position={[-center[0], -center[1], -center[2]]}>
-          {scene.nodes.map((node) => {
-            const mesh = scene.meshes[node.meshIndex];
-            return mesh ? <NodeMesh key={node.id} node={node} mesh={mesh} selected={node.id === selectedNodeId} onSelect={onSelect} /> : null;
-          })}
-        </group>
-      </Bounds>
-      <Grid infiniteGrid fadeDistance={100} sectionColor="#9a765f" cellColor="#c9c2b8" />
-      <OrbitControls makeDefault enablePan enableZoom enableRotate />
-    </Canvas>
-  );
+  return <Canvas camera={{ position: [18, 14, 18], fov: 42 }}><color attach="background" args={['#eeece5']} /><ambientLight intensity={1.5} /><directionalLight position={[20, 30, 15]} intensity={2} /><Bounds fit clip observe margin={1.25}><group position={[-center[0], -center[1], -center[2]]}>{scene.nodes.map((node) => { const mesh = scene.meshes[node.meshIndex]; return mesh ? <NodeMesh key={node.id} node={node} mesh={mesh} selected={node.id === selectedNodeId} onSelect={onSelect} /> : null; })}</group></Bounds><Grid infiniteGrid fadeDistance={100} sectionColor="#9a765f" cellColor="#c9c2b8" /><OrbitControls makeDefault enablePan enableZoom enableRotate /></Canvas>;
 }
