@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from .checks import FactValue, RegulatoryCheckResult, evaluate_rule_pack
 from .evidence import EvidenceBindingResult, EvidenceRecord, bind_evidence
+from .impact import ChangedNode, RegulatoryImpactResult, calculate_regulatory_impact
 from .profiles import get_profile, list_profiles
 from .rulepacks import RulePack, get_rule_pack, list_rule_packs
 
@@ -30,6 +31,11 @@ class RegulatoryCheckRequest(BaseModel):
 class EvidenceBindingRequest(BaseModel):
     result: RegulatoryCheckResult
     records: tuple[EvidenceRecord, ...] = ()
+
+
+class RegulatoryImpactRequest(BaseModel):
+    revision_id: str = Field(min_length=1)
+    changed_nodes: tuple[ChangedNode, ...]
 
 
 def _serialize(profile) -> JurisdictionProfileOut:
@@ -81,3 +87,8 @@ async def regulatory_checks(body: RegulatoryCheckRequest) -> RegulatoryCheckResu
 @router.post("/regulatory/evidence/bind", response_model=EvidenceBindingResult)
 async def regulatory_evidence(body: EvidenceBindingRequest) -> EvidenceBindingResult:
     return bind_evidence(body.result, body.records)
+
+
+@router.post("/regulatory/impact", response_model=RegulatoryImpactResult)
+async def regulatory_impact(body: RegulatoryImpactRequest) -> RegulatoryImpactResult:
+    return calculate_regulatory_impact(body.revision_id, body.changed_nodes)
