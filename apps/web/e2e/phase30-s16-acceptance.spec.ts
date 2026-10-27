@@ -15,11 +15,11 @@ test('S16 end-to-end architect workspace acceptance', async ({ page }) => {
   await page.getByRole('button', { name: /Open workspace/ }).click();
 
   for (const stage of ['Brief', 'World Model', 'Semantic Model', 'Design', 'CAD/BIM Exports', 'Engineering', 'Change Impact', 'Release Validation', 'Regulatory']) {
-    await expect(page.getByRole('button', { name: stage, exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(`\\b${stage}\\b`) }).first()).toBeVisible();
   }
   await expect(page.getByRole('heading', { name: 'Versions' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Brief', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Brief', exact: true }).last().click();
   await page.getByPlaceholder('Describe your building project…').fill(
     'Six-floor commercial retail building in Riyadh with 8,000 m2 GFA on a 2,000 m2 site and basement parking.',
   );
