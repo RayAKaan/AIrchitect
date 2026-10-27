@@ -5,6 +5,7 @@ artifacts, quantities, and downstream projections are derived from this state;
 callers must not persist presentation-only geometry as the source of truth.
 """
 
+from .constraints import ModelConstraintViolation, validate_baseline_constraints
 from .identity import canonical_model_bytes, canonical_model_payload, model_hash
 from .schemas import (
     ArchitecturalModel,
@@ -27,6 +28,7 @@ __all__ = [
     "Building",
     "Door",
     "Level",
+    "ModelConstraintViolation",
     "ModelElement",
     "ModelMetadata",
     "Point3D",
@@ -39,4 +41,5 @@ __all__ = [
     "canonical_model_bytes",
     "canonical_model_payload",
     "model_hash",
+    "validate_baseline_constraints",
 ]
