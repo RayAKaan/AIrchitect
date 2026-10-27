@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .schemas import ArchitecturalModel, Point3D, Slab, Space, Wall
+from .schemas import ArchitecturalModel, Point3D
 
 
 @dataclass(frozen=True)
