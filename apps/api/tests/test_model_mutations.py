@@ -18,10 +18,22 @@ def base_model() -> ArchitecturalModel:
 def test_batch_applies_atomically_and_increments_revision_once() -> None:
     model = base_model()
     commands = (
-        ModelCommand(command_id="level-create", operation="create", element_type="level", element_id="level-1", expected_revision=4,
-                     payload={"building_id": "building", "name": "Ground", "elevation_m": 0, "height_m": 3}),
-        ModelCommand(command_id="level-update", operation="update", element_type="level", element_id="level-1", expected_revision=4,
-                     payload={"name": "Ground Floor"}),
+        ModelCommand(
+            command_id="level-create",
+            operation="create",
+            element_type="level",
+            element_id="level-1",
+            expected_revision=4,
+            payload={"building_id": "building", "name": "Ground", "elevation_m": 0, "height_m": 3},
+        ),
+        ModelCommand(
+            command_id="level-update",
+            operation="update",
+            element_type="level",
+            element_id="level-1",
+            expected_revision=4,
+            payload={"name": "Ground Floor"},
+        ),
     )
     result = apply_commands(model, commands)
     assert result.revision == 5
@@ -32,9 +44,21 @@ def test_batch_applies_atomically_and_increments_revision_once() -> None:
 def test_invalid_later_command_does_not_change_original_model() -> None:
     model = base_model()
     commands = (
-        ModelCommand(command_id="level-create", operation="create", element_type="level", element_id="level-1", expected_revision=4,
-                     payload={"building_id": "building", "name": "Ground", "elevation_m": 0, "height_m": 3}),
-        ModelCommand(command_id="missing-delete", operation="delete", element_type="level", element_id="missing", expected_revision=4),
+        ModelCommand(
+            command_id="level-create",
+            operation="create",
+            element_type="level",
+            element_id="level-1",
+            expected_revision=4,
+            payload={"building_id": "building", "name": "Ground", "elevation_m": 0, "height_m": 3},
+        ),
+        ModelCommand(
+            command_id="missing-delete",
+            operation="delete",
+            element_type="level",
+            element_id="missing",
+            expected_revision=4,
+        ),
     )
     with pytest.raises(ModelMutationError, match="does not exist"):
         apply_commands(model, commands)
@@ -42,7 +66,13 @@ def test_invalid_later_command_does_not_change_original_model() -> None:
 
 
 def test_stale_revision_is_rejected() -> None:
-    command = ModelCommand(command_id="level-create", operation="create", element_type="level", element_id="level-1", expected_revision=3,
-                           payload={"building_id": "building", "name": "Ground", "elevation_m": 0, "height_m": 3})
+    command = ModelCommand(
+        command_id="level-create",
+        operation="create",
+        element_type="level",
+        element_id="level-1",
+        expected_revision=3,
+        payload={"building_id": "building", "name": "Ground", "elevation_m": 0, "height_m": 3},
+    )
     with pytest.raises(ModelMutationError, match="targets revision 3"):
         apply_commands(base_model(), (command,))
