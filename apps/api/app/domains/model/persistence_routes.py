@@ -9,7 +9,15 @@ from app.db.architectural_model_models import ArchitecturalModelRevision
 from app.db.models import AuditEvent, ProjectVersion, User
 from app.db.session import get_session
 from app.dependencies import current_user
-from app.domains.foundation.service import resolve_project
+from app.domains.cad.canonical_export import (
+    CanonicalCadRequestRejected,
+    run_canonical_cad_export,
+)
+from app.domains.cad.capability import probe_capabilities
+from app.domains.cad.config import CadConfig
+from app.domains.cad.errors import CadError
+from app.domains.cad.schemas import artifact_out, job_out
+from app.domains.foundation.service import error, resolve_project, resolve_world_model
 
 from .change_impact import plan_change_impact
 from .persistence import get_current_model, get_model_revision, model_summary, persist_model
@@ -31,6 +39,12 @@ class ModelRevertRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     expected_revision: int = Field(ge=1)
+
+
+class CanonicalCadExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    requested_outputs: list[str] | None = None
 
 
 @router.get("/projects/{project_id}/model")
@@ -105,6 +119,75 @@ async def commit_canonical_model(project_id: str, request: ModelCommitRequest, u
                               expected_revision=0, source="bootstrap", change_summary=request.change_summary)
     await session.commit()
     return {"read_only": False, **model_summary(row, request.model)}
+
+
+@router.post("/projects/{project_id}/model/cad", status_code=201)
+async def export_canonical_model_to_cad(
+    project_id: str,
+    body: CanonicalCadExportRequest | None = None,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    """Export the current canonical architectural model through the real CAD worker.
+
+    The canonical model is authoritative. The endpoint never accepts geometry or
+    dimensions from the client; it only permits narrowing the deployment's enabled
+    artifact set. The resulting run and artifacts use the existing CAD persistence,
+    validation and content-addressed storage path.
+    """
+    project, membership = await resolve_project(session, project_id, user.id, write=True)
+    if membership.role == "viewer":
+        raise HTTPException(403, "Viewer cannot export CAD")
+
+    version = await session.get(ProjectVersion, project.current_version_id)
+    if version is None or version.status != "COMMITTED":
+        raise error(409, "VERSION_NOT_READY", "Commit the current project version before CAD export")
+
+    current = await get_current_model(session, project_id)
+    if current is None:
+        raise error(409, "MODEL_NOT_INITIALIZED", "No canonical architectural model has been committed")
+    model_row, model = current
+    world = await resolve_world_model(session, version.id)
+    if model.project_id != project_id:
+        raise error(409, "MODEL_PROJECT_MISMATCH", "Canonical model does not belong to this project")
+
+    config = CadConfig.from_settings()
+    if config.geometry_engine != "cad_bim":
+        raise error(409, "CAD_ENGINE_DISABLED", "CAD geometry generation is disabled on this deployment")
+    try:
+        capabilities = probe_capabilities(config)
+    except CadError as exc:
+        raise error(503, "CAD_TOOLCHAIN_UNAVAILABLE", "The configured CAD toolchain is unavailable") from exc
+
+    try:
+        outcome = await run_canonical_cad_export(
+            session,
+            project=project,
+            version=version,
+            model=model,
+            actor_id=user.id,
+            config=config,
+            capabilities=capabilities,
+            requested_outputs=body.requested_outputs if body else None,
+            world=world,
+        )
+    except CanonicalCadRequestRejected as exc:
+        raise error(400, exc.code, exc.message) from exc
+
+    if outcome.unavailable:
+        raise error(503, outcome.error_code or "CAD_TOOLCHAIN_UNAVAILABLE", outcome.error_message or "CAD toolchain unavailable")
+    if outcome.run is None:
+        raise error(500, "CAD_RUN_MISSING", "CAD export completed without a persisted run")
+
+    payload = job_out(outcome.run, current_hash=world.model_hash or "", stale=outcome.stale)
+    return {
+        **payload.model_dump(mode="json"),
+        "canonical_model_revision": model_row.revision,
+        "canonical_model_hash": model_row.model_hash,
+        "artifacts": [artifact_out(row, version.id).model_dump(mode="json") for row in outcome.artifacts],
+        "validation_run_id": outcome.validation_run_id,
+    }
+
 
 from .commit_routes import router as commit_router
 router.include_router(commit_router)
