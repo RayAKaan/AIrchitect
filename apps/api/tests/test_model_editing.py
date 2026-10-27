@@ -26,7 +26,6 @@ def test_translate_rotate_resize_each_create_new_revision() -> None:
     translated = apply_edit(source, TranslateCommand(element_id="space-1", dx_m=2, dy_m=1, dz_m=0))
     rotated = apply_edit(translated, RotateCommand(element_id="space-1", angle_deg=90))
     resized = apply_edit(rotated, ResizeCommand(element_id="space-1", scale=0.5))
-
     assert source.revision == 1
     assert translated.revision == 2
     assert rotated.revision == 3
