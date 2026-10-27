@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models import ProjectVersion, User
 from app.db.session import get_session
 from app.dependencies import current_user
-from app.db.models import ProjectVersion, User
 from app.domains.foundation.service import error, resolve_project
-from app.domains.model.editing import get_current_model
 from app.domains.model import model_hash
+from app.domains.model.persistence import get_current_model
+
 from .dxf import render_dxf
 
 router = APIRouter(tags=["s14-cad-exchange"])
