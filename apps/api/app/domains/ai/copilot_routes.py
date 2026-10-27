@@ -14,6 +14,7 @@ from app.domains.ai.approval import issue_approval_token
 from app.domains.ai.context import build_copilot_context
 from app.domains.ai.copilot_acceptance import evaluate_copilot_acceptance
 from app.domains.ai.copilot_commit import commit_approved_proposal
+from app.domains.ai.copilot_impact import explain_impact_groups
 from app.domains.ai.copilot_plan import preview_proposal_plan
 from app.domains.ai.proposal_compiler import compile_proposal_commands
 from app.domains.ai.proposals import (
@@ -179,6 +180,36 @@ async def copilot_plan_preview(
         "fingerprint": preview.fingerprint,
         "validation_errors": list(preview.validation_errors),
         "warnings": list(preview.warnings),
+        "canonical_state_mutated": False,
+    }
+
+
+@router.post("/projects/{project_id}/ai/copilot/impact-preview")
+async def copilot_impact_preview(
+    project_id: str,
+    body: CopilotPlanRequest,
+    user=Depends(current_user),
+) -> dict:
+    if body.proposal.project_id != project_id:
+        raise HTTPException(status_code=422, detail="proposal project does not match route project")
+    preview = preview_proposal_plan(body.proposal)
+    if not preview.executable:
+        raise HTTPException(status_code=409, detail="Copilot proposal is not executable")
+    try:
+        impacts = explain_impact_groups(list(preview.impact_groups))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "proposal_id": body.proposal.proposal_id,
+        "impact_groups": [
+            {
+                "group": item.group,
+                "artifact_type": item.artifact_type,
+                "description": item.description,
+                "regeneration_required": item.regeneration_required,
+            }
+            for item in impacts
+        ],
         "canonical_state_mutated": False,
     }
 
