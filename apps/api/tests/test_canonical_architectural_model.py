@@ -58,13 +58,29 @@ def test_valid_model_is_hashable_and_stable() -> None:
 def test_duplicate_ids_are_rejected() -> None:
     model = make_model()
     with pytest.raises(ValidationError, match="globally unique"):
-        model.model_copy(update={"walls": (model.walls[0].model_copy(update={"id": "space-1"}),)})
+        ArchitecturalModel(
+            project_id=model.project_id,
+            revision=2,
+            site=model.site,
+            buildings=model.buildings,
+            levels=model.levels,
+            spaces=model.spaces,
+            walls=(model.walls[0].model_copy(update={"id": "space-1"}),),
+        )
 
 
 def test_unknown_level_reference_is_rejected() -> None:
     model = make_model()
     with pytest.raises(ValidationError, match="unknown level"):
-        model.model_copy(update={"walls": (model.walls[0].model_copy(update={"level_id": "missing"}),)})
+        ArchitecturalModel(
+            project_id=model.project_id,
+            revision=2,
+            site=model.site,
+            buildings=model.buildings,
+            levels=model.levels,
+            spaces=model.spaces,
+            walls=(model.walls[0].model_copy(update={"level_id": "missing"}),),
+        )
 
 
 def test_opening_requires_existing_wall() -> None:
