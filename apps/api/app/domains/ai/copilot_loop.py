@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import uuid4
 
 from app.domains.ai.approval import issue_approval_token
 from app.domains.ai.copilot_impact import explain_impact_groups
 from app.domains.ai.copilot_plan import preview_proposal_plan
+from app.domains.ai.proposal_compiler import compile_proposal_commands
 from app.domains.ai.proposals import AIProposal
 
 
@@ -27,17 +27,18 @@ def assemble_copilot_loop(proposal: AIProposal) -> CopilotLoop:
 
     impacts = explain_impact_groups(list(preview.impact_groups))
     token = issue_approval_token(proposal, preview.fingerprint)
-    commands = tuple(
-        {
-            "id": command.id,
-            "type": command.type,
-            "payload": command.payload,
-        }
-        for command in preview.commands
-    )
+    commands = compile_proposal_commands(proposal)
     return CopilotLoop(
         proposal=proposal,
-        commands=commands,
+        commands=tuple(
+            {
+                "command_id": command.command_id,
+                "type": command.type,
+                "schema_version": command.schema_version,
+                "payload": command.payload,
+            }
+            for command in commands
+        ),
         execution_order=tuple(preview.execution_order),
         impact_groups=tuple(
             {
