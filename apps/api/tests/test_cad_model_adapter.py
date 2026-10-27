@@ -1,5 +1,5 @@
 from app.domains.cad.model_adapter import build_cad_request
-from app.domains.model import ArchitecturalModel, Building, Level, Site, Space
+from app.domains.model import ArchitecturalModel, Building, Level, Point3D, Site, Space
 
 
 def test_build_cad_request_is_deterministic_and_model_anchored() -> None:
@@ -14,7 +14,10 @@ def test_build_cad_request_is_deterministic_and_model_anchored() -> None:
                 id="space",
                 level_id="level",
                 name="Living",
-                boundary=((1, 1, 0), (5, 1, 0), (5, 4, 0), (1, 4, 0)),
+                boundary=(
+                    Point3D(x=1, y=1, z=0), Point3D(x=5, y=1, z=0),
+                    Point3D(x=5, y=4, z=0), Point3D(x=1, y=4, z=0),
+                ),
             ),
         ),
     )
