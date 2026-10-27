@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db.models import User
@@ -13,16 +15,11 @@ router = APIRouter(tags=["architectural-preview"])
 
 
 @router.post("/projects/{project_id}/design/system-preview")
-async def system_preview(
-    project_id: str,
-    intent: DesignIntent,
-    _: User = Depends(current_user),
-) -> dict[str, object]:
+async def system_preview(project_id: str, intent: DesignIntent, _: User = Depends(current_user)) -> dict[str, object]:
     """Return a read-only deterministic preview across all architectural layers."""
     if intent.project_id != project_id:
         raise HTTPException(status_code=422, detail="intent project_id must match path project_id")
-    result = build_system_preview(intent, regulatory_rules=RegulatoryRuleSet())
-    return _serialize(result)
+    return _serialize(build_system_preview(intent, regulatory_rules=RegulatoryRuleSet()))
 
 
 def _serialize(result: SystemPreview) -> dict[str, object]:
@@ -32,12 +29,13 @@ def _serialize(result: SystemPreview) -> dict[str, object]:
         "geometry": [mesh.model_dump(mode="json") for mesh in result.preview.geometry],
         "scene": {
             "model_hash": result.scene.model_hash,
-            "nodes": [node.__dict__ for node in result.scene.nodes],
-            "bounds": result.scene.bounds.__dict__,
+            "nodes": [asdict(node) for node in result.scene.nodes],
+            "meshes": [asdict(mesh) for mesh in result.scene.meshes],
+            "bounds": asdict(result.scene.bounds),
         },
         "cad": {
             "request": result.cad_job.request.model_dump(mode="json"),
-            "provenance": result.cad_job.provenance.__dict__,
+            "provenance": asdict(result.cad_job.provenance),
         },
         "engineering": {
             "model_hash": result.loads.model_hash,
@@ -56,7 +54,7 @@ def _serialize(result: SystemPreview) -> dict[str, object]:
             "model_hash": result.regulatory.model_hash,
             "passed": result.regulatory.passed,
             "jurisdiction_specific_required": result.regulatory.jurisdiction_specific_required,
-            "findings": [finding.__dict__ for finding in result.regulatory.findings],
+            "findings": [asdict(finding) for finding in result.regulatory.findings],
         },
         "warnings": [warning.model_dump(mode="json") for warning in result.preview.warnings],
         "read_only": True,
