@@ -9,17 +9,9 @@ def test_build_cad_request_is_deterministic_and_model_anchored() -> None:
         site=Site(id="site", width_m=20, depth_m=20),
         buildings=(Building(id="building", name="Main", site_id="site"),),
         levels=(Level(id="level", building_id="building", name="Ground", elevation_m=0, height_m=3),),
-        spaces=(
-            Space(
-                id="space",
-                level_id="level",
-                name="Living",
-                boundary=(
-                    Point3D(x=1, y=1, z=0), Point3D(x=5, y=1, z=0),
-                    Point3D(x=5, y=4, z=0), Point3D(x=1, y=4, z=0),
-                ),
-            ),
-        ),
+        spaces=(Space(id="space", level_id="level", name="Living", boundary=(
+            Point3D(x=1,y=1,z=0), Point3D(x=5,y=1,z=0), Point3D(x=5,y=4,z=0), Point3D(x=1,y=4,z=0)
+        )),),
     )
     first = build_cad_request(model, job_id="job")
     second = build_cad_request(model, job_id="job")
