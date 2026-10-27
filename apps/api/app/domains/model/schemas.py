@@ -94,6 +94,7 @@ class Wall(ModelElement):
 
 class Door(ModelElement):
     element_type: Literal["door"] = "door"
+    level_id: Identifier
     host_wall_id: Identifier
     offset_m: NonNegativeLength
     width_m: PositiveLength
@@ -103,6 +104,7 @@ class Door(ModelElement):
 
 class Window(ModelElement):
     element_type: Literal["window"] = "window"
+    level_id: Identifier
     host_wall_id: Identifier
     offset_m: NonNegativeLength
     width_m: PositiveLength
@@ -166,7 +168,7 @@ class ArchitecturalModel(BaseModel):
         level_ids = {item.id for item in self.levels}
         wall_ids = {item.id for item in self.walls}
         space_ids = {item.id for item in self.spaces}
-        if any(item.site_id not in {self.site.id} for item in self.buildings):
+        if any(item.site_id != self.site.id for item in self.buildings):
             raise ValueError("building references unknown site")
         if any(item.building_id not in building_ids for item in self.levels):
             raise ValueError("level references unknown building")
