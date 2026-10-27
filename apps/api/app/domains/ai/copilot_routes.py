@@ -12,6 +12,7 @@ from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.ai.approval import issue_approval_token
 from app.domains.ai.context import build_copilot_context
+from app.domains.ai.copilot_acceptance import evaluate_copilot_acceptance
 from app.domains.ai.copilot_plan import preview_proposal_plan
 from app.domains.ai.proposal_compiler import compile_proposal_commands
 from app.domains.ai.proposals import (
@@ -35,6 +36,11 @@ class CopilotRequest(BaseModel):
 
 class CopilotPlanRequest(BaseModel):
     proposal: AIProposal
+
+
+class CopilotAcceptanceRequest(BaseModel):
+    proposal: AIProposal
+    approval_token: str = Field(min_length=20, max_length=4096)
 
 
 @router.post("/projects/{project_id}/ai/copilot/preview")
@@ -187,5 +193,48 @@ async def copilot_approval_token(
         "proposal_id": body.proposal.proposal_id,
         "plan_fingerprint": preview.fingerprint,
         "approval_token": token,
+        "canonical_state_mutated": False,
+    }
+
+
+@router.post("/projects/{project_id}/ai/copilot/acceptance")
+async def copilot_acceptance(
+    project_id: str,
+    body: CopilotAcceptanceRequest,
+    user=Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    if body.proposal.project_id != project_id:
+        raise HTTPException(status_code=422, detail="proposal project does not match route project")
+
+    _, version = await resolve_project_version(session, project_id, body.proposal.version_id, user.id)
+    world = await session.scalar(
+        select(WorldModelRevision)
+        .where(WorldModelRevision.project_version_id == version.id)
+        .order_by(desc(WorldModelRevision.revision))
+        .limit(1)
+    )
+    if world is None or not world.model_hash:
+        raise HTTPException(status_code=409, detail="No canonical World Model revision is available")
+
+    evidence_ids = set(
+        (
+            await session.scalars(
+                select(EvidenceNode.id).where(
+                    EvidenceNode.project_id == project_id,
+                    EvidenceNode.project_version_id == version.id,
+                )
+            )
+        ).all()
+    )
+    acceptance = evaluate_copilot_acceptance(
+        body.proposal,
+        approval_token=body.approval_token,
+        current_revision_hash=world.model_hash,
+        allowed_evidence_ids=evidence_ids,
+    )
+    return {
+        "accepted": acceptance.accepted,
+        "reasons": list(acceptance.reasons),
         "canonical_state_mutated": False,
     }
