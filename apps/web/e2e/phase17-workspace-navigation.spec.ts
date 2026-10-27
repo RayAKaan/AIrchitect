@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-async function createWorkspace(page: Parameters<typeof test>[0]['page']) {
+async function createWorkspace(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: /Create an account/ }).click();
   await page.getByPlaceholder('Your name').fill('Workspace Navigation QA');
@@ -18,12 +18,8 @@ async function createWorkspace(page: Parameters<typeof test>[0]['page']) {
 test('product modes change the real workspace context', async ({ page }) => {
   await createWorkspace(page);
   for (const [mode, title] of [
-    ['Brief', 'Tell AIrchitect what you are building.'],
-    ['Site', 'Understand the place.'],
-    ['Explore', 'Explore possibilities.'],
-    ['Design', 'Develop the chosen direction.'],
-    ['Validate', 'Check the decisions.'],
-    ['Deliver', 'Prepare the professional outputs.'],
+    ['Brief', 'Tell AIrchitect what you are building.'], ['Site', 'Understand the place.'], ['Explore', 'Explore possibilities.'],
+    ['Design', 'Develop the chosen direction.'], ['Validate', 'Check the decisions.'], ['Deliver', 'Prepare the professional outputs.'],
   ] as const) {
     await page.getByRole('button', { name: new RegExp(`^${mode}\\b`) }).click();
     await expect(page.getByRole('heading', { name: title })).toBeVisible();
