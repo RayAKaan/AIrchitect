@@ -1,19 +1,28 @@
 import { Canvas } from '@react-three/fiber';
 import { Bounds, Grid, OrbitControls } from '@react-three/drei';
 import { useMemo } from 'react';
-import type { ModelScene, SceneNode } from './sceneContract';
+import type { SceneMesh, ModelScene, SceneNode } from './sceneContract';
 
-type SceneCanvasProps = Readonly<{
-  scene: ModelScene;
-  selectedNodeId?: string | null;
-  onSelect?: (node: SceneNode) => void;
-}>;
+type SceneCanvasProps = Readonly<{ scene: ModelScene; selectedNodeId?: string | null; onSelect?: (node: SceneNode) => void }>;
 
-function NodeMesh({ node, selected, onSelect }: { node: SceneNode; selected: boolean; onSelect?: (node: SceneNode) => void }) {
+function MeshGeometry({ mesh }: { mesh: SceneMesh }) {
+  const geometry = useMemo(() => {
+    const value = new Float32Array(mesh.vertices.flatMap((point) => point));
+    const indices = mesh.faces.flatMap((face) => face.length >= 3 ? face.slice(1, -1).flatMap((_, index) => [face[0], face[index + 1], face[index + 2]]) : []);
+    const result = new THREE.BufferGeometry();
+    result.setAttribute('position', new THREE.BufferAttribute(value, 3));
+    result.setIndex(indices);
+    result.computeVertexNormals();
+    return result;
+  }, [mesh]);
+  return <primitive object={geometry} dispose={null} />;
+}
+
+function NodeMesh({ node, mesh, selected, onSelect }: { node: SceneNode; mesh: SceneMesh; selected: boolean; onSelect?: (node: SceneNode) => void }) {
   return (
     <mesh onClick={(event) => { event.stopPropagation(); onSelect?.(node); }}>
-      <sphereGeometry args={[selected ? 0.18 : 0.12, 12, 8]} />
-      <meshStandardMaterial color={selected ? '#b97847' : '#6e6258'} roughness={0.8} />
+      <MeshGeometry mesh={mesh} />
+      <meshStandardMaterial color={selected ? '#b97847' : '#8b8177'} roughness={0.82} metalness={0.02} side={2} />
     </mesh>
   );
 }
@@ -31,8 +40,11 @@ export function SceneCanvas({ scene, selectedNodeId = null, onSelect }: SceneCan
       <ambientLight intensity={1.5} />
       <directionalLight position={[20, 30, 15]} intensity={2} />
       <Bounds fit clip observe margin={1.25}>
-        <group position={center}>
-          {scene.nodes.map((node) => <NodeMesh key={node.id} node={node} selected={node.id === selectedNodeId} onSelect={onSelect} />)}
+        <group position={[-center[0], -center[1], -center[2]]}>
+          {scene.nodes.map((node) => {
+            const mesh = scene.meshes[node.meshIndex];
+            return mesh ? <NodeMesh key={node.id} node={node} mesh={mesh} selected={node.id === selectedNodeId} onSelect={onSelect} /> : null;
+          })}
         </group>
       </Bounds>
       <Grid infiniteGrid fadeDistance={100} sectionColor="#9a765f" cellColor="#c9c2b8" />
