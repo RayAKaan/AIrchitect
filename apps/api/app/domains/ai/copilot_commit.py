@@ -22,6 +22,18 @@ from app.domains.semantic_model.editing import (
 )
 
 
+def replay_result(record: DecisionRecord) -> tuple[tuple[Any, ...], str]:
+    """Decode one immutable Copilot execution record, failing closed on corruption."""
+    outputs = record.outputs_json or {}
+    revision_hash = outputs.get("revision_hash")
+    results = outputs.get("results")
+    if not isinstance(revision_hash, str) or not revision_hash:
+        raise ValueError("COPILOT_AUDIT_CORRUPT")
+    if not isinstance(results, list):
+        raise ValueError("COPILOT_AUDIT_CORRUPT")
+    return tuple(results), revision_hash
+
+
 async def commit_approved_proposal(
     session: AsyncSession,
     *,
@@ -71,8 +83,8 @@ async def commit_approved_proposal(
         .limit(1)
     )
     if prior is not None:
-        outputs = prior.outputs_json or {}
-        return version, tuple(outputs.get("results", ())), str(outputs.get("revision_hash") or "")
+        results, revision_hash = replay_result(prior)
+        return version, results, revision_hash
 
     if world.model_hash != proposal.base_revision_hash:
         raise ValueError("STALE_WORLD_MODEL")
