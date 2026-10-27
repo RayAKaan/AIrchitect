@@ -1,9 +1,21 @@
 import { useState } from 'react';
 
-type EditCommand =
+export type EditCommand =
   | { readonly kind: 'translate'; readonly element_id: string; readonly dx_m: number; readonly dy_m: number; readonly dz_m: number }
   | { readonly kind: 'rotate'; readonly element_id: string; readonly angle_deg: number }
   | { readonly kind: 'resize'; readonly element_id: string; readonly scale: number };
+
+export type EditMode = 'translate' | 'rotate' | 'resize';
+
+export function buildEditCommand(elementId: string | null, mode: EditMode, value: string): EditCommand | null {
+  if (!elementId) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  if (mode === 'translate') return { kind: 'translate', element_id: elementId, dx_m: numeric, dy_m: 0, dz_m: 0 };
+  if (mode === 'rotate') return { kind: 'rotate', element_id: elementId, angle_deg: numeric };
+  if (numeric <= 0) return null;
+  return { kind: 'resize', element_id: elementId, scale: numeric };
+}
 
 type EditToolbarProps = Readonly<{
   elementId: string | null;
@@ -13,21 +25,11 @@ type EditToolbarProps = Readonly<{
 }>;
 
 export function EditToolbar({ elementId, onPreview, onCommit, disabled = false }: EditToolbarProps) {
-  const [mode, setMode] = useState<'translate' | 'rotate' | 'resize'>('translate');
+  const [mode, setMode] = useState<EditMode>('translate');
   const [value, setValue] = useState('1');
 
-  const buildCommand = (): EditCommand | null => {
-    if (!elementId) return null;
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return null;
-    if (mode === 'translate') return { kind: 'translate', element_id: elementId, dx_m: numeric, dy_m: 0, dz_m: 0 };
-    if (mode === 'rotate') return { kind: 'rotate', element_id: elementId, angle_deg: numeric };
-    if (numeric <= 0) return null;
-    return { kind: 'resize', element_id: elementId, scale: numeric };
-  };
-
   const submit = (action: (command: EditCommand) => void) => {
-    const command = buildCommand();
+    const command = buildEditCommand(elementId, mode, value);
     if (command) action(command);
   };
 
@@ -35,7 +37,7 @@ export function EditToolbar({ elementId, onPreview, onCommit, disabled = false }
     <div className="edit-toolbar" aria-label="Canonical model edit controls">
       <label>
         Operation
-        <select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)} disabled={!elementId || disabled}>
+        <select value={mode} onChange={(event) => setMode(event.target.value as EditMode)} disabled={!elementId || disabled}>
           <option value="translate">Move X</option>
           <option value="rotate">Rotate Z</option>
           <option value="resize">Resize</option>
@@ -50,5 +52,3 @@ export function EditToolbar({ elementId, onPreview, onCommit, disabled = false }
     </div>
   );
 }
-
-export type { EditCommand };
