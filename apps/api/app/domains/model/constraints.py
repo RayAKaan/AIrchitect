@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .schemas import ArchitecturalModel
+from .schemas import ArchitecturalModel, Wall
 
 
 @dataclass(frozen=True)
@@ -20,8 +20,9 @@ def validate_baseline_constraints(model: ArchitecturalModel) -> tuple[ModelConst
     """
     violations: list[ModelConstraintViolation] = []
     level_heights = {level.id: level.height_m for level in model.levels}
+    walls_by_id = {wall.id: wall for wall in model.walls}
     for opening in (*model.doors, *model.windows):
-        wall = next(wall for wall in model.walls if wall.id == opening.host_wall_id)
+        wall = walls_by_id[opening.host_wall_id]
         if opening.offset_m + opening.width_m > _wall_length(wall):
             violations.append(
                 ModelConstraintViolation(
@@ -41,7 +42,7 @@ def validate_baseline_constraints(model: ArchitecturalModel) -> tuple[ModelConst
     return tuple(violations)
 
 
-def _wall_length(wall) -> float:
+def _wall_length(wall: Wall) -> float:
     dx = wall.end.x - wall.start.x
     dy = wall.end.y - wall.start.y
     return (dx * dx + dy * dy) ** 0.5
