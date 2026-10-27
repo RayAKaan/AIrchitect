@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import FoundationWorkspace from './FoundationWorkspace';
+import VersionHistory from './VersionHistory';
 import WorkspaceFlow from './WorkspaceFlow';
 import './WorkspaceFlow.css';
 
@@ -11,6 +12,9 @@ export default function ArchitectWorkspace({api, token, project, onClose}:{api:s
   }
   return <section className="architect-workspace-shell">
     <WorkspaceFlow active={stage} onSelect={selectStage}/>
-    <FoundationWorkspace api={api} token={token} project={project} onClose={onClose}/>
+    <div className="architect-workspace-grid">
+      <FoundationWorkspace api={api} token={token} project={project} onClose={onClose}/>
+      <VersionHistory api={api} token={token} projectId={project.id}/>
+    </div>
   </section>;
 }
