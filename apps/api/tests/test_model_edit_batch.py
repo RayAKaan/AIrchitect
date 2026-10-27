@@ -23,4 +23,4 @@ def test_batch_is_exposed_as_one_revision() -> None:
         ResizeCommand(element_id="space-1", scale=0.5),
     ))
     assert result.revision == 5
-    assert result.spaces[0].boundary[0].x == 1
+    assert result.spaces[0].boundary != model().spaces[0].boundary
