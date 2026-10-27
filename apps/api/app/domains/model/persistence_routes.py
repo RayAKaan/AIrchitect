@@ -81,3 +81,6 @@ async def commit_canonical_model(
     )
     await session.commit()
     return {"read_only": False, **model_summary(row, request.model)}
+
+from .commit_routes import router as commit_router
+router.include_router(commit_router)
