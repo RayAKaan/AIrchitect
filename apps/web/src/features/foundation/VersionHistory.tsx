@@ -1,0 +1,11 @@
+import { useEffect, useState } from 'react';
+
+type Version={id:string;label:string;status:string;revision_number:number;created_at:string;version_number:number};
+
+export default function VersionHistory({api,token,projectId}:{api:string;token:string;projectId:string}){
+ const [versions,setVersions]=useState<Version[]>([]); const [comparison,setComparison]=useState<any>(null); const [error,setError]=useState('');
+ async function load(){try{const r=await fetch(`${api}/projects/${projectId}/versions`,{headers:{Authorization:`Bearer ${token}`}});const d=await r.json();if(!r.ok)throw Error(d.detail||'Could not load version history');setVersions(d.versions||[]);setError('')}catch(e){setError(e instanceof Error?e.message:'History unavailable')}}
+ async function compare(a:string,b:string){try{const r=await fetch(`${api}/projects/${projectId}/versions/compare?version_a=${a}&version_b=${b}`,{headers:{Authorization:`Bearer ${token}`}});const d=await r.json();if(!r.ok)throw Error(d.detail||'Comparison failed');setComparison(d)}catch(e){setError(e instanceof Error?e.message:'Comparison failed')}}
+ useEffect(()=>{load()},[projectId]);
+ return <aside className="version-history" aria-label="Project version history"><div className="version-history-head"><div><p className="eyebrow">CANONICAL HISTORY</p><h3>Versions</h3></div><button className="btn small outline" onClick={load}>Refresh</button></div>{error&&<div className="alert">{error}</div>}<div className="version-history-list">{versions.map((version,index)=><article className="version-history-item" key={version.id}><div><b>{version.label}</b><small>Revision {version.revision_number} · {new Date(version.created_at).toLocaleString()}</small></div><span className={`state ${version.status.toLowerCase()}`}>{version.status}</span>{index<versions.length-1&&<button className="text-btn" onClick={()=>compare(version.id,versions[index+1].id)}>Compare with previous</button>}</article>)}</div>{comparison&&<div className="version-comparison"><p className="eyebrow">DIFF</p>{comparison.changes?.length?<ul>{comparison.changes.map((change:any)=><li key={change.parameter}><b>{change.parameter}</b><span>{JSON.stringify(change.old)} → {JSON.stringify(change.new)}</span></li>)}</ul>:<p>No semantic changes.</p>}</div>}</aside>;
+}
