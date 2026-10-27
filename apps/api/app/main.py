@@ -176,6 +176,8 @@ from app.domains.foundation.routes import router as foundation_router
 app.include_router(foundation_router, prefix=settings.api_prefix)
 from app.domains.design.routes import router as design_router
 app.include_router(design_router, prefix=settings.api_prefix)
+from app.domains.design.system_preview_routes import router as system_preview_router
+app.include_router(system_preview_router, prefix=settings.api_prefix)
 from app.domains.cad.routes import router as cad_router
 app.include_router(cad_router, prefix=settings.api_prefix)
 from app.domains.engineering.routes import router as engineering_router
