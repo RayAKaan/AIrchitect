@@ -11,6 +11,7 @@ import CadExports from './CadExports';
 import WorkspaceFlow from './WorkspaceFlow';
 import { ADVANCED_STAGES, createWorkspaceState, persistWorkspace, PRODUCT_MODES, readPersistedWorkspace, workspaceReducer, type AdvancedStage, type ProductMode } from '../../state/productWorkspace';
 import { buildWorkspaceUrl, parseWorkspaceUrl } from '../../state/workspaceNavigation';
+import { savePendingOnboarding, takePendingOnboarding } from '../home/projectOnboarding';
 import './UnifiedWorkspace.css';
 
 type Version = { id: string; version_number: number; label: string; status: string; revision_number: number; created_at: string };
@@ -25,97 +26,36 @@ const MODE_COPY: Record<ProductMode, { title: string; description: string }> = {
 };
 
 export default function UnifiedWorkspace({ api, token, project, onClose }: { api: string; token: string; project: any; onClose: () => void }) {
-  const [state, dispatch] = useReducer(workspaceReducer, project.id, (projectId) => {
-    const query = parseWorkspaceUrl(window.location.search);
-    const persisted = readPersistedWorkspace(projectId) || {};
-    return createWorkspaceState(projectId, { ...persisted, mode: query.mode || persisted.mode, versionId: query.versionId || persisted.versionId });
-  });
-  const [versions, setVersions] = useState<Version[]>([]);
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [state, dispatch] = useReducer(workspaceReducer, project.id, (projectId) => { const query = parseWorkspaceUrl(window.location.search); const persisted = readPersistedWorkspace(projectId) || {}; return createWorkspaceState(projectId, { ...persisted, mode: query.mode || persisted.mode, versionId: query.versionId || persisted.versionId }); });
+  const [versions, setVersions] = useState<Version[]>([]); const [snapshot, setSnapshot] = useState<Snapshot | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }), [token]);
 
-  useEffect(() => {
-    persistWorkspace(state);
-    window.history.replaceState({}, '', buildWorkspaceUrl(window.location.pathname, state));
-    window.dispatchEvent(new CustomEvent('airchitect:workspace-state', { detail: state }));
-  }, [project.id, state]);
+  useEffect(() => { persistWorkspace(state); window.history.replaceState({}, '', buildWorkspaceUrl(window.location.pathname, state)); window.dispatchEvent(new CustomEvent('airchitect:workspace-state', { detail: state })); }, [project.id, state]);
+  useEffect(() => { function onPopState() { const next = parseWorkspaceUrl(window.location.search); if (next.mode && next.mode !== state.mode) dispatch({ type: 'select-mode', mode: next.mode }); if (next.versionId !== state.versionId) dispatch({ type: 'select-version', versionId: next.versionId }); } window.addEventListener('popstate', onPopState); return () => window.removeEventListener('popstate', onPopState); }, [state.mode, state.versionId]);
 
-  useEffect(() => {
-    function onPopState() {
-      const next = parseWorkspaceUrl(window.location.search);
-      if (next.mode && next.mode !== state.mode) dispatch({ type: 'select-mode', mode: next.mode });
-      if (next.versionId !== state.versionId) dispatch({ type: 'select-version', versionId: next.versionId });
-    }
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [state.mode, state.versionId]);
-
-  async function request(path: string, init: RequestInit = {}, signal?: AbortSignal) {
-    const response = await fetch(api + path, { ...init, signal, headers: { ...headers, ...init.headers } });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error?.message || data.detail?.error?.message || data.detail || `Request failed (${response.status})`);
-    return data;
-  }
-  async function loadVersions(prefer?: string | null, signal?: AbortSignal) {
-    const data = await request(`/projects/${project.id}/versions`, {}, signal);
-    const nextVersions: Version[] = data.versions || [];
-    setVersions(nextVersions);
-    const preferred = prefer || state.versionId || data.current_version_id || nextVersions[0]?.id || null;
-    const nextId = nextVersions.some((version) => version.id === preferred) ? preferred : nextVersions[0]?.id || null;
-    if (nextId !== state.versionId) dispatch({ type: 'select-version', versionId: nextId });
-  }
-  async function loadSnapshot(versionId: string | null, signal?: AbortSignal) {
-    if (!versionId) { setSnapshot(null); return; }
-    setBusy(true);
-    try { const data = await request(`/projects/${project.id}/versions/${versionId}/snapshot`, {}, signal); setSnapshot(data); setError(''); }
-    catch (cause) { if ((cause as Error).name !== 'AbortError') setError(cause instanceof Error ? cause.message : 'Could not load canonical project state.'); }
-    finally { if (!signal?.aborted) setBusy(false); }
-  }
+  async function request(path: string, init: RequestInit = {}, signal?: AbortSignal) { const response = await fetch(api + path, { ...init, signal, headers: { ...headers, ...init.headers } }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error?.message || data.detail?.error?.message || data.detail || `Request failed (${response.status})`); return data; }
+  async function loadVersions(prefer?: string | null, signal?: AbortSignal) { const data = await request(`/projects/${project.id}/versions`, {}, signal); const nextVersions: Version[] = data.versions || []; setVersions(nextVersions); const preferred = prefer || state.versionId || data.current_version_id || nextVersions[0]?.id || null; const nextId = nextVersions.some((version) => version.id === preferred) ? preferred : nextVersions[0]?.id || null; if (nextId !== state.versionId) dispatch({ type: 'select-version', versionId: nextId }); }
+  async function loadSnapshot(versionId: string | null, signal?: AbortSignal) { if (!versionId) { setSnapshot(null); return; } setBusy(true); try { const data = await request(`/projects/${project.id}/versions/${versionId}/snapshot`, {}, signal); setSnapshot(data); setError(''); } catch (cause) { if ((cause as Error).name !== 'AbortError') setError(cause instanceof Error ? cause.message : 'Could not load canonical project state.'); } finally { if (!signal?.aborted) setBusy(false); } }
   useEffect(() => { const controller = new AbortController(); void loadVersions(undefined, controller.signal); return () => controller.abort(); }, [project.id]);
   useEffect(() => { const controller = new AbortController(); void loadSnapshot(state.versionId, controller.signal); return () => controller.abort(); }, [project.id, state.versionId]);
+  useEffect(() => {
+    if (!state.versionId || !versions.length) return;
+    const version = versions.find((item) => item.id === state.versionId);
+    if (!version || version.status !== 'DRAFT') return;
+    const pending = takePendingOnboarding(project.id);
+    if (!pending) return;
+    void request(`/projects/${project.id}/versions/${state.versionId}/brief`, { method: 'PUT', body: JSON.stringify({ text: pending, source_reference: 'AIrchitect natural-language onboarding', source_type: 'USER_BRIEF' }) }).then(() => loadSnapshot(state.versionId)).catch((cause) => { savePendingOnboarding(project.id, pending); setError(cause instanceof Error ? cause.message : 'Could not persist the onboarding brief.'); });
+  }, [project.id, state.versionId, versions]);
+
   function selectStage(stage: string) { if (ADVANCED_STAGES.includes(stage as AdvancedStage)) dispatch({ type: 'select-stage', stage: stage as AdvancedStage }); }
   async function refresh() { await loadVersions(state.versionId); await loadSnapshot(state.versionId); }
-  const currentVersion = snapshot?.version || versions.find((version) => version.id === state.versionId) || null;
-  const advanced = state.advancedOpen;
+  const currentVersion = snapshot?.version || versions.find((version) => version.id === state.versionId) || null; const advanced = state.advancedOpen;
 
-  return <section className="unified-workspace" aria-label="AIrchitect project workspace">
-    <header className="unified-header"><div className="unified-title"><button className="product-back" onClick={onClose} aria-label="Back to projects">← Projects</button><div><p className="eyebrow">AIrchitect / project workspace</p><h1>{project.name}</h1></div></div><div className="unified-header-actions"><label className="version-picker">Version<select value={state.versionId || ''} onChange={(event) => dispatch({ type: 'select-version', versionId: event.target.value || null })} aria-label="Project version">{versions.map((version) => <option key={version.id} value={version.id}>{version.label} · {version.status}</option>)}</select></label><button className="btn outline" onClick={refresh} disabled={busy}>Refresh</button><button className="btn outline" aria-pressed={advanced} onClick={() => dispatch({ type: 'toggle-advanced' })}>{advanced ? 'Simple view' : 'Advanced'}</button></div></header>
-    <nav className="unified-mode-bar" aria-label="Project workflow">{PRODUCT_MODES.map((mode, index) => <button key={mode} className={`unified-mode ${state.mode === mode ? 'active' : ''}`} onClick={() => dispatch({ type: 'select-mode', mode })} aria-current={state.mode === mode ? 'step' : undefined}><span className="unified-mode-number">{index + 1}</span><span><b>{mode}</b><small>{MODE_COPY[mode].description}</small></span></button>)}</nav>
-    {advanced && <div className="unified-advanced"><div className="unified-advanced-heading"><div><span className="eyebrow">PROFESSIONAL WORKFLOW</span><strong>Canonical delivery stages</strong></div><small>Advanced tools stay available without changing the default experience.</small></div><WorkspaceFlow active={state.advancedStage} onSelect={selectStage} /></div>}
-    <div className="unified-context"><div><span className="eyebrow">{state.mode.toUpperCase()}</span><h2>{MODE_COPY[state.mode].title}</h2><p>{MODE_COPY[state.mode].description}</p></div><div className="canonical-context" aria-label="Canonical version context"><span>{currentVersion?.label || 'No version'}</span><span>{currentVersion?.status || 'Loading'}</span><span>Revision {currentVersion?.revision_number ?? '—'}</span></div></div>
-    {error && <div className="alert" role="alert">{error}</div>}{busy && <div className="progress-line" aria-label="Loading canonical project state" />}
-    <main className="unified-content">{advanced ? renderAdvancedStage(state.advancedStage) : renderMode(state.mode)}</main>
-  </section>;
+  return <section className="unified-workspace" aria-label="AIrchitect project workspace"><header className="unified-header"><div className="unified-title"><button className="product-back" onClick={onClose} aria-label="Back to projects">← Projects</button><div><p className="eyebrow">AIrchitect / project workspace</p><h1>{project.name}</h1></div></div><div className="unified-header-actions"><label className="version-picker">Version<select value={state.versionId || ''} onChange={(event) => dispatch({ type: 'select-version', versionId: event.target.value || null })} aria-label="Project version">{versions.map((version) => <option key={version.id} value={version.id}>{version.label} · {version.status}</option>)}</select></label><button className="btn outline" onClick={refresh} disabled={busy}>Refresh</button><button className="btn outline" aria-pressed={advanced} onClick={() => dispatch({ type: 'toggle-advanced' })}>{advanced ? 'Simple view' : 'Advanced'}</button></div></header><nav className="unified-mode-bar" aria-label="Project workflow">{PRODUCT_MODES.map((mode, index) => <button key={mode} className={`unified-mode ${state.mode === mode ? 'active' : ''}`} onClick={() => dispatch({ type: 'select-mode', mode })} aria-current={state.mode === mode ? 'step' : undefined}><span className="unified-mode-number">{index + 1}</span><span><b>{mode}</b><small>{MODE_COPY[mode].description}</small></span></button>)}</nav>{advanced && <div className="unified-advanced"><div className="unified-advanced-heading"><div><span className="eyebrow">PROFESSIONAL WORKFLOW</span><strong>Canonical delivery stages</strong></div><small>Advanced tools stay available without changing the default experience.</small></div><WorkspaceFlow active={state.advancedStage} onSelect={selectStage} /></div>}<div className="unified-context"><div><span className="eyebrow">{state.mode.toUpperCase()}</span><h2>{MODE_COPY[state.mode].title}</h2><p>{MODE_COPY[state.mode].description}</p></div><div className="canonical-context" aria-label="Canonical version context"><span>{currentVersion?.label || 'No version'}</span><span>{currentVersion?.status || 'Loading'}</span><span>Revision {currentVersion?.revision_number ?? '—'}</span></div></div>{error && <div className="alert" role="alert">{error}</div>}{busy && <div className="progress-line" aria-label="Loading canonical project state" />}<main className="unified-content">{advanced ? renderAdvancedStage(state.advancedStage) : renderMode(state.mode)}</main></section>;
 
   function requireSnapshot() { return !snapshot || !currentVersion ? <div className="unified-empty"><h3>Canonical state is loading</h3><p>AIrchitect is loading the selected project version. Nothing is changed while this is happening.</p></div> : null; }
-  function renderMode(mode: ProductMode) {
-    const loading = requireSnapshot(); if (loading) return loading;
-    if (mode === 'Site') return <SiteWorkspace api={api} token={token} project={project} />;
-    if (mode === 'Design') return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />;
-    if (mode === 'Validate') return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />;
-    if (mode === 'Deliver') return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />;
-    if (mode === 'Explore') return <div className="unified-stack"><S2ConceptGenerationWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} /><S2ConceptExplorer api={api} token={token} projectId={project.id} version={currentVersion!} /></div>;
-    return <S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh} />;
-  }
-  function renderAdvancedStage(stage: AdvancedStage) {
-    const loading = requireSnapshot(); if (loading) return loading;
-    switch (stage) {
-      case 'Brief': return <S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh} />;
-      case 'World Model': return <WorldModelReview snapshot={snapshot!} />;
-      case 'Semantic Model': return <SemanticEditor api={api} token={token} projectId={project.id} version={currentVersion!} onChanged={refresh} />;
-      case 'Design': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />;
-      case 'CAD/BIM Exports': return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />;
-      case 'Engineering': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />;
-      case 'Change Impact': return <ChangeImpactPanel api={api} token={token} projectId={project.id} version={currentVersion!} />;
-      case 'Release Validation': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />;
-      case 'Regulatory': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />;
-    }
-  }
+  function renderMode(mode: ProductMode) { const loading = requireSnapshot(); if (loading) return loading; if (mode === 'Site') return <SiteWorkspace api={api} token={token} project={project} />; if (mode === 'Design') return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; if (mode === 'Validate') return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; if (mode === 'Deliver') return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />; if (mode === 'Explore') return <div className="unified-stack"><S2ConceptGenerationWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} /><S2ConceptExplorer api={api} token={token} projectId={project.id} version={currentVersion!} /></div>; return <S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh} />; }
+  function renderAdvancedStage(stage: AdvancedStage) { const loading = requireSnapshot(); if (loading) return loading; switch (stage) { case 'Brief': return <S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh} />; case 'World Model': return <WorldModelReview snapshot={snapshot!} />; case 'Semantic Model': return <SemanticEditor api={api} token={token} projectId={project.id} version={currentVersion!} onChanged={refresh} />; case 'Design': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; case 'CAD/BIM Exports': return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />; case 'Engineering': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; case 'Change Impact': return <ChangeImpactPanel api={api} token={token} projectId={project.id} version={currentVersion!} />; case 'Release Validation': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; case 'Regulatory': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; } }
 }
 
-function WorldModelReview({ snapshot }: { snapshot: Snapshot }) {
-  const sections = [['Site', snapshot.world_model?.site], ['Building', snapshot.world_model?.building], ['Parking', snapshot.world_model?.parking], ['Structural grid', snapshot.world_model?.structural_grid], ['Levels', snapshot.world_model?.levels]];
-  return <section className="unified-world-model"><div className="phase-card"><p className="eyebrow">CANONICAL WORLD MODEL</p><h2>{snapshot.version.label}</h2><div className="unified-world-grid">{sections.map(([title, value]) => <article key={title as string}><h3>{title}</h3><pre>{JSON.stringify(value ?? null, null, 2)}</pre></article>)}</div></div><aside className="phase-card"><p className="eyebrow">PROVENANCE</p>{Object.entries(snapshot.world_model?.provenance || {}).map(([key, value]: any) => <div className="unified-provenance" key={key}><b>{key}</b><span>{value.source_type} · {value.confirmed ? 'confirmed' : 'unconfirmed'}</span></div>)}<p className="eyebrow">UNKNOWN VALUES</p>{(snapshot.world_model?.unknowns || []).map((item: string) => <div className="unified-unknown" key={item}>? {item}</div>)}</aside></section>;
-}
+function WorldModelReview({ snapshot }: { snapshot: Snapshot }) { const sections = [['Site', snapshot.world_model?.site], ['Building', snapshot.world_model?.building], ['Parking', snapshot.world_model?.parking], ['Structural grid', snapshot.world_model?.structural_grid], ['Levels', snapshot.world_model?.levels]]; return <section className="unified-world-model"><div className="phase-card"><p className="eyebrow">CANONICAL WORLD MODEL</p><h2>{snapshot.version.label}</h2><div className="unified-world-grid">{sections.map(([title, value]) => <article key={title as string}><h3>{title}</h3><pre>{JSON.stringify(value ?? null, null, 2)}</pre></article>)}</div></div><aside className="phase-card"><p className="eyebrow">PROVENANCE</p>{Object.entries(snapshot.world_model?.provenance || {}).map(([key, value]: any) => <div className="unified-provenance" key={key}><b>{key}</b><span>{value.source_type} · {value.confirmed ? 'confirmed' : 'unconfirmed'}</span></div>)}<p className="eyebrow">UNKNOWN VALUES</p>{(snapshot.world_model?.unknowns || []).map((item: string) => <div className="unified-unknown" key={item}>? {item}</div>)}</aside></section>; }
