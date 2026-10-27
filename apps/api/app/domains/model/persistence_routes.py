@@ -27,6 +27,12 @@ class ModelCommitRequest(BaseModel):
     change_summary: str = Field(default="", max_length=2_000)
 
 
+class ModelRevertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    expected_revision: int = Field(ge=1)
+
+
 @router.get("/projects/{project_id}/model")
 async def get_canonical_model(
     project_id: str,
@@ -87,7 +93,7 @@ async def get_canonical_model_revision(
 async def revert_canonical_model_revision(
     project_id: str,
     revision: int,
-    expected_revision: int = Field(..., ge=1),
+    request: ModelRevertRequest,
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, object]:
@@ -98,11 +104,11 @@ async def revert_canonical_model_revision(
     if version is None:
         raise HTTPException(409, {"error": {"code": "VERSION_NOT_READY", "message": "Project has no current version"}})
     current = await get_current_model(session, project_id)
-    if current is None or current[0].revision != expected_revision:
+    if current is None or current[0].revision != request.expected_revision:
         raise HTTPException(409, {"error": {"code": "MODEL_REVISION_CONFLICT", "message": "The canonical model changed since it was read"}})
     current_row, current_model = current
     target_row, target_model = await get_model_revision(session, project_id, revision)
-    reverted = target_model.model_copy(update={"revision": expected_revision + 1})
+    reverted = target_model.model_copy(update={"revision": request.expected_revision + 1})
     impact = plan_change_impact(current_model, reverted)
     row = await persist_model(
         session,
@@ -110,7 +116,7 @@ async def revert_canonical_model_revision(
         version=version,
         model=reverted,
         actor_id=user.id,
-        expected_revision=expected_revision,
+        expected_revision=request.expected_revision,
         parent_revision_id=current_row.id,
         source="revert",
         change_summary=f"Revert to architectural model revision {revision}",
@@ -124,20 +130,24 @@ async def revert_canonical_model_revision(
         resource_type="architectural_model_revision",
         resource_id=row.id,
         metadata_json={
-            "from_revision": expected_revision,
+            "from_revision": request.expected_revision,
             "target_revision": target_row.revision,
             "result_revision": row.revision,
             "invalidated_artifacts": list(impact.invalidated_artifacts),
         },
     ))
     await session.commit()
-    return {"read_only": False, **model_summary(row, reverted), "impact": {
-        "changed_elements": [
-            {"element_id": change.element_id, "change_type": change.change_type}
-            for change in impact.changed_elements
-        ],
-        "invalidated_artifacts": list(impact.invalidated_artifacts),
-    }}
+    return {
+        "read_only": False,
+        **model_summary(row, reverted),
+        "impact": {
+            "changed_elements": [
+                {"element_id": change.element_id, "change_type": change.change_type}
+                for change in impact.changed_elements
+            ],
+            "invalidated_artifacts": list(impact.invalidated_artifacts),
+        },
+    }
 
 
 @router.post("/projects/{project_id}/model/commit", status_code=201)
