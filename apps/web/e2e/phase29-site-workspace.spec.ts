@@ -15,7 +15,7 @@ test('Phase 29 site workspace connects canonical geometry, onboarding and board 
   await expect(page.getByText('Phase 29 Site Workspace').first()).toBeVisible();
   await page.getByRole('button', { name: /Open workspace/ }).click();
 
-  await page.getByRole('button', { name: 'Site' }).click();
+  await page.getByRole('button', { name: 'Site', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Site workflow' })).toBeVisible();
   const template = page.getByRole('combobox', { name: 'Start with a workflow' });
   await template.selectOption('feasibility');
