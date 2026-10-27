@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import EvidenceNode, ProjectVersion, User
+from app.db.models import DecisionRecord, EvidenceNode, ProjectVersion, User
 from app.domains.ai.approval import verify_approval_token
 from app.domains.ai.copilot_plan import preview_proposal_plan
 from app.domains.ai.proposal_compiler import compile_proposal_commands
@@ -44,7 +44,6 @@ async def commit_approved_proposal(
     )
     if any(getattr(claims, field) != expected for field, expected in bindings):
         raise ValueError("APPROVAL_BINDING_MISMATCH")
-
     if claims.proposal_hash != canonical_hash(proposal.model_dump(mode="json")):
         raise ValueError("APPROVAL_BINDING_MISMATCH")
 
@@ -109,5 +108,39 @@ async def commit_approved_proposal(
         model=execution.model,
         action="COPILOT",
         event=last_event,
+    )
+
+    session.add(
+        DecisionRecord(
+            organization_id=project.organization_id,
+            project_id=project.id,
+            project_version_id=version.id,
+            decision_type="COPILOT_EXECUTION",
+            provider=proposal.provider,
+            provider_model=proposal.model,
+            provider_version=proposal.model_version,
+            input_hash=canonical_hash(proposal.model_dump(mode="json")),
+            question_schema_version=proposal.schema_version,
+            inputs_json={
+                "proposal_id": proposal.proposal_id,
+                "context_hash": proposal.context_hash,
+                "base_revision_hash": proposal.base_revision_hash,
+                "evidence_ids": list(proposal.evidence_ids),
+                "command_ids": [command.command_id for command in proposal.commands],
+                "plan_fingerprint": plan.fingerprint,
+                "approval_token_hash": canonical_hash({"approval_token": approval_token}),
+            },
+            outputs_json={
+                "revision_hash": persisted_world.model_hash,
+                "results": [result.model_dump(mode="json") for result in execution.results],
+                "invalidated_artifact_ids": list(invalidated_artifact_ids),
+                "impact_groups": list(plan.impact_groups),
+            },
+            decision="COMMITTED",
+            confidence=proposal.confidence,
+            request_id=proposal.proposal_id,
+            human_override_json={"approval_required": proposal.requires_confirmation, "approved": True},
+            final_disposition="CANONICAL_COMMIT",
+        )
     )
     return version, execution.results, persisted_world.model_hash
