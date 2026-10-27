@@ -4,24 +4,22 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context
 from pydantic import AnyHttpUrl
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.core.security import read_token
-from app.db.models import AssumptionRecord, BuildingBriefRecord, ProjectVersion, RequirementRecord, User, WorldModelRevision
+from app.db.models import AssumptionRecord, BuildingBriefRecord, RequirementRecord
 from app.db.session import get_engine
 from app.domains.commands.preview import preview_command
 from app.domains.commands.schemas import CommandEnvelope
 from app.domains.foundation.service import resolve_project_version, resolve_world_model
 from app.domains.lifecycle.service import canonical_hash
-from app.domains.ai.approval import verify_approval_token
-from app.domains.ai.proposals import AIProposal
-from app.domains.ai.approval import issue_approval_token
 
 MCP_RESOURCE = settings.mcp_server_url
 
@@ -45,8 +43,8 @@ mcp = MCPServer(
     version="1.0.0",
     instructions=(
         "AIrchitect is the canonical architectural system. Read project state before proposing changes. "
-        "Never claim a mutation occurred unless a canonical commit tool confirms it. "
-        "Treat engineering and regulatory outputs as screening/decision support, not certification."
+        "Tools in this bridge never mutate canonical state. Treat engineering and regulatory outputs as "
+        "screening/decision support, not certification."
     ),
     token_verifier=SessionTokenVerifier(),
     auth=AuthSettings(
@@ -69,16 +67,10 @@ async def _session() -> Any:
 
 
 def _caller(ctx: Context) -> str:
-    access = ctx.request_context.meta.get("access_token") if ctx.request_context.meta else None
-    if isinstance(access, dict) and isinstance(access.get("client_id"), str):
-        return access["client_id"]
-    # The SDK's auth middleware exposes the token through the request context.
-    from mcp.server.auth.middleware.auth_context import get_access_token
-
-    token = get_access_token()
-    if token is None or not token.client_id:
+    access = get_access_token()
+    if access is None or not access.client_id:
         raise PermissionError("MCP authentication required")
-    return token.client_id
+    return access.client_id
 
 
 async def _version_context(session: AsyncSession, project_id: str, version_id: str, user_id: str):
@@ -135,8 +127,8 @@ async def preview_intent(text: str, project_id: str, version_id: str, ctx: Conte
     """Interpret natural-language design intent without mutating canonical state."""
     user_id = _caller(ctx)
     async with _session() as session:
-        from app.domains.commands.intent_parser import parse_intent
         from app.domains.commands.intent_contract import contract_for
+        from app.domains.commands.intent_parser import parse_intent
         from app.domains.commands.target_resolution import resolve_target
         from app.domains.semantic_model.editing import load_editable_model
 
@@ -145,7 +137,10 @@ async def preview_intent(text: str, project_id: str, version_id: str, ctx: Conte
         revision_hash = None
         expected_types = {"MoveBuilding": "Building", "RotateBuilding": "Building", "ResizeSpace": "Space", "MoveSpace": "Space"}
         if proposal.command_type in expected_types:
-            _, _, world, model, _ = await load_editable_model(session, project_id, version_id, await session.get(User, user_id))
+            user = await session.get(__import__("app.db.models", fromlist=["User"]).User, user_id)
+            if user is None:
+                raise PermissionError("MCP user no longer exists")
+            _, _, world, model, _ = await load_editable_model(session, project_id, version_id, user)
             revision_hash = world.model_hash
             target_name = payload.get("target_name")
             if isinstance(target_name, str) and "element_id" not in payload:
@@ -194,44 +189,9 @@ async def preview_change(
     return preview_command(envelope).model_dump(mode="json")
 
 
-@mcp.tool()
-async def create_approval_token(
-    proposal_id: str,
-    project_id: str,
-    version_id: str,
-    base_revision_hash: str,
-    command_type: str,
-    payload: dict[str, Any],
-    plan_fingerprint: str,
-    ctx: Context,
-) -> str:
-    """Create a short-lived approval token for a reviewed AI proposal; it does not mutate the project."""
-    _caller(ctx)
-    proposal = AIProposal(
-        proposal_id=proposal_id,
-        project_id=project_id,
-        version_id=version_id,
-        base_revision_hash=base_revision_hash,
-        command_type=command_type,
-        payload=payload,
-    )
-    return issue_approval_token(proposal, plan_fingerprint)
-
-
-@mcp.tool()
-async def verify_approval(approval_token: str, ctx: Context) -> dict[str, Any]:
-    """Verify an AIrchitect approval token and return only its non-secret claims."""
-    _caller(ctx)
-    claims = verify_approval_token(approval_token)
-    return {
-        "proposal_id": claims.proposal_id,
-        "project_id": claims.project_id,
-        "version_id": claims.version_id,
-        "base_revision_hash": claims.base_revision_hash,
-        "proposal_hash": claims.proposal_hash,
-        "plan_fingerprint": claims.plan_fingerprint,
-        "expires_at": claims.expires_at,
-    }
-
-
-mcp_app = mcp.streamable_http_app(json_response=True, stateless_http=True, host="127.0.0.1")
+mcp_app = mcp.streamable_http_app(
+    streamable_http_path="/",
+    json_response=True,
+    stateless_http=True,
+    host="127.0.0.1",
+)
