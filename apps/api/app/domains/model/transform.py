@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Any
 
 from .schemas import ArchitecturalModel, Point3D
 
@@ -20,18 +22,14 @@ def _point(point: Point3D, command: TranslateElement) -> Point3D:
 
 
 def translate_element(model: ArchitecturalModel, command: TranslateElement) -> ArchitecturalModel:
-    """Return a new valid model with one geometric element translated.
-
-    The operation is intentionally pure: it never mutates the input model and
-    always re-validates the complete canonical model before returning.
-    """
+    """Return a new valid model with one geometric element translated."""
     if not command.element_id:
         raise ValueError("element_id is required")
-    if not all(__import__("math").isfinite(value) for value in (command.dx_m, command.dy_m, command.dz_m)):
+    if not all(math.isfinite(value) for value in (command.dx_m, command.dy_m, command.dz_m)):
         raise ValueError("translation values must be finite")
 
-    def update_collection(collection: tuple[object, ...]) -> tuple[object, ...]:
-        updated: list[object] = []
+    def update_collection(collection: tuple[Any, ...]) -> tuple[tuple[Any, ...], bool]:
+        updated: list[Any] = []
         found = False
         for item in collection:
             if getattr(item, "id", None) != command.element_id:
@@ -46,10 +44,9 @@ def translate_element(model: ArchitecturalModel, command: TranslateElement) -> A
                 raise ValueError(f"element type {getattr(item, 'element_type', 'unknown')} is not translatable")
         return tuple(updated), found
 
-    collections = (model.spaces, model.walls, model.slabs)
-    replacements: list[tuple[object, ...]] = []
+    replacements: list[tuple[Any, ...]] = []
     found = False
-    for collection in collections:
+    for collection in (model.spaces, model.walls, model.slabs):
         replacement, collection_found = update_collection(collection)
         replacements.append(replacement)
         found = found or collection_found
