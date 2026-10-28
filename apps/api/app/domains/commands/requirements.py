@@ -21,6 +21,7 @@ COMMAND_REQUIREMENTS: dict[str, CommandRequirement] = {
     "SetProgramArea": CommandRequirement("SetProgramArea", ("space_type", "area_m2"), "Set a program area target."),
     "LockEntity": CommandRequirement("LockEntity", ("element_id",), "Lock an entity against mutation."),
     "Undo": CommandRequirement("Undo", (), "Create a new revision reversing a prior command."),
+    "Redo": CommandRequirement("Redo", (), "Reapply the most recently undone designer edit."),
 }
 
 
