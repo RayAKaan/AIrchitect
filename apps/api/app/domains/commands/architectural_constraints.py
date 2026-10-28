@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from .contract import canonical_payload
 from .schemas import CommandEnvelope
 
 
@@ -13,7 +14,11 @@ def validate_architectural_constraints(command: CommandEnvelope) -> list[str]:
     rejects mathematically invalid architectural inputs; project-specific rules
     belong to later constraint providers.
     """
-    payload: dict[str, Any] = command.payload
+    try:
+        # Validate the same normalized representation that execution consumes.
+        payload: dict[str, Any] = canonical_payload(command)
+    except ValueError as exc:
+        return [str(exc)]
     errors: list[str] = []
 
     def finite_number(name: str, *, minimum: float | None = None, exclusive_minimum: bool = False) -> None:
