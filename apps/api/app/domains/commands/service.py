@@ -4,6 +4,7 @@ from .architectural_constraints import validate_architectural_constraints
 from .builtins import registry
 from .contract import validate_payload_contract
 from .schemas import CommandEnvelope, CommandValidationResult
+from .semantic_adapter import supports_semantic_command
 
 
 def validate_command(command: CommandEnvelope) -> CommandValidationResult:
@@ -14,4 +15,12 @@ def validate_command(command: CommandEnvelope) -> CommandValidationResult:
     constraint_errors = validate_architectural_constraints(command)
     if constraint_errors:
         return CommandValidationResult(valid=False, errors=constraint_errors)
-    return registry.validate(command)
+    result = registry.validate(command)
+    if not result.valid:
+        return result
+    if not supports_semantic_command(command.type):
+        return CommandValidationResult(
+            valid=False,
+            errors=[f"COMMAND_NOT_EXECUTABLE: {command.type} has no canonical mutation adapter"],
+        )
+    return result
