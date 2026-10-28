@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from .intent_parser import IntentProposal
 from .requirements import requirements_for
+from .semantic_adapter import supports_semantic_command
 
 
 @dataclass(frozen=True)
@@ -22,10 +23,17 @@ def contract_for(proposal: IntentProposal) -> IntentContract:
     if requirement is None:
         return IntentContract(proposal.command_type, dict(proposal.payload), (), False, "command is not registered")
     missing = tuple(field for field in requirement.required_fields if field not in proposal.payload)
+    supported = supports_semantic_command(proposal.command_type)
+    if not supported:
+        reason = "command has no canonical mutation adapter yet"
+    elif missing:
+        reason = "required command fields are missing"
+    else:
+        reason = None
     return IntentContract(
         proposal.command_type,
         dict(proposal.payload),
         missing,
-        not missing,
-        None if not missing else "required command fields are missing",
+        supported and not missing,
+        reason,
     )
