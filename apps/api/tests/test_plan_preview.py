@@ -32,19 +32,19 @@ def test_plan_preview_fails_closed_for_invalid_command() -> None:
     assert result.validation_errors
 
 
-def test_equivalent_vector_payloads_have_the_same_plan_fingerprint() -> None:
-    object_vector = command("move", payload={
+def test_equivalent_numeric_payloads_have_the_same_plan_fingerprint() -> None:
+    integer_vector = command("move", payload={
+        "element_id": "building-1",
+        "translation_m": {"x": 1, "y": 2, "z": 0},
+    })
+    float_vector = command("move", payload={
         "element_id": "building-1",
         "translation_m": {"x": 1.0, "y": 2.0, "z": 0.0},
     })
-    array_vector = command("move", payload={
-        "element_id": "building-1",
-        "translation_m": [1, 2],
-    })
 
-    object_preview = preview_sequential_plan("plan", [object_vector])
-    array_preview = preview_sequential_plan("plan", [array_vector])
+    integer_preview = preview_sequential_plan("plan", [integer_vector])
+    float_preview = preview_sequential_plan("plan", [float_vector])
 
-    assert object_preview.executable is True
-    assert array_preview.executable is True
-    assert object_preview.fingerprint == array_preview.fingerprint
+    assert integer_preview.executable is True
+    assert float_preview.executable is True
+    assert integer_preview.fingerprint == float_preview.fingerprint
