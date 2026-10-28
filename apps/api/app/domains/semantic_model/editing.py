@@ -1034,7 +1034,8 @@ def _stable_id(project_id: str, element_type: str, key: str) -> str:
 
 async def persist_designer_mutation(session: AsyncSession, *, project: Project, version: ProjectVersion,
                                     user: User, model: dict[str, Any], action: str,
-                                    event: dict[str, Any] | None = None) -> WorldModelRevision:
+                                    event: dict[str, Any] | None = None,
+                                    commit: bool = True) -> WorldModelRevision:
     model["designer_state"] = state_for(model)
     model["semantic_model"] = compile_semantic_model(model)
     latest = await session.scalar(select(func.max(WorldModelRevision.revision)).where(
@@ -1057,7 +1058,8 @@ async def persist_designer_mutation(session: AsyncSession, *, project: Project, 
                   "reason": event.get("reason") if event else None,
                   "target_event_id": event.get("target_event_id") if event else None,
                   "impacts": event.get("impacts") if event else []})
-    await session.commit()
+    if commit:
+        await session.commit()
     return row
 
 
