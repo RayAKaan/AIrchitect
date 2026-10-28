@@ -9,7 +9,7 @@ from app.domains.commands.regeneration_worker import RegenerationWorker
 
 
 class FailingService:
-    async def execute_job(self, session, job_id):
+    async def execute_job(self, session, job_id, *, worker_id, attempt_count):
         raise RuntimeError("deterministic test failure")
 
 
