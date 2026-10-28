@@ -16,7 +16,7 @@ test('Phase 28 release acceptance connects canonical state, semantic model, expo
 
   await page.getByLabel('Architectural brief').fill('Six-floor commercial retail building in Riyadh with 8,000 m2 GFA on a 2,000 m2 site and 40 parking spaces in basement parking.');
   await page.getByRole('button', { name: 'Save canonical brief' }).click();
-  await expect(page.getByText(/Revision 1/)).toBeVisible();
+  await expect(page.getByText(/Revision 1/).first()).toBeVisible();
   await page.getByRole('button', { name: 'Extract / refresh' }).click();
   await expect(page.getByText('REQUIREMENTS LIFECYCLE')).toBeVisible();
   await page.getByRole('button', { name: 'Open professional tools' }).click();
