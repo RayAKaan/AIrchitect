@@ -12,15 +12,15 @@ from app.domains.commands.schemas import CommandEnvelope, CommandResult
 def _command() -> CommandEnvelope:
     return CommandEnvelope(
         command_id="move-1",
-        type="MoveBuilding",
+        type="ResizeSpace",
         schema_version=1,
         project_id="project-1",
         version_id="version-1",
         base_revision_hash="base-hash",
         idempotency_key="move-command-key-1",
         mode="commit",
-        reason="move building",
-        payload={"element_id": "building-1", "translation_m": {"x": 1, "y": 0, "z": 0}},
+        reason="resize space",
+        payload={"element_id": "space-1", "area_m2": 10.0},
     )
 
 
@@ -53,7 +53,7 @@ async def test_plan_commit_persists_one_revision_and_uses_reviewed_fingerprint(m
         return SimpleNamespace(
             results=(CommandResult(
                 command_id="move-1",
-                command_type="MoveBuilding",
+                command_type="ResizeSpace",
                 status="committed",
                 revision_hash=revision_hash,
                 canonical_mutation=True,
