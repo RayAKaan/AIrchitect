@@ -86,7 +86,10 @@ class PlanCommitResponse(BaseModel):
 
 
 _EXPECTED_TYPES = {
+    "MoveBuilding": "Building",
+    "RotateBuilding": "Building",
     "ResizeSpace": "Space",
+    "MoveSpace": "Space",
 }
 
 
