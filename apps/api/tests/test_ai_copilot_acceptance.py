@@ -18,8 +18,8 @@ def proposal() -> AIProposal:
         commands=(
             ProposedCommand(
                 command_id="a",
-                command_type="SetProgramArea",
-                payload={"space_type": "courtyard", "area_m2": 120},
+                command_type="ResizeSpace",
+                payload={"element_id": "space-1", "area_m2": 120},
                 reason="Set the requested area.",
             ),
         ),
