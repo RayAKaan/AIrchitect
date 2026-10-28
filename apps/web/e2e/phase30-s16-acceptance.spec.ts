@@ -22,7 +22,7 @@ test('S16 end-to-end architect workspace acceptance', async ({ page }) => {
     await expect(page.getByRole('button', { name: new RegExp(`\\b${stage}\\b`) }).first()).toBeVisible();
   }
   await page.getByRole('button', { name: /Change Impact/ }).click();
-  await expect(page.getByRole('heading', { name: 'Check the decisions.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dependency graph & change propagation' })).toBeVisible();
   await page.getByRole('button', { name: /CAD\/BIM Exports/ }).click();
-  await expect(page.getByRole('heading', { name: 'Prepare the professional outputs.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Validated exports' })).toBeVisible();
 });
