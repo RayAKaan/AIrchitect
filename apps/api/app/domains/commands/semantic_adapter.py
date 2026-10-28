@@ -6,13 +6,7 @@ from app.domains.semantic_model.editing import edit_property, set_lock, undo
 
 from .schemas import CommandEnvelope
 
-SUPPORTED = {"ResizeSpace": "area_m2"}
-EXECUTABLE_COMMAND_TYPES = frozenset({*SUPPORTED, "LockEntity", "Undo"})
-
-
-def supports_semantic_command(command_type: str) -> bool:
-    """Return whether a command has a real canonical mutation implementation."""
-    return command_type in EXECUTABLE_COMMAND_TYPES
+SUPPORTED = {"MoveBuilding": "translation_m", "RotateBuilding": "rotation_deg", "ResizeSpace": "area_m2"}
 
 
 def semantic_edit_from_command(command: CommandEnvelope) -> tuple[str, str, Any]:
