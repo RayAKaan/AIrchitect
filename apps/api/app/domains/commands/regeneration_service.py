@@ -10,6 +10,7 @@ from app.db.regeneration_job_models import RegenerationJobRecord
 from app.db.regeneration_models import RegenerationStateRecord
 
 from .regeneration_executor import RegenerationHandlerRegistry, RegenerationInput, RegenerationOutput
+from .regeneration_queue import assert_job_lease
 from .regeneration_repository import RegenerationStateRepository
 
 
@@ -29,11 +30,15 @@ class RegenerationService:
         self._states = states or RegenerationStateRepository()
 
     async def execute_job(
-        self, session: AsyncSession, job_id: str
+        self,
+        session: AsyncSession,
+        job_id: str,
+        *,
+        worker_id: str,
+        attempt_count: int,
     ) -> RegenerationOutput:
         job = await self._locked_job(session, job_id)
-        if job.status != "RUNNING":
-            raise ValueError(f"regeneration job is not RUNNING: {job.status}")
+        assert_job_lease(job, worker_id, attempt_count)
         state = await self._locked_state(session, job.regeneration_state_id)
         if state.status != "RUNNING":
             raise ValueError(f"regeneration state is not RUNNING: {state.status}")
