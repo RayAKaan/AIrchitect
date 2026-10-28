@@ -285,7 +285,7 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
         commit=False,
     )
     groups = impact_for(body)
-    invalidated_artifact_ids = await _invalidate_and_enqueue(
+    await _invalidate_and_enqueue(
         session, project=project, version=version, source_revision_hash=world.model_hash, groups=groups
     )
     await session.commit()
