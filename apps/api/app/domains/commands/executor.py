@@ -7,7 +7,7 @@ from .idempotency import find_replay, record_command
 from .impact import impact_for
 from .preconditions import check_preconditions
 from .schemas import CommandEnvelope, CommandResult
-from .semantic_adapter import apply_semantic_command
+from .semantic_adapter import apply_semantic_command, supports_semantic_command
 from .service import validate_command
 
 
@@ -21,6 +21,8 @@ def execute_semantic_command(model: dict[str, Any], state: dict[str, Any], comma
     if replay is not None:
         result = replay["result"]
         return CommandResult(**{**result, "status": "replayed", "canonical_mutation": False})
+    if not supports_semantic_command(command.type):
+        raise ValueError(f"COMMAND_NOT_EXECUTABLE: {command.type} has no canonical mutation adapter")
     # Rebuild the envelope from canonical payload so execution cannot diverge
     # from preview/validation normalization.
     canonical = command.model_copy(update={"payload": canonical_payload(command)})
