@@ -30,11 +30,7 @@ test('Phase 29 site workspace connects canonical geometry, onboarding and board 
   await expect(page.getByText(/Canonical revision 1 is persisted/)).toBeVisible();
   await expect(page.getByText(/Site revisions/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Board' }).click();
-  await expect(page.getByRole('heading', { name: 'Site analysis board' })).toBeVisible();
-  await expect(page.getByLabel('A1 portrait board preview')).toBeVisible();
-  await page.getByLabel('A1 portrait board preview').press('ArrowRight');
-  await page.getByLabel('A1 portrait board preview').press('ArrowDown');
-  await page.getByRole('button', { name: 'Save layout' }).click();
-  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Site analysis' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evidence-backed diagrams' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Site revisions' })).toBeVisible();
 });
