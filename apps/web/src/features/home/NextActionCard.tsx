@@ -4,7 +4,7 @@ import './NextActionCard.css';
 type Snapshot = { brief?: any; requirements?: any[]; world_model?: any; };
 type Action = { title: string; reason: string; mode: ProductMode; label: string };
 
-function chooseAction(mode: ProductMode, snapshot: Snapshot | null, status: string): Action {
+export function chooseAction(mode: ProductMode, snapshot: Snapshot | null, status: string): Action {
   if (!snapshot?.brief?.raw_text) return { title: 'Write the project brief', reason: 'The source intent is the foundation for requirements, program and every downstream decision.', mode: 'Brief', label: 'Open brief' };
   if (!snapshot.requirements?.length) return { title: 'Extract requirements', reason: 'Turn the source brief into explicit, reviewable requirements before generating concepts.', mode: 'Brief', label: 'Review requirements' };
   if (mode === 'Brief' || mode === 'Explore') return { title: 'Explore concepts', reason: 'The project has enough structured intent to compare deterministic concept alternatives.', mode: 'Explore', label: 'Explore concepts' };

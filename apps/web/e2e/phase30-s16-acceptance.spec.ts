@@ -8,22 +8,20 @@ test('S16 end-to-end architect workspace acceptance', async ({ page }) => {
   await page.getByPlaceholder('name@company.com').fill('s16-' + Date.now() + '@example.com');
   await page.getByPlaceholder('At least 12 characters').fill('s16-production-password');
   await page.getByRole('button', { name: /Create account/ }).click();
-  await expect(page.getByText('Your next project starts here.')).toBeVisible();
-
-  await page.getByPlaceholder('e.g. Riyadh Retail Centre').fill('S16 Acceptance Project');
-  await page.getByRole('button', { name: /Create project/ }).click();
-  await page.getByRole('button', { name: /Open workspace/ }).click();
+  await expect(page.getByRole('heading', { name: 'What are you building?' })).toBeVisible();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('New project name').fill('S16 Acceptance Project');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
 
   for (const mode of ['Brief', 'Site', 'Explore', 'Design', 'Validate', 'Deliver']) {
-    await expect(page.getByRole('button', { name: new RegExp(`^${mode}\\b`) })).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(`\\b${mode}\\b`) })).toBeVisible();
   }
-  await page.getByRole('button', { name: 'Advanced' }).click();
-  for (const stage of ['Brief', 'World Model', 'Semantic Model', 'Design', 'CAD/BIM Exports', 'Engineering', 'Change Impact', 'Release Validation', 'Regulatory']) {
-    await expect(page.getByRole('button', { name: new RegExp(`\\b${stage}\\b`) }).first()).toBeVisible();
-  }
-  await page.getByRole('button', { name: /Change Impact/ }).click();
-  await expect(page.getByRole('heading', { name: 'Check the decisions.' })).toBeVisible();
-  await page.getByRole('button', { name: /CAD\/BIM Exports/ }).click();
-  await expect(page.getByRole('heading', { name: 'Prepare the professional outputs.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open professional tools' }).click();
+  const deliveryWorkflow = page.getByRole('navigation', { name: 'Architectural delivery workflow' });
+  await expect(deliveryWorkflow).toBeVisible();
+  await deliveryWorkflow.getByRole('button', { name: /Change Impact/ }).click();
+  await expect(page.getByRole('heading', { name: 'Dependency graph & change propagation' })).toBeVisible();
+  await deliveryWorkflow.getByRole('button', { name: /CAD\/BIM Exports/ }).click();
+  await expect(page.getByRole('heading', { name: 'Validated exports' })).toBeVisible();
 });

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('Phase 29 site workspace connects canonical geometry, onboarding and board composition', async ({ page }) => {
+test('Phase 29 site workspace connects canonical geometry, analysis and revision history', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Create an account/ }).click();
   await page.getByPlaceholder('Your name').fill('Phase 29 Reviewer');
@@ -8,14 +8,13 @@ test('Phase 29 site workspace connects canonical geometry, onboarding and board 
   await page.getByPlaceholder('name@company.com').fill('phase29-' + Date.now() + '@example.com');
   await page.getByPlaceholder('At least 12 characters').fill('phase-29-secure-password');
   await page.getByRole('button', { name: /Create account/ }).click();
-  await expect(page.getByText('Your next project starts here.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What are you building?' })).toBeVisible();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('New project name').fill('Phase 29 Site Workspace');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
 
-  await page.getByPlaceholder('e.g. Riyadh Retail Centre').fill('Phase 29 Site Workspace');
-  await page.getByRole('button', { name: /Create project/ }).click();
-  await expect(page.getByText('Phase 29 Site Workspace').first()).toBeVisible();
-  await page.getByRole('button', { name: /Open workspace/ }).click();
-
-  await page.getByRole('button', { name: 'Site', exact: true }).click();
+  await page.getByRole('button', { name: /\bSite\b/ }).click();
   await expect(page.getByRole('heading', { name: 'Site workflow' })).toBeVisible();
   const template = page.getByRole('combobox', { name: 'Start with a workflow' });
   await template.selectOption('feasibility');
@@ -31,11 +30,7 @@ test('Phase 29 site workspace connects canonical geometry, onboarding and board 
   await expect(page.getByText(/Canonical revision 1 is persisted/)).toBeVisible();
   await expect(page.getByText(/Site revisions/)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Board' }).click();
-  await expect(page.getByRole('heading', { name: 'Site analysis board' })).toBeVisible();
-  await expect(page.getByLabel('A1 portrait board preview')).toBeVisible();
-  await page.getByLabel('A1 portrait board preview').press('ArrowRight');
-  await page.getByLabel('A1 portrait board preview').press('ArrowDown');
-  await page.getByRole('button', { name: 'Save layout' }).click();
-  await expect(page.getByRole('button', { name: 'Saved' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Site analysis' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evidence-backed diagrams' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Site revisions' })).toBeVisible();
 });
