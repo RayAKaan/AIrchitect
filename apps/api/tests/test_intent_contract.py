@@ -4,8 +4,14 @@ from app.domains.commands.intent_contract import contract_for
 from app.domains.commands.intent_parser import IntentProposal
 
 
-def test_complete_registered_intent_is_executable() -> None:
+def test_complete_but_unimplemented_intent_is_not_executable() -> None:
     contract = contract_for(IntentProposal("MoveBuilding", {"element_id": "b1", "translation_m": {"x": 1, "y": 2, "z": 0}}, 0.95, (), False))
+    assert contract.executable is False
+    assert contract.reason == "command has no canonical mutation adapter yet"
+
+
+def test_complete_intent_with_adapter_is_executable() -> None:
+    contract = contract_for(IntentProposal("ResizeSpace", {"element_id": "s1", "area_m2": 10}, 0.95, (), False))
     assert contract.executable is True
     assert contract.missing_fields == ()
 
