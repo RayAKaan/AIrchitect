@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import User
 from app.db.session import get_session
 from app.dependencies import current_user
-from app.domains.lifecycle.service import canonical_hash
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
 
 from .artifact_invalidation import ArtifactInvalidationService
@@ -141,17 +140,28 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
     await check_expected_revision(version, version.revision_number)
     result = execute_semantic_command(model, state, body, user.id, world.model_hash)
 
-    # The post-command canonical hash is the regeneration source revision. Build
-    # invalidation and queue state before the existing persistence primitive
-    # commits; its commit therefore covers the entire mutation atomically.
-    next_revision_hash = canonical_hash(model)
+    # Persist the fully normalized canonical model without committing yet. The
+    # returned row hash is the authoritative source revision for invalidation.
+    # Keep the revision, audit event, stale propagation, and queue entries in one
+    # transaction so a failure cannot leave only part of the command committed.
+    persist_event = state["history"][-1].get("result") if state.get("history") else None
+    world = await persist_designer_mutation(
+        session,
+        project=project,
+        version=version,
+        user=user,
+        model=model,
+        action="COMMAND",
+        event=persist_event,
+        commit=False,
+    )
     groups = impact_for(body)
     invalidated_artifact_ids = await ArtifactInvalidationService().invalidate_groups(
         session,
         organization_id=project.organization_id,
         project_id=project.id,
         project_version_id=version.id,
-        source_revision_hash=next_revision_hash,
+        source_revision_hash=world.model_hash,
         groups=groups,
     )
     states = RegenerationStateRepository()
@@ -162,15 +172,6 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
             raise ValueError("artifact invalidation created no regeneration state")
         await queue.enqueue(session, regeneration_state)
 
-    persist_event = state["history"][-1].get("result") if state.get("history") else None
-    world = await persist_designer_mutation(
-        session,
-        project=project,
-        version=version,
-        user=user,
-        model=model,
-        action="COMMAND",
-        event=persist_event,
-    )
+    await session.commit()
     result.revision_hash = world.model_hash
     return result
