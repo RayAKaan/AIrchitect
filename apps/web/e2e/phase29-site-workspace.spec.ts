@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('Phase 29 site workspace connects canonical geometry, onboarding and board composition', async ({ page }) => {
+test('Phase 29 site workspace connects canonical geometry, analysis and revision history', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Create an account/ }).click();
   await page.getByPlaceholder('Your name').fill('Phase 29 Reviewer');
