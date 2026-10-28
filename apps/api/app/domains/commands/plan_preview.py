@@ -58,9 +58,10 @@ def preview_sequential_plan(plan_id: str, commands: Sequence[CommandEnvelope]) -
             warnings=tuple(warnings),
         )
 
-    # Fingerprint exactly the normalized payload that the commit executor uses.
-    # Equivalent wire representations must produce the same plan identity.
+    # Fingerprint exactly the normalized payload and command contract used at commit.
     command_payloads = {command.command_id: canonical_payload(command) for command in commands}
+    command_types = {command.command_id: command.type for command in commands}
+    schema_versions = {command.command_id: command.schema_version for command in commands}
     impact_groups = tuple(sorted({group for command in commands for group in impact_for(command)}))
     return PlanPreview(
         plan=plan,
@@ -68,7 +69,12 @@ def preview_sequential_plan(plan_id: str, commands: Sequence[CommandEnvelope]) -
         execution_order=plan.execution_order(),
         command_ids=tuple(command.command_id for command in commands),
         impact_groups=impact_groups,
-        fingerprint=fingerprint_plan(plan, command_payloads),
+        fingerprint=fingerprint_plan(
+            plan,
+            command_payloads,
+            command_types=command_types,
+            schema_versions=schema_versions,
+        ),
         validation_errors=(),
         warnings=tuple(warnings),
     )

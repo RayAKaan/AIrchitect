@@ -2,11 +2,11 @@ from app.domains.commands.plan_preview import preview_sequential_plan
 from app.domains.commands.schemas import CommandEnvelope
 
 
-def command(command_id: str, *, command_type: str = "MoveBuilding", payload: dict | None = None) -> CommandEnvelope:
+def command(command_id: str, *, command_type: str = "MoveBuilding", payload: dict | None = None, schema_version: int = 1) -> CommandEnvelope:
     return CommandEnvelope(
         command_id=command_id,
         type=command_type,
-        schema_version=1,
+        schema_version=schema_version,
         project_id="p",
         version_id="v",
         base_revision_hash="r",
@@ -48,3 +48,13 @@ def test_equivalent_numeric_payloads_have_the_same_plan_fingerprint() -> None:
     assert integer_preview.executable is True
     assert float_preview.executable is True
     assert integer_preview.fingerprint == float_preview.fingerprint
+
+
+def test_command_type_is_part_of_plan_fingerprint() -> None:
+    payload = {"element_id": "building-1", "translation_m": {"x": 1.0, "y": 0.0, "z": 0.0}}
+    move_building = preview_sequential_plan("plan", [command("move", command_type="MoveBuilding", payload=payload)])
+    move_space = preview_sequential_plan("plan", [command("move", command_type="MoveSpace", payload=payload)])
+
+    assert move_building.executable is True
+    assert move_space.executable is True
+    assert move_building.fingerprint != move_space.fingerprint
