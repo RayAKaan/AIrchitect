@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.domains.semantic_model.editing import edit_property, set_lock, undo
+from app.domains.semantic_model.editing import edit_property, redo, set_lock, undo
 
 from .schemas import CommandEnvelope
 
 SUPPORTED = {"MoveBuilding": "translation_m", "RotateBuilding": "rotation_deg", "ResizeSpace": "area_m2"}
-EXECUTABLE_COMMAND_TYPES = frozenset({ "ResizeSpace", "LockEntity", "Undo" })
+EXECUTABLE_COMMAND_TYPES = frozenset({"ResizeSpace", "LockEntity", "Undo", "Redo"})
 
 
 def supports_semantic_command(command_type: str) -> bool:
@@ -31,6 +31,8 @@ def semantic_edit_from_command(command: CommandEnvelope) -> tuple[str, str, Any]
 def apply_semantic_command(model: dict[str, Any], state: dict[str, Any], command: CommandEnvelope, actor_id: str) -> dict[str, Any]:
     if command.type == "Undo":
         return undo(model, state, actor_id)
+    if command.type == "Redo":
+        return redo(model, state, actor_id)
     if command.type == "LockEntity":
         element_id = command.payload.get("element_id")
         if not isinstance(element_id, str) or not element_id.strip():
