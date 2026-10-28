@@ -18,9 +18,9 @@ GROUP_TO_ARTIFACT_TYPE: dict[str, str] = {
     "design_alternatives": "design_alternative",
     "parametric_geometry_intents": "geometry",
     "program": "program",
-    "quantities": "quantities",
+    "quantities": "quantity",
     "cost": "cost",
-    "structural_review": "structural_review",
+    "structural_review": "structural",
     "validation": "validation",
 }
 

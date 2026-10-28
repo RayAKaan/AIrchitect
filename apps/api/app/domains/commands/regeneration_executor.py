@@ -145,6 +145,10 @@ class RegenerationHandlerRegistry:
         }
         self._handlers = {**defaults, **(handlers or {})}
 
+    def supports(self, artifact_type: str) -> bool:
+        """Whether this registry can regenerate an artifact type deterministically."""
+        return artifact_type in self._handlers
+
     def execute(self, request: RegenerationInput) -> RegenerationOutput:
         handler = self._handlers.get(request.artifact_type)
         if handler is None:

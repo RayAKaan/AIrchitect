@@ -55,3 +55,40 @@ async def test_invalidation_marks_current_artifact_stale_and_persists_state() ->
 def test_unknown_impact_group_fails_closed() -> None:
     with pytest.raises(ValueError, match="unknown regeneration impact groups"):
         ArtifactInvalidationService._resolve_artifact_types(("not-real",))
+
+
+@pytest.mark.asyncio
+async def test_quantity_and_structural_impacts_match_registered_artifact_types() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(ArtifactVersion.__table__.create)
+        await connection.run_sync(RegenerationStateRecord.__table__.create)
+
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as session:
+        quantity = ArtifactVersion(
+            organization_id="org", project_id="project", project_version_id="version",
+            artifact_type="quantity", version=1, status="current", created_by="user",
+        )
+        structural = ArtifactVersion(
+            organization_id="org", project_id="project", project_version_id="version",
+            artifact_type="structural", version=1, status="current", created_by="user",
+        )
+        session.add_all([quantity, structural])
+        await session.flush()
+
+        invalidated = await ArtifactInvalidationService().invalidate_groups(
+            session,
+            organization_id="org",
+            project_id="project",
+            project_version_id="version",
+            source_revision_hash="rev-2",
+            groups=("quantities", "structural_review"),
+        )
+        await session.commit()
+
+        assert set(invalidated) == {quantity.id, structural.id}
+        assert quantity.status == "stale"
+        assert structural.status == "stale"
+
+    await engine.dispose()

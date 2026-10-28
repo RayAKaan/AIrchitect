@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import User
+from app.db.models import ArtifactVersion, User
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
@@ -18,6 +19,7 @@ from .intent_contract import contract_for
 from .intent_parser import parse_intent
 from .plan_preview import preview_sequential_plan
 from .preview import preview_command
+from .regeneration_executor import RegenerationHandlerRegistry
 from .regeneration_queue import RegenerationQueue
 from .regeneration_repository import RegenerationStateRepository
 from .schemas import CommandEnvelope, CommandPreview, CommandResult
@@ -166,11 +168,22 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
     )
     states = RegenerationStateRepository()
     queue = RegenerationQueue(states)
-    for artifact_id in invalidated_artifact_ids:
-        regeneration_state = await states.get_for_update(session, artifact_id)
-        if regeneration_state is None:
-            raise ValueError("artifact invalidation created no regeneration state")
-        await queue.enqueue(session, regeneration_state)
+    if invalidated_artifact_ids:
+        artifact_result = await session.scalars(
+            select(ArtifactVersion)
+            .where(ArtifactVersion.id.in_(invalidated_artifact_ids))
+            .order_by(ArtifactVersion.id)
+        )
+        handlers = RegenerationHandlerRegistry()
+        for artifact in artifact_result.all():
+            # Unsupported artifact types stay stale and block release; do not
+            # enqueue work that has no deterministic implementation.
+            if not handlers.supports(artifact.artifact_type):
+                continue
+            regeneration_state = await states.get_for_update(session, artifact.id)
+            if regeneration_state is None:
+                raise ValueError("artifact invalidation created no regeneration state")
+            await queue.enqueue(session, regeneration_state)
 
     await session.commit()
     result.revision_hash = world.model_hash
