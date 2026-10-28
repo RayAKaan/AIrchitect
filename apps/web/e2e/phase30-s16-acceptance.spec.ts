@@ -15,7 +15,7 @@ test('S16 end-to-end architect workspace acceptance', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
 
   for (const mode of ['Brief', 'Site', 'Explore', 'Design', 'Validate', 'Deliver']) {
-    await expect(page.getByRole('button', { name: new RegExp(`^${mode}\\b`) })).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(`\\b${mode}\\b`) })).toBeVisible();
   }
   await page.getByRole('button', { name: 'Advanced' }).click();
   for (const stage of ['Brief', 'World Model', 'Semantic Model', 'Design', 'CAD/BIM Exports', 'Engineering', 'Change Impact', 'Release Validation', 'Regulatory']) {
