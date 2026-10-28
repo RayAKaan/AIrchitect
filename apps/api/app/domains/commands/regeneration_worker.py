@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .regeneration_queue import RegenerationQueue
+from .regeneration_queue import LeaseLostError, RegenerationQueue
 from .regeneration_service import RegenerationService
 
 
@@ -42,11 +42,20 @@ class RegenerationWorker:
         # separate transactions: another worker must never see the job as queued
         # while this worker is executing it.
         job_id = job.id
+        attempt_count = job.attempt_count
         await session.commit()
         try:
-            output = await self.service.execute_job(session, job_id)
+            output = await self.service.execute_job(
+                session,
+                job_id,
+                worker_id=self.worker_id,
+                attempt_count=attempt_count,
+            )
             await session.commit()
             return WorkerRunResult(status="SUCCEEDED", job_id=job_id, output_hash=output.output_hash)
+        except LeaseLostError:
+            await session.rollback()
+            return WorkerRunResult(status="LEASE_LOST", job_id=job_id, error_code="lease_lost")
         except Exception as exc:
             # The execution service deliberately owns no commit. Roll back all
             # partial output writes before recording the failure in a fresh
@@ -60,8 +69,13 @@ class RegenerationWorker:
                     job_id,
                     error_code=error_code,
                     error_message=str(exc),
+                    expected_worker_id=self.worker_id,
+                    expected_attempt_count=attempt_count,
                 )
                 await session.commit()
+            except LeaseLostError:
+                await session.rollback()
+                return WorkerRunResult(status="LEASE_LOST", job_id=job_id, error_code="lease_lost")
             except Exception:
                 await session.rollback()
                 raise
