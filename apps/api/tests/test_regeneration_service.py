@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -60,11 +62,16 @@ async def test_regeneration_service_commits_output_and_current_state() -> None:
             artifact_version_id=artifact.id,
             source_revision_hash="rev-2",
             status="RUNNING",
+            attempt_count=1,
+            locked_by="worker-1",
+            locked_at=datetime.now(timezone.utc),
         )
         session.add(job)
         await session.flush()
 
-        output = await RegenerationService(FakeHandlers()).execute_job(session, job.id)
+        output = await RegenerationService(FakeHandlers()).execute_job(
+            session, job.id, worker_id="worker-1", attempt_count=1
+        )
         await session.commit()
 
         assert output.output_hash == "output-hash"
