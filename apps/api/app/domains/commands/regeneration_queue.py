@@ -20,6 +20,19 @@ def _retry_delay(attempt_count: int) -> timedelta:
     return timedelta(seconds=min(300, 5 * (2 ** max(0, attempt_count - 1))))
 
 
+class LeaseLostError(RuntimeError):
+    """Raised when a worker attempts to mutate a job after losing its lease."""
+
+
+def assert_job_lease(job: RegenerationJobRecord, worker_id: str, attempt_count: int) -> None:
+    if (
+        job.status != "RUNNING"
+        or job.locked_by != worker_id
+        or job.attempt_count != attempt_count
+    ):
+        raise LeaseLostError("regeneration worker no longer owns this job lease")
+
+
 class RegenerationQueue:
     """Durable queue adapter with idempotent enqueue, claims, retries, and leases."""
 
@@ -118,8 +131,14 @@ class RegenerationQueue:
         *,
         error_code: str,
         error_message: str,
+        expected_worker_id: str | None = None,
+        expected_attempt_count: int | None = None,
     ) -> RegenerationJobRecord:
-        if job.status != "RUNNING":
+        if (expected_worker_id is None) != (expected_attempt_count is None):
+            raise ValueError("worker id and attempt count must be provided together")
+        if expected_worker_id is not None and expected_attempt_count is not None:
+            assert_job_lease(job, expected_worker_id, expected_attempt_count)
+        elif job.status != "RUNNING":
             raise ValueError(f"cannot fail job in {job.status} status")
         state_result = await session.execute(
             select(RegenerationStateRecord)
@@ -152,6 +171,8 @@ class RegenerationQueue:
         *,
         error_code: str,
         error_message: str,
+        expected_worker_id: str | None = None,
+        expected_attempt_count: int | None = None,
     ) -> RegenerationJobRecord:
         result = await session.execute(
             select(RegenerationJobRecord)
@@ -166,6 +187,8 @@ class RegenerationQueue:
             job,
             error_code=error_code,
             error_message=error_message,
+            expected_worker_id=expected_worker_id,
+            expected_attempt_count=expected_attempt_count,
         )
 
     async def recover_expired_leases(
