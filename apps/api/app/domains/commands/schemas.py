@@ -35,6 +35,8 @@ class CommandPreview(BaseModel):
     command_id: str
     command_type: str
     accepted: bool
+    executable: bool = False
+    execution_blockers: list[str] = Field(default_factory=list)
     canonical_mutation: bool = False
     base_revision_hash: str
     impact: list[str] = Field(default_factory=list)
