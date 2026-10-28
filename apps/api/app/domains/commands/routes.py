@@ -16,6 +16,7 @@ from .artifact_invalidation import ArtifactInvalidationService
 from .executor import execute_semantic_command
 from .plan_execution import execute_plan
 from .impact import impact_for
+from .idempotency import find_replay
 from .intent_contract import contract_for
 from .intent_parser import parse_intent
 from .plan_preview import preview_sequential_plan
@@ -205,6 +206,30 @@ async def commit_plan(
     project, version, world, model, state = await load_editable_model(
         session, first.project_id, first.version_id, user
     )
+    replay_events = [find_replay(state, command) for command in body.commands]
+    replayed = [event is not None for event in replay_events]
+    if any(replayed) and not all(replayed):
+        raise ValueError("PARTIAL_PLAN_REPLAY: all commands must replay or all must be new")
+    if all(replayed):
+        replay_results = [
+            CommandResult(**{
+                **event["result"],
+                "status": "replayed",
+                "canonical_mutation": False,
+                "revision_hash": world.model_hash,
+            })
+            for event in replay_events
+            if event is not None
+        ]
+        return PlanCommitResponse(
+            plan_id=body.plan_id,
+            status="replayed",
+            fingerprint=preview.fingerprint,
+            revision_hash=world.model_hash,
+            command_results=replay_results,
+            impact_groups=[],
+            invalidated_artifact_ids=[],
+        )
     if world.model_hash != preview.plan.base_revision_hash:
         raise ValueError("STALE_WORLD_MODEL")
     await check_expected_revision(version, version.revision_number)
@@ -264,9 +289,17 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
     if body.mode != "commit":
         raise ValueError("command mode must be commit")
     project, version, world, model, state = await load_editable_model(session, body.project_id, body.version_id, user)
+    await check_expected_revision(version, version.revision_number)
+    replay = find_replay(state, body)
+    if replay is not None:
+        return CommandResult(**{
+            **replay["result"],
+            "status": "replayed",
+            "canonical_mutation": False,
+            "revision_hash": world.model_hash,
+        })
     if world.model_hash != body.base_revision_hash:
         raise ValueError("STALE_WORLD_MODEL")
-    await check_expected_revision(version, version.revision_number)
     result = execute_semantic_command(model, state, body, user.id, world.model_hash)
 
     # Persist the fully normalized canonical model without committing yet. The
