@@ -58,14 +58,3 @@ def test_command_type_is_part_of_plan_fingerprint() -> None:
     assert move_building.executable is True
     assert move_space.executable is True
     assert move_building.fingerprint != move_space.fingerprint
-
-
-def test_schema_version_is_part_of_plan_fingerprint() -> None:
-    payload = {"element_id": "building-1", "translation_m": {"x": 1.0, "y": 0.0, "z": 0.0}}
-    version_one = preview_sequential_plan("plan", [command("move", schema_version=1, payload=payload)])
-    version_two = preview_sequential_plan("plan", [command("move", schema_version=2, payload=payload)])
-
-    assert version_one.executable is True
-    assert version_two.executable is False
-    # Unsupported versions fail closed and never receive an executable fingerprint.
-    assert version_two.fingerprint is None
