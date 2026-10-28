@@ -17,12 +17,11 @@ test('Phase 28 release acceptance connects canonical state, semantic model, expo
   await page.getByPlaceholder('Describe your building project…').fill('Six-floor commercial retail building in Riyadh with 8,000 m2 GFA on a 2,000 m2 site and 40 parking spaces in basement parking.');
   await page.getByRole('button', { name: 'Analyze and persist brief' }).click();
   await expect(page.getByText(/Brief revision 1/)).toBeVisible();
-  await page.getByRole('button', { name: 'Requirements' }).click();
-  await expect(page.locator('.fact-card').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Extract / refresh' }).click();
+  await expect(page.getByText('REQUIREMENTS LIFECYCLE')).toBeVisible();
   await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   await page.getByRole('button', { name: /World Model/ }).click();
-  await page.getByRole('button', { name: /Commit V1/ }).click();
-  await expect(page.getByText(/World hash/)).toBeVisible();
+  await expect(page.getByText('CANONICAL WORLD MODEL')).toBeVisible();
   await page.getByRole('button', { name: /Semantic Model/ }).click();
   await expect(page.getByRole('heading', { name: 'Semantic model editor' })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Elements \(/ })).toBeVisible();
