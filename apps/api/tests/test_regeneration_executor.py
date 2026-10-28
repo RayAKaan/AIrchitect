@@ -78,3 +78,14 @@ def test_quantity_handler_is_deterministic() -> None:
     assert first.payload == second.payload
     assert first.output_hash == second.output_hash
     assert first.engine_version == "quantity-engine-v1"
+
+
+def test_registry_distinguishes_supported_and_unimplemented_artifact_types() -> None:
+    registry = RegenerationHandlerRegistry()
+
+    assert registry.supports("geometry") is True
+    assert registry.supports("planning_envelope") is True
+    assert registry.supports("cost") is True
+    assert registry.supports("program") is False
+    assert registry.supports("design_alternative") is False
+    assert registry.supports("validation") is False
