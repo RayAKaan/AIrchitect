@@ -8,12 +8,11 @@ test('Phase 29 site workspace connects canonical geometry, onboarding and board 
   await page.getByPlaceholder('name@company.com').fill('phase29-' + Date.now() + '@example.com');
   await page.getByPlaceholder('At least 12 characters').fill('phase-29-secure-password');
   await page.getByRole('button', { name: /Create account/ }).click();
-  await expect(page.getByText('Your next project starts here.')).toBeVisible();
-
-  await page.getByPlaceholder('e.g. Riyadh Retail Centre').fill('Phase 29 Site Workspace');
-  await page.getByRole('button', { name: /Create project/ }).click();
-  await expect(page.getByText('Phase 29 Site Workspace').first()).toBeVisible();
-  await page.getByRole('button', { name: /Open workspace/ }).click();
+  await expect(page.getByRole('heading', { name: 'What are you building?' })).toBeVisible();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('New project name').fill('Phase 29 Site Workspace');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Site', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Site workflow' })).toBeVisible();
