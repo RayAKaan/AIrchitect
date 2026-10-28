@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -14,6 +14,7 @@ from app.domains.semantic_model.editing import check_expected_revision, load_edi
 
 from .artifact_invalidation import ArtifactInvalidationService
 from .executor import execute_semantic_command
+from .plan_execution import execute_plan
 from .impact import impact_for
 from .intent_contract import contract_for
 from .intent_parser import parse_intent
@@ -70,12 +71,65 @@ class PlanPreviewResponse(BaseModel):
     warnings: list[str]
 
 
+class PlanCommitRequest(PlanPreviewRequest):
+    fingerprint: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+
+
+class PlanCommitResponse(BaseModel):
+    plan_id: str
+    status: Literal["committed", "replayed"]
+    fingerprint: str
+    revision_hash: str
+    command_results: list[CommandResult]
+    impact_groups: list[str]
+    invalidated_artifact_ids: list[str]
+
+
 _EXPECTED_TYPES = {
     "MoveBuilding": "Building",
     "RotateBuilding": "Building",
     "ResizeSpace": "Space",
     "MoveSpace": "Space",
 }
+
+
+async def _invalidate_and_enqueue(
+    session: AsyncSession,
+    *,
+    project: Any,
+    version: Any,
+    source_revision_hash: str,
+    groups: list[str] | tuple[str, ...],
+) -> tuple[str, ...]:
+    invalidated_artifact_ids = await ArtifactInvalidationService().invalidate_groups(
+        session,
+        organization_id=project.organization_id,
+        project_id=project.id,
+        project_version_id=version.id,
+        source_revision_hash=source_revision_hash,
+        groups=groups,
+    )
+    if not invalidated_artifact_ids:
+        return ()
+
+    states = RegenerationStateRepository()
+    queue = RegenerationQueue(states)
+    artifact_result = await session.scalars(
+        select(ArtifactVersion)
+        .where(ArtifactVersion.id.in_(invalidated_artifact_ids))
+        .order_by(ArtifactVersion.id)
+    )
+    handlers = RegenerationHandlerRegistry()
+    for artifact in artifact_result.all():
+        # Unsupported artifact types stay stale and block release; do not
+        # enqueue work that has no deterministic implementation.
+        if not handlers.supports(artifact.artifact_type):
+            continue
+        regeneration_state = await states.get_for_update(session, artifact.id)
+        if regeneration_state is None:
+            raise ValueError("artifact invalidation created no regeneration state")
+        await queue.enqueue(session, regeneration_state)
+    return tuple(invalidated_artifact_ids)
 
 
 @router.post("/commands/intent-preview", response_model=IntentPreviewResponse)
@@ -132,6 +186,79 @@ async def plan_preview(body: PlanPreviewRequest, user: User = Depends(current_us
     )
 
 
+@router.post("/commands/plan-commit", response_model=PlanCommitResponse)
+async def commit_plan(
+    body: PlanCommitRequest,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PlanCommitResponse:
+    """Commit a reviewed command plan as one canonical revision and transaction."""
+    preview = preview_sequential_plan(body.plan_id, body.commands)
+    if not preview.executable or preview.fingerprint is None:
+        raise ValueError("INVALID_COMMAND_PLAN: " + "; ".join(preview.validation_errors))
+    if preview.fingerprint != body.fingerprint:
+        raise ValueError("PLAN_FINGERPRINT_MISMATCH")
+    if any(command.mode != "commit" for command in body.commands):
+        raise ValueError("all plan commands must use commit mode")
+
+    first = body.commands[0]
+    project, version, world, model, state = await load_editable_model(
+        session, first.project_id, first.version_id, user
+    )
+    if world.model_hash != preview.plan.base_revision_hash:
+        raise ValueError("STALE_WORLD_MODEL")
+    await check_expected_revision(version, version.revision_number)
+
+    execution = execute_plan(model, state, preview.plan, body.commands, user.id, world.model_hash)
+    results = list(execution.results)
+    replayed = [result.status == "replayed" for result in results]
+    if any(replayed) and not all(replayed):
+        raise ValueError("PARTIAL_PLAN_REPLAY: all commands must replay or all must be new")
+    if all(replayed):
+        return PlanCommitResponse(
+            plan_id=body.plan_id,
+            status="replayed",
+            fingerprint=preview.fingerprint,
+            revision_hash=world.model_hash,
+            command_results=results,
+            impact_groups=[],
+            invalidated_artifact_ids=[],
+        )
+
+    # Batch execution deep-copies model and state independently; reconnect the
+    # authoritative designer state before the single persistence operation.
+    execution.model["designer_state"] = execution.state
+    persist_event = execution.state["history"][-1].get("result") if execution.state.get("history") else None
+    world = await persist_designer_mutation(
+        session,
+        project=project,
+        version=version,
+        user=user,
+        model=execution.model,
+        action="COMMAND_PLAN",
+        event=persist_event,
+        commit=False,
+    )
+    invalidated_artifact_ids = await _invalidate_and_enqueue(
+        session,
+        project=project,
+        version=version,
+        source_revision_hash=world.model_hash,
+        groups=preview.impact_groups,
+    )
+    await session.commit()
+    for result in results:
+        result.revision_hash = world.model_hash
+    return PlanCommitResponse(
+        plan_id=body.plan_id,
+        status="committed",
+        fingerprint=preview.fingerprint,
+        revision_hash=world.model_hash,
+        command_results=results,
+        impact_groups=list(preview.impact_groups),
+        invalidated_artifact_ids=list(invalidated_artifact_ids),
+    )
+
 @router.post("/commands/commit", response_model=CommandResult)
 async def commit(body: CommandEnvelope, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> CommandResult:
     if body.mode != "commit":
@@ -158,33 +285,9 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
         commit=False,
     )
     groups = impact_for(body)
-    invalidated_artifact_ids = await ArtifactInvalidationService().invalidate_groups(
-        session,
-        organization_id=project.organization_id,
-        project_id=project.id,
-        project_version_id=version.id,
-        source_revision_hash=world.model_hash,
-        groups=groups,
+    invalidated_artifact_ids = await _invalidate_and_enqueue(
+        session, project=project, version=version, source_revision_hash=world.model_hash, groups=groups
     )
-    states = RegenerationStateRepository()
-    queue = RegenerationQueue(states)
-    if invalidated_artifact_ids:
-        artifact_result = await session.scalars(
-            select(ArtifactVersion)
-            .where(ArtifactVersion.id.in_(invalidated_artifact_ids))
-            .order_by(ArtifactVersion.id)
-        )
-        handlers = RegenerationHandlerRegistry()
-        for artifact in artifact_result.all():
-            # Unsupported artifact types stay stale and block release; do not
-            # enqueue work that has no deterministic implementation.
-            if not handlers.supports(artifact.artifact_type):
-                continue
-            regeneration_state = await states.get_for_update(session, artifact.id)
-            if regeneration_state is None:
-                raise ValueError("artifact invalidation created no regeneration state")
-            await queue.enqueue(session, regeneration_state)
-
     await session.commit()
     result.revision_hash = world.model_hash
     return result
