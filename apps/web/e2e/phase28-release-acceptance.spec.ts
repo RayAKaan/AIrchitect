@@ -8,11 +8,11 @@ test('Phase 28 release acceptance connects canonical state, semantic model, expo
   await page.getByPlaceholder('name@company.com').fill('phase28-' + Date.now() + '@example.com');
   await page.getByPlaceholder('At least 12 characters').fill('phase-28-secure-password');
   await page.getByRole('button', { name: /Create account/ }).click();
-  await expect(page.getByText('Your next project starts here.')).toBeVisible();
-  await page.getByPlaceholder('e.g. Riyadh Retail Centre').fill('Phase 28 Riyadh Retail');
-  await page.getByRole('button', { name: /Create project/ }).click();
-  await expect(page.getByText('Phase 28 Riyadh Retail').first()).toBeVisible();
-  await page.getByRole('button', { name: /Open workspace/ }).click();
+  await expect(page.getByRole('heading', { name: 'What are you building?' })).toBeVisible();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('New project name').fill('Phase 28 Riyadh Retail');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
   await page.getByRole('button', { name: 'Brief', exact: true }).last().click();
   await page.getByPlaceholder('Describe your building project…').fill('Six-floor commercial retail building in Riyadh with 8,000 m2 GFA on a 2,000 m2 site and 40 parking spaces in basement parking.');
   await page.getByRole('button', { name: 'Analyze and persist brief' }).click();
