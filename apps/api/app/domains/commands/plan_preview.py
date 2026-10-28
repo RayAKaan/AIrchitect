@@ -10,6 +10,7 @@ from .plan_builder import build_sequential_plan
 from .plan_fingerprint import fingerprint_plan
 from .schemas import CommandEnvelope
 from .service import validate_command
+from .semantic_adapter import supports_semantic_command
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,11 @@ def preview_sequential_plan(plan_id: str, commands: Sequence[CommandEnvelope]) -
     for command in commands:
         validation = validate_command(command)
         errors.extend(f"{command.command_id}: {error}" for error in validation.errors)
+        if validation.valid and not supports_semantic_command(command.type):
+            errors.append(
+                f"{command.command_id}: COMMAND_NOT_EXECUTABLE: "
+                f"{command.type} has no canonical mutation adapter"
+            )
         warnings.extend(f"{command.command_id}: {warning}" for warning in validation.warnings)
 
     try:
