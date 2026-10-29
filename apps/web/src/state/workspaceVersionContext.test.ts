@@ -25,7 +25,7 @@ describe('workspace version context', () => {
 
   it('uses a matching snapshot as fallback while the version list is empty', () => {
     const snapshot: Snapshot = { version: versions[1], payload: 'v2 data' };
-    expect(resolveVersionContext('v2', [], snapshot)).toEqual({
+    expect(resolveVersionContext<Version, Snapshot>('v2', [], snapshot)).toEqual({
       currentVersion: versions[1],
       currentSnapshot: snapshot,
     });
