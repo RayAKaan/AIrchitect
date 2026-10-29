@@ -12,8 +12,28 @@ export function parseWorkspaceUrl(search: string): WorkspaceUrlState {
   };
 }
 
-export function buildWorkspaceUrl(pathname: string, state: { projectId: string; mode: ProductMode; versionId: string | null }): string {
-  const params = new URLSearchParams({ project: state.projectId, mode: state.mode });
+export function buildWorkspaceUrl(
+  pathname: string,
+  state: { projectId: string; mode: ProductMode; versionId: string | null },
+  currentSearch = '',
+  currentHash = '',
+): string {
+  const existing = new URLSearchParams(currentSearch);
+  const params = new URLSearchParams();
+  existing.forEach((value, key) => {
+    if (key !== 'project' && key !== 'mode' && key !== 'version') params.append(key, value);
+  });
+  params.set('project', state.projectId);
+  params.set('mode', state.mode);
   if (state.versionId) params.set('version', state.versionId);
-  return `${pathname}?${params.toString()}`;
+  const query = params.toString();
+  return pathname + (query ? '?' + query : '') + currentHash;
+}
+
+export function clearWorkspaceUrl(currentHref: string): string {
+  const url = new URL(currentHref);
+  url.searchParams.delete('project');
+  url.searchParams.delete('mode');
+  url.searchParams.delete('version');
+  return url.pathname + url.search + url.hash;
 }

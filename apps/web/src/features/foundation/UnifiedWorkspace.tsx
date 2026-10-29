@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import DesignWorkspace from '../design/DesignWorkspace';
 import ChangeImpactPanel from './ChangeImpactPanel';
 import ReleaseValidation from './ReleaseValidation';
@@ -32,8 +32,36 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
   const [state, dispatch] = useReducer(workspaceReducer, project.id, (projectId) => { const query = parseWorkspaceUrl(window.location.search); const persisted = readPersistedWorkspace(projectId) || {}; return createWorkspaceState(projectId, { ...persisted, mode: query.mode || persisted.mode, versionId: query.versionId || persisted.versionId }); });
   const [versions, setVersions] = useState<Version[]>([]); const [snapshot, setSnapshot] = useState<Snapshot | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }), [token]);
-  useEffect(() => { persistWorkspace(state); window.history.replaceState({}, '', buildWorkspaceUrl(window.location.pathname, state)); window.dispatchEvent(new CustomEvent('airchitect:workspace-state', { detail: state })); }, [project.id, state]);
-  useEffect(() => { function onPopState() { const next = parseWorkspaceUrl(window.location.search); if (next.mode && next.mode !== state.mode) dispatch({ type: 'select-mode', mode: next.mode }); if (next.versionId !== state.versionId) dispatch({ type: 'select-version', versionId: next.versionId }); } window.addEventListener('popstate', onPopState); return () => window.removeEventListener('popstate', onPopState); }, [state.mode, state.versionId]);
+  const routeStateRef = useRef({ projectId: state.projectId, mode: state.mode, versionId: state.versionId });
+  useEffect(() => {
+    persistWorkspace(state);
+    const previous = routeStateRef.current;
+    const routeChanged = previous.projectId !== state.projectId || previous.mode !== state.mode;
+    const nextUrl = buildWorkspaceUrl(window.location.pathname, state, window.location.search, window.location.hash);
+    const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+    if (nextUrl !== currentUrl) {
+      if (routeChanged) window.history.pushState({}, '', nextUrl);
+      else window.history.replaceState({}, '', nextUrl);
+    }
+    routeStateRef.current = { projectId: state.projectId, mode: state.mode, versionId: state.versionId };
+    window.dispatchEvent(new CustomEvent('airchitect:workspace-state', { detail: state }));
+  }, [project.id, state]);
+  useEffect(() => {
+    function onPopState() {
+      const next = parseWorkspaceUrl(window.location.search);
+      const nextMode = next.mode ?? state.mode;
+      routeStateRef.current = { projectId: state.projectId, mode: nextMode, versionId: next.versionId };
+      if (!next.mode) {
+        const canonicalUrl = buildWorkspaceUrl(window.location.pathname, { ...state, mode: nextMode, versionId: next.versionId }, window.location.search, window.location.hash);
+        window.history.replaceState({}, '', canonicalUrl);
+      }
+      if (next.mode && next.mode !== state.mode) dispatch({ type: 'select-mode', mode: next.mode });
+      if (next.versionId !== state.versionId) dispatch({ type: 'select-version', versionId: next.versionId });
+      if (!next.versionId) void loadVersions(null);
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [state.projectId, state.mode, state.versionId]);
   async function request(path: string, init: RequestInit = {}, signal?: AbortSignal) { const response = await fetch(api + path, { ...init, signal, headers: { ...headers, ...init.headers } }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error?.message || data.detail?.error?.message || data.detail || `Request failed (${response.status})`); return data; }
   async function loadVersions(prefer?: string | null, signal?: AbortSignal): Promise<string | null> {
     try {
