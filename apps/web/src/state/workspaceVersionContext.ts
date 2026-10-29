@@ -11,11 +11,11 @@ export type ResolvedVersionContext<T extends VersionIdentity> = {
  * The version list is authoritative for the picker; a matching snapshot is a
  * fallback while that list is refreshing or when it has not loaded yet.
  */
-export function resolveVersionContext<T extends VersionIdentity>(
+export function resolveVersionContext<T extends VersionIdentity, S extends SnapshotWithVersion<T>>(
   selectedVersionId: string | null,
   versions: readonly T[],
-  snapshot: SnapshotWithVersion<T> | null,
-): ResolvedVersionContext<T> {
+  snapshot: S | null,
+): { currentVersion: T | null; currentSnapshot: S | null } {
   if (!selectedVersionId) {
     return { currentVersion: null, currentSnapshot: null };
   }
