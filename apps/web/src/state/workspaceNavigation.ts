@@ -26,6 +26,7 @@ export function buildWorkspaceUrl(
   params.set('project', state.projectId);
   params.set('mode', state.mode);
   if (state.versionId) params.set('version', state.versionId);
+  const query = params.toString();
   return pathname + (query ? '?' + query : '') + currentHash;
 }
 
