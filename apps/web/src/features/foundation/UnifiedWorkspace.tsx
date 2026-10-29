@@ -45,7 +45,10 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
             && typeof value === 'object'
             && typeof (value as Version).id === 'string'
             && typeof (value as Version).label === 'string'
-            && typeof (value as Version).status === 'string')
+            && typeof (value as Version).status === 'string'
+            && typeof (value as Version).version_number === 'number'
+            && typeof (value as Version).revision_number === 'number'
+            && typeof (value as Version).created_at === 'string')
         : [];
       setVersions(nextVersions);
       const requestedId = prefer === undefined ? state.versionId : prefer;
