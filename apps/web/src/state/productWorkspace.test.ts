@@ -96,7 +96,7 @@ describe('product workspace state', () => {
   });
 
   it('ignores malformed persisted JSON', () => {
-    const storage = { getItem: () => '{not-json' } as Storage;
+    const storage = { getItem: () => '{not-json' } as unknown as Storage;
     expect(readPersistedWorkspace('p1', storage)).toBeNull();
   });
 });
