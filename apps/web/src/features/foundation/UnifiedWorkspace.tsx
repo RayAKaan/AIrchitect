@@ -19,6 +19,7 @@ import ConstraintWorkspacePanel from './ConstraintWorkspacePanel';
 import { ADVANCED_STAGES, createWorkspaceState, persistWorkspace, PRODUCT_MODES, readPersistedWorkspace, workspaceReducer, type AdvancedStage, type ProductMode } from '../../state/productWorkspace';
 import { buildWorkspaceUrl, parseWorkspaceUrl } from '../../state/workspaceNavigation';
 import { assertUnreachable, resolveModeView } from '../../state/workspaceModeRouting';
+import { assertUnreachableAdvancedView, resolveAdvancedStageView } from '../../state/workspaceAdvancedRouting';
 import { savePendingOnboarding, takePendingOnboarding } from '../home/projectOnboarding';
 import './UnifiedWorkspace.css';
 
@@ -69,6 +70,31 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
         return assertUnreachable(target);
     }
   }
-  function renderAdvancedStage(stage: AdvancedStage) { const loading = requireSnapshot(); if (loading) return loading; switch (stage) { case 'Brief': return <div className="unified-stack"><S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh}/><RequirementsLifecyclePanel api={api} token={token} projectId={project.id} versionId={currentVersion!.id} revision={currentVersion!.revision_number} onChanged={refresh}/><ConstraintWorkspacePanel projectId={project.id} versionId={currentVersion!.id} requirements={snapshot!.requirements}/>{programWorkspace}{envelopeWorkspace}</div>; case 'World Model': return <WorldModelReview snapshot={snapshot!} />; case 'Semantic Model': return <SemanticEditor api={api} token={token} projectId={project.id} version={currentVersion!} onChanged={refresh} />; case 'Design': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; case 'CAD/BIM Exports': return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />; case 'Engineering': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; case 'Change Impact': return <ChangeImpactPanel api={api} token={token} projectId={project.id} version={currentVersion!} />; case 'Release Validation': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; case 'Regulatory': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; } }
+  function renderAdvancedStage(stage: AdvancedStage) {
+    const loading = requireSnapshot();
+    if (loading) return loading;
+
+    const target = resolveAdvancedStageView(stage);
+    switch (target) {
+      case 'brief':
+        return <div className="unified-stack"><S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh}/><RequirementsLifecyclePanel api={api} token={token} projectId={project.id} versionId={currentVersion!.id} revision={currentVersion!.revision_number} onChanged={refresh}/><ConstraintWorkspacePanel projectId={project.id} versionId={currentVersion!.id} requirements={snapshot!.requirements}/>{programWorkspace}{envelopeWorkspace}</div>;
+      case 'world-model':
+        return <WorldModelReview snapshot={snapshot!} />;
+      case 'semantic-model':
+        return <SemanticEditor api={api} token={token} projectId={project.id} version={currentVersion!} onChanged={refresh} />;
+      case 'design':
+      case 'engineering':
+        return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />;
+      case 'deliver':
+        return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />;
+      case 'change-impact':
+        return <ChangeImpactPanel api={api} token={token} projectId={project.id} version={currentVersion!} />;
+      case 'release-validation':
+      case 'regulatory':
+        return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />;
+      default:
+        return assertUnreachableAdvancedView(target);
+    }
+  }
 }
 function WorldModelReview({ snapshot }: { snapshot: Snapshot }) { const sections = [['Site', snapshot.world_model?.site], ['Building', snapshot.world_model?.building], ['Parking', snapshot.world_model?.parking], ['Structural grid', snapshot.world_model?.structural_grid], ['Levels', snapshot.world_model?.levels]]; return <section className="unified-world-model"><div className="phase-card"><p className="eyebrow">CANONICAL WORLD MODEL</p><h2>{snapshot.version.label}</h2><div className="unified-world-grid">{sections.map(([title, value]) => <article key={title as string}><h3>{title}</h3><pre>{JSON.stringify(value ?? null, null, 2)}</pre></article>)}</div></div><aside className="phase-card"><p className="eyebrow">PROVENANCE</p>{Object.entries(snapshot.world_model?.provenance || {}).map(([key, value]: any) => <div className="unified-provenance" key={key}><b>{key}</b><span>{value.source_type} · {value.confirmed ? 'confirmed' : 'unconfirmed'}</span></div>)}<p className="eyebrow">UNKNOWN VALUES</p>{(snapshot.world_model?.unknowns || []).map((item: string) => <div className="unified-unknown" key={item}>? {item}</div>)}</aside></section>; }
