@@ -88,7 +88,7 @@ describe('product workspace state', () => {
       projectId: 'p1',
       mode: 'Validate',
       advancedStage: 'Regulatory',
-      foundationTab: 'S2',
+      foundationTab: 'Release Validation',
       versionId: 'v4',
       advancedOpen: true,
     });
