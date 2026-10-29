@@ -18,12 +18,14 @@ export function buildWorkspaceUrl(
   currentSearch = '',
   currentHash = '',
 ): string {
-  const params = new URLSearchParams(currentSearch);
+  const existing = new URLSearchParams(currentSearch);
+  const params = new URLSearchParams();
+  existing.forEach((value, key) => {
+    if (key !== 'project' && key !== 'mode' && key !== 'version') params.append(key, value);
+  });
   params.set('project', state.projectId);
   params.set('mode', state.mode);
   if (state.versionId) params.set('version', state.versionId);
-  else params.delete('version');
-  const query = params.toString();
   return pathname + (query ? '?' + query : '') + currentHash;
 }
 
