@@ -51,7 +51,8 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
     const loading = requireSnapshot();
     if (loading) return loading;
 
-    switch (resolveModeView(mode)) {
+    const target = resolveModeView(mode);
+    switch (target) {
       case 'site':
         return <SiteWorkspace api={api} token={token} project={project} />;
       case 'design':
@@ -65,7 +66,7 @@ export default function UnifiedWorkspace({ api, token, project, onClose }: { api
       case 'brief':
         return <div className="unified-stack"><S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh}/><RequirementsLifecyclePanel api={api} token={token} projectId={project.id} versionId={currentVersion!.id} revision={currentVersion!.revision_number} onChanged={refresh}/><ConstraintWorkspacePanel projectId={project.id} versionId={currentVersion!.id} requirements={snapshot!.requirements}/>{programWorkspace}{envelopeWorkspace}</div>;
       default:
-        return assertUnreachable(resolveModeView(mode));
+        return assertUnreachable(target);
     }
   }
   function renderAdvancedStage(stage: AdvancedStage) { const loading = requireSnapshot(); if (loading) return loading; switch (stage) { case 'Brief': return <div className="unified-stack"><S2BriefWorkspace api={api} token={token} projectId={project.id} version={currentVersion!} brief={snapshot!.brief} onRefresh={refresh}/><RequirementsLifecyclePanel api={api} token={token} projectId={project.id} versionId={currentVersion!.id} revision={currentVersion!.revision_number} onChanged={refresh}/><ConstraintWorkspacePanel projectId={project.id} versionId={currentVersion!.id} requirements={snapshot!.requirements}/>{programWorkspace}{envelopeWorkspace}</div>; case 'World Model': return <WorldModelReview snapshot={snapshot!} />; case 'Semantic Model': return <SemanticEditor api={api} token={token} projectId={project.id} version={currentVersion!} onChanged={refresh} />; case 'Design': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; case 'CAD/BIM Exports': return <CadExports api={api} token={token} projectId={project.id} versionId={currentVersion!.id} />; case 'Engineering': return <DesignWorkspace api={api} token={token} projectId={project.id} organizationId={snapshot!.project.organization_id} version={currentVersion!} />; case 'Change Impact': return <ChangeImpactPanel api={api} token={token} projectId={project.id} version={currentVersion!} />; case 'Release Validation': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; case 'Regulatory': return <ReleaseValidation api={api} token={token} projectId={project.id} version={currentVersion!} snapshot={snapshot!} />; } }
