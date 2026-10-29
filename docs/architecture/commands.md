@@ -51,6 +51,8 @@ Command
 
 The repository has versioning, idempotency, audit-oriented records and Phase 27 change-impact infrastructure, plus editing-related domain behavior. A single universal command bus has not yet replaced every mutation path. S3 is responsible for converging those paths without creating a second revision system.
 
+The command registry is broader than the executable mutation adapters. In particular, `MoveBuilding` and `RotateBuilding` have payload contracts but no canonical World Model mutation adapter. The separate `ArchitecturalModel` domain has pure geometric transforms, but those transforms are not yet integrated with the World Model revision/command commit path. Do not expose either transform as executable until this authority boundary is resolved and end-to-end tests prove that canonical revisions, geometry, dependency invalidation, and regeneration remain consistent.
+
 ## Command examples planned
 
 `SetSiteBoundary`, `MoveBuilding`, `RotateBuilding`, `ChangeSetback`, `AddLevel`, `ResizeSpace`, `MoveSpace`, `SetProgramArea`, `LockEntity`, followed by semantic building edits such as `MoveWall`, `ResizeWall`, `MoveDoor`, `MoveWindow`, `ChangeRoof`, `ChangeCore`, `ChangeFacade` and `ChangeGrid`.
