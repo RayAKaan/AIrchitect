@@ -31,6 +31,6 @@ describe('advanced workspace routing', () => {
     expect(resolveAdvancedStageView('Regulatory')).toBe('regulatory');
     expect(resolveAdvancedStageView('Release Validation')).toBe('release-validation');
     const targets = ADVANCED_STAGES.map(resolveAdvancedStageView);
-    expect(new Set<AdvancedViewTarget>(targets).size).toBeLessThan(ADVANCED_STAGES.length);
+    expect(new Set<AdvancedViewTarget>(targets).size).toBe(ADVANCED_STAGES.length);
   });
 });
