@@ -84,7 +84,7 @@ class MassingGeometryEngine:
             dimensions={"width": core_width, "depth": core_depth, "height": float(m["building_height_m"])},
             material_class="preliminary_core", source_reference=source,
             metadata={"preliminary": True, "not_engineering_approved": True})]
-        grid = self._grid(x, y, width, depth, source)
+        grid = self._grid(x, y, width, depth, source, dz)
         dims = [GeometryObject(id="dim-width", type="dimension", parent_id="mass-1", dimensions={"value": width},
                     material_class="annotation", source_reference=source, metadata={"axis":"x","label":f"{width:.2f} m"}),
                 GeometryObject(id="dim-depth", type="dimension", parent_id="mass-1", dimensions={"value": depth},
@@ -99,12 +99,14 @@ class MassingGeometryEngine:
                 "geometry_engine_name":self.name, "geometry_engine_version":self.config.geometry_engine_version,
                 "preliminary":True, "human_review_required":True})
 
-    def _grid(self, x: float, y: float, width: float, depth: float, source: str) -> list[GeometryObject]:
+    def _grid(
+        self, x: float, y: float, width: float, depth: float, source: str, z: float = 0.0
+    ) -> list[GeometryObject]:
         spacing = self.config.preliminary_grid_spacing_m
         x_bays=max(1,round(width/spacing)); y_bays=max(1,round(depth/spacing))
         x_spacing=width/x_bays; y_spacing=depth/y_bays
         return [GeometryObject(id="grid-1", type="structural_grid", parent_id="mass-1",
-            transform=Transform(translation=(x,y,0)), dimensions={"width":width,"depth":depth,
+            transform=Transform(translation=(x, y, z)), dimensions={"width":width,"depth":depth,
                 "x_bays":float(x_bays),"y_bays":float(y_bays),"x_spacing":x_spacing,"y_spacing":y_spacing},
             material_class="preliminary_design_grid", source_reference=f"{source}:engine_default_grid",
             metadata={"preliminary":True,"not_engineering_approved":True})]
