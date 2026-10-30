@@ -318,6 +318,8 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
         site = model.setdefault("site", {})
         if property_name == "city":
             site.setdefault("location", {})["city"] = value
+        elif property_name == "setback_m":
+            model.setdefault("properties", {})["setback_m"] = value
         else:
             key = {"area_m2": "area", "width_m": "width", "depth_m": "depth",
                    "orientation_deg": "orientation"}[property_name]
