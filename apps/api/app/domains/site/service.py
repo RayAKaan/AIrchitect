@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Project, User
+from app.db.models import Project, ProjectVersion, User
 from app.db.site_command_models import SiteCommandLog
 from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevision
 from app.domains.foundation.service import resolve_project_version
@@ -83,7 +83,7 @@ SITE_ARTIFACT_IMPACT_GROUPS = (
 async def invalidate_site_artifacts(
     session: AsyncSession,
     project: Project,
-    version,
+    version: ProjectVersion,
     revision: SiteRevision,
 ) -> tuple[str, ...]:
     """Invalidate project artifacts bound to the superseded site boundary."""
