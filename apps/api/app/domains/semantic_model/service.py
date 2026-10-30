@@ -110,6 +110,7 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         "width_m": _property(site.get("width"), "m"),
         "depth_m": _property(site.get("depth"), "m"),
         "orientation_deg": _property(site.get("orientation"), "degree"),
+        "setback_m": _property((world_model.get("properties") or {}).get("setback_m"), "m"),
         "city": _property((site.get("location") or {}).get("city"), data_type="string"),
         "country": _property((site.get("location") or {}).get("country"), data_type="string"),
     }, ["site_area", "city"])
