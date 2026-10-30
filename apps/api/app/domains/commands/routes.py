@@ -12,7 +12,8 @@ from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
 
-from .artifact_lifecycle import invalidate_and_enqueue
+from .artifact_lifecycle import invalidate_and_enqueue as _shared_invalidate_and_enqueue
+from .artifact_invalidation import ArtifactInvalidationService
 from .executor import execute_semantic_command
 from .plan_execution import execute_plan
 from .impact import impact_for
@@ -28,6 +29,30 @@ from .schemas import CommandEnvelope, CommandPreview, CommandResult
 from .target_resolution import resolve_target
 
 router = APIRouter(tags=["commands"])
+
+
+async def _invalidate_and_enqueue(
+    session: AsyncSession,
+    *,
+    project: Any,
+    version: Any,
+    source_revision_hash: str,
+    groups: list[str] | tuple[str, ...],
+) -> tuple[str, ...]:
+    """Keep the route-level dependency seam while sharing the lifecycle implementation."""
+    return await _shared_invalidate_and_enqueue(
+        session,
+        project=project,
+        version=version,
+        source_revision_hash=source_revision_hash,
+        groups=groups,
+        invalidation_service=ArtifactInvalidationService(),
+        state_repository_factory=RegenerationStateRepository,
+        queue_factory=RegenerationQueue,
+        handler_registry=RegenerationHandlerRegistry(),
+        select_fn=select,
+    )
+
 
 
 class IntentPreviewRequest(BaseModel):
@@ -225,7 +250,7 @@ async def commit_plan(
         event=persist_event,
         commit=False,
     )
-    invalidated_artifact_ids = await invalidate_and_enqueue(
+    invalidated_artifact_ids = await _invalidate_and_enqueue(
         session,
         project=project,
         version=version,
@@ -279,7 +304,7 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
         commit=False,
     )
     groups = impact_for(body)
-    await invalidate_and_enqueue(
+    await _invalidate_and_enqueue(
         session, project=project, version=version, source_revision_hash=world.model_hash, groups=groups
     )
     await session.commit()
