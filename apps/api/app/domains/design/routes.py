@@ -137,16 +137,47 @@ async def design_comparison(project_id:str,version_ref:str,user:User=Depends(cur
 async def select_alternative(project_id:str,version_ref:str,alternative_id:str,body:AlternativeSelection,
     user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
     project,version,world,alt=await load_alt(session,project_id,version_ref,alternative_id,user,write=True)
-    if alt.input_world_model_hash!=(world.model_hash or "") or alt.status=="STALE":
-        raise error(409,"STALE_ARTIFACT","A stale alternative cannot be selected; regenerate from the current World Model")
+    current_lineage = await current_design_input_lineage(session, version.id)
+    if alternative_is_stale(alt, world.model_hash or "", current_lineage) or alt.status == "STALE":
+        raise error(
+            409,
+            "STALE_ARTIFACT",
+            "A stale alternative cannot be selected; regenerate from the current World Model, program and envelope",
+            current_world_model_hash=world.model_hash,
+            current_input_lineage=current_lineage,
+            alternative_input_lineage=(alt.provenance_json or {}).get("input_lineage", {}),
+        )
     if alt.status not in {"VALID","SELECTED"}:raise error(409,"ALTERNATIVE_NOT_SELECTABLE","Only valid alternatives can be selected",alternative_status=alt.status)
     rows=list((await session.scalars(select(DesignAlternative).where(DesignAlternative.project_version_id==version.id).with_for_update())).all())
     for row in rows:
         if row.id!=alt.id and row.status=="SELECTED":
             row.status="VALID";row.selected_by=None;row.selected_at=None;row.selection_reason=None
-    alt.status="SELECTED";alt.selected_by=user.id;alt.selected_at=datetime.now(timezone.utc);alt.selection_reason=body.reason
-    await audit(session,project=project,version=version,actor=user.id,action="ALTERNATIVE_SELECTED",
-        entity="design_alternative",entity_id=alt.id,metadata={"reason":body.reason,"design_hash":alt.design_hash})
+    alt.status = "SELECTED"
+    alt.selected_by = user.id
+    alt.selected_at = datetime.now(timezone.utc)
+    alt.selection_reason = body.reason
+    alt.provenance_json = {
+        **(alt.provenance_json or {}),
+        "selection_input_lineage": current_lineage,
+    }
+    await audit(
+        session, project=project, version=version, actor=user.id, action="ALTERNATIVE_SELECTED",
+        entity="design_alternative", entity_id=alt.id,
+        metadata={
+            "reason": body.reason,
+            "design_hash": alt.design_hash,
+            "world_model_hash": world.model_hash,
+            "input_lineage": current_lineage,
+        },
+    )
     await session.commit()
-    return {"alternative_id":alt.id,"status":alt.status,"selected_by":alt.selected_by,"selected_at":alt.selected_at,
-        "selection_reason":alt.selection_reason,"notice":"Selection records a human design direction; it is not approval or certification."}
+    return {
+        "alternative_id": alt.id,
+        "status": alt.status,
+        "selected_by": alt.selected_by,
+        "selected_at": alt.selected_at,
+        "selection_reason": alt.selection_reason,
+        "world_model_hash": world.model_hash,
+        "input_lineage": current_lineage,
+        "notice": "Selection records a human design direction; it is not approval or certification.",
+    }
