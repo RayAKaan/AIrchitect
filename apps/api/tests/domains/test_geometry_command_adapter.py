@@ -212,3 +212,113 @@ def test_massing_geometry_rotates_mass_floor_plates_cores_and_grid_together():
     assert geometry.cores[0].transform.rotation_degrees == (0.0, 0.0, 90.0)
     assert geometry.structural_grids[0].transform.rotation_degrees == (0.0, 0.0, 90.0)
     assert GeometryValidator(DEFAULT_CONFIG).validate(geometry, candidate).valid
+
+
+def program_area_command(space_type, area_m2):
+    return CommandEnvelope(
+        command_id="set-program-area-1",
+        type="SetProgramArea",
+        schema_version=1,
+        project_id="move-building-project",
+        version_id="move-building-version",
+        base_revision_hash="world-hash-1",
+        idempotency_key="set-program-area-key-1",
+        mode="commit",
+        reason="Set a reviewed target area for this program space",
+        payload={"space_type": space_type, "area_m2": area_m2},
+    )
+
+
+def test_set_program_area_persists_program_intent_without_mutating_physical_spaces():
+    model = world_fixture()
+    state = model["designer_state"]
+    before_spaces = list(model["spaces"])
+    command = program_area_command("open_work", 120.0)
+
+    preview = preview_command(command.model_copy(update={"mode": "preview"}))
+    assert preview.accepted is True
+    assert preview.executable is True
+
+    result = execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
+
+    assert result.status == "committed"
+    assert model["properties"]["program_area_targets"] == {"open_work": 120.0}
+    assert model["spaces"] == before_spaces
+
+    undo(model, state, "actor-1")
+    assert "program_area_targets" not in model["properties"]
+    redo(model, state, "actor-1")
+    assert model["properties"]["program_area_targets"] == {"open_work": 120.0}
+
+
+def test_program_builder_applies_explicit_targets_and_distributes_remaining_gfa():
+    from types import SimpleNamespace
+
+    from app.domains.program.service import build_program
+
+    requirements = [
+        SimpleNamespace(id="requirement-use", parameter="building_use", status="CONFIRMED",
+                        normalized_value_json="office"),
+        SimpleNamespace(id="requirement-gfa", parameter="target_gfa", status="CONFIRMED",
+                        normalized_value_json=1000.0),
+    ]
+    world = SimpleNamespace(
+        model_json={"properties": {"program_area_targets": {"open_work": 500.0}}},
+        model_hash="world-hash",
+    )
+
+    program = build_program(requirements, world)
+    spaces = {space["space_type"]: space for space in program["spaces"]}
+
+    assert spaces["open_work"]["target_area_m2"] == 500.0
+    assert spaces["open_work"]["source"] == "human_review_program_target"
+    assert sum(space["target_area_m2"] for space in spaces.values()) == 1000.0
+    assert program["provenance"]["program_area_targets"] == {"open_work": 500.0}
+
+
+def test_program_builder_rejects_targets_outside_current_building_use_catalog():
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.domains.program.service import build_program
+
+    requirements = [
+        SimpleNamespace(id="requirement-use", parameter="building_use", status="CONFIRMED",
+                        normalized_value_json="office"),
+        SimpleNamespace(id="requirement-gfa", parameter="target_gfa", status="CONFIRMED",
+                        normalized_value_json=1000.0),
+    ]
+    world = SimpleNamespace(
+        model_json={"properties": {"program_area_targets": {"sales_floor": 200.0}}},
+        model_hash="world-hash",
+    )
+
+    with pytest.raises(HTTPException) as raised:
+        build_program(requirements, world)
+    assert raised.value.status_code == 409
+    assert raised.value.detail["error"]["code"] == "PROGRAM_SPACE_TYPE_NOT_IN_CURRENT_PROGRAM"
+
+
+def test_program_builder_rejects_explicit_targets_that_exceed_target_gfa():
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.domains.program.service import build_program
+
+    requirements = [
+        SimpleNamespace(id="requirement-use", parameter="building_use", status="CONFIRMED",
+                        normalized_value_json="office"),
+        SimpleNamespace(id="requirement-gfa", parameter="target_gfa", status="CONFIRMED",
+                        normalized_value_json=1000.0),
+    ]
+    world = SimpleNamespace(
+        model_json={"properties": {"program_area_targets": {"open_work": 800.0, "meeting": 300.0}}},
+        model_hash="world-hash",
+    )
+
+    with pytest.raises(HTTPException) as raised:
+        build_program(requirements, world)
+    assert raised.value.status_code == 409
+    assert raised.value.detail["error"]["code"] == "PROGRAM_AREA_TARGETS_EXCEED_GFA"
