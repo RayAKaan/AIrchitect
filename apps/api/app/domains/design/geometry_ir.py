@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 from app.domains.design.config import DesignEngineConfig
@@ -54,7 +55,15 @@ class MassingGeometryEngine:
         p, m = candidate.parameters, candidate.metrics
         width, depth = float(p["footprint_width_m"]), float(p["footprint_depth_m"])
         floors, floor_height = int(p["floor_count"]), float(p["floor_to_floor_height_m"])
-        x, y = (site_width - width) / 2, (site_depth - depth) / 2
+        translation = p.get("translation_m") or {"x": 0.0, "y": 0.0, "z": 0.0}
+        dx, dy, dz = (float(translation.get(axis, 0.0)) for axis in ("x", "y", "z"))
+        rotation_degrees = float(p.get("orientation_degrees") or 0) + float(p.get("rotation_deg") or 0)
+        angle = math.radians(rotation_degrees)
+        cosine, sine = math.cos(angle), math.sin(angle)
+        center_x = (site_width - width) / 2 + dx + width / 2
+        center_y = (site_depth - depth) / 2 + dy + depth / 2
+        x = center_x - cosine * width / 2 + sine * depth / 2
+        y = center_y - sine * width / 2 - cosine * depth / 2
         source = f"design_alternative:{alternative_ref}"
         site = GeometryObject(id="site", type="site_boundary", dimensions={"width": site_width, "depth": site_depth, "area": site_width * site_depth},
             material_class="site", source_reference="resolved_design_context",
@@ -67,22 +76,32 @@ class MassingGeometryEngine:
                 dimensions={"width": site_width - 2*setback, "depth": site_depth - 2*setback},
                 material_class="constraint", source_reference="design_constraint:setback"))
         mass = GeometryObject(id="mass-1", type="building_mass", parent_id="site",
-            transform=Transform(translation=(x, y, 0), rotation_degrees=(0, 0, float(p.get("orientation_degrees") or 0))),
+            transform=Transform(translation=(x, y, dz), rotation_degrees=(0, 0, rotation_degrees)),
             dimensions={"width": width, "depth": depth, "height": float(m["building_height_m"])},
             material_class="conceptual_mass", source_reference=source,
             metadata={"preliminary": True, "not_for_construction": True})
         plates = [GeometryObject(id=f"floor-{level}", type="floor_plate", parent_id="mass-1",
-            transform=Transform(translation=(x, y, (level-1)*floor_height)),
+            transform=Transform(
+                translation=(x, y, dz + (level-1)*floor_height),
+                rotation_degrees=(0, 0, rotation_degrees),
+            ),
             dimensions={"width": width, "depth": depth, "thickness": .25, "elevation": (level-1)*floor_height,
                         "area": width*depth}, material_class="floor_plate", source_reference=source,
             metadata={"level_number": level}) for level in range(1, floors+1)]
         core_ratio = float(p["core_ratio"]); core_width = width * core_ratio ** .5; core_depth = depth * core_ratio ** .5
+        core_local_x = (width - core_width) / 2
+        core_local_y = (depth - core_depth) / 2
+        core_x = x + cosine * core_local_x - sine * core_local_y
+        core_y = y + sine * core_local_x + cosine * core_local_y
         cores = [GeometryObject(id="core-1", type="core", parent_id="mass-1",
-            transform=Transform(translation=(x+(width-core_width)/2, y+(depth-core_depth)/2, 0)),
+            transform=Transform(
+                translation=(core_x, core_y, dz),
+                rotation_degrees=(0, 0, rotation_degrees),
+            ),
             dimensions={"width": core_width, "depth": core_depth, "height": float(m["building_height_m"])},
             material_class="preliminary_core", source_reference=source,
             metadata={"preliminary": True, "not_engineering_approved": True})]
-        grid = self._grid(x, y, width, depth, source)
+        grid = self._grid(x, y, width, depth, source, dz, rotation_degrees)
         dims = [GeometryObject(id="dim-width", type="dimension", parent_id="mass-1", dimensions={"value": width},
                     material_class="annotation", source_reference=source, metadata={"axis":"x","label":f"{width:.2f} m"}),
                 GeometryObject(id="dim-depth", type="dimension", parent_id="mass-1", dimensions={"value": depth},
@@ -93,16 +112,19 @@ class MassingGeometryEngine:
             structural_grids=grid, dimensions=dims,
             parking={"capacity": m.get("parking_count"), "geometry_status": "NOT_GENERATED",
                 "note": "Capacity metric only; no parking layout is claimed."},
-            orientation_degrees=p.get("orientation_degrees"), metadata={"alternative_reference":alternative_ref,
+            orientation_degrees=rotation_degrees, metadata={"alternative_reference":alternative_ref,
                 "geometry_engine_name":self.name, "geometry_engine_version":self.config.geometry_engine_version,
                 "preliminary":True, "human_review_required":True})
 
-    def _grid(self, x: float, y: float, width: float, depth: float, source: str) -> list[GeometryObject]:
+    def _grid(
+        self, x: float, y: float, width: float, depth: float, source: str,
+        z: float = 0.0, rotation_degrees: float = 0.0,
+    ) -> list[GeometryObject]:
         spacing = self.config.preliminary_grid_spacing_m
         x_bays=max(1,round(width/spacing)); y_bays=max(1,round(depth/spacing))
         x_spacing=width/x_bays; y_spacing=depth/y_bays
         return [GeometryObject(id="grid-1", type="structural_grid", parent_id="mass-1",
-            transform=Transform(translation=(x,y,0)), dimensions={"width":width,"depth":depth,
+            transform=Transform(translation=(x, y, z), rotation_degrees=(0, 0, rotation_degrees)), dimensions={"width":width,"depth":depth,
                 "x_bays":float(x_bays),"y_bays":float(y_bays),"x_spacing":x_spacing,"y_spacing":y_spacing},
             material_class="preliminary_design_grid", source_reference=f"{source}:engine_default_grid",
             metadata={"preliminary":True,"not_engineering_approved":True})]
@@ -119,9 +141,22 @@ class GeometryValidator:
         site=geometry.site.dimensions; mass=geometry.masses[0]; dims=mass.dimensions; p=candidate.parameters; metrics=candidate.metrics
         positive=all(float(v)>0 for v in (site["width"],site["depth"],dims["width"],dims["depth"],dims["height"]))
         check("positive_dimensions",positive,dims,"> 0")
-        tx,ty,_=mass.transform.translation
-        inside=tx>=-1e-6 and ty>=-1e-6 and tx+dims["width"]<=site["width"]+1e-6 and ty+dims["depth"]<=site["depth"]+1e-6
-        check("building_inside_site",inside,{"x":tx,"y":ty,"width":dims["width"],"depth":dims["depth"]},site)
+        tx, ty, _ = mass.transform.translation
+        angle = math.radians(mass.transform.rotation_degrees[2])
+        cosine, sine = math.cos(angle), math.sin(angle)
+        center_x = tx + cosine * dims["width"] / 2 - sine * dims["depth"] / 2
+        center_y = ty + sine * dims["width"] / 2 + cosine * dims["depth"] / 2
+        half_x = abs(cosine) * dims["width"] / 2 + abs(sine) * dims["depth"] / 2
+        half_y = abs(sine) * dims["width"] / 2 + abs(cosine) * dims["depth"] / 2
+        inside = (
+            center_x - half_x >= -1e-6 and center_y - half_y >= -1e-6
+            and center_x + half_x <= site["width"] + 1e-6
+            and center_y + half_y <= site["depth"] + 1e-6
+        )
+        check("building_inside_site", inside, {
+            "center_x": center_x, "center_y": center_y, "half_width": half_x, "half_depth": half_y,
+            "rotation_degrees": mass.transform.rotation_degrees[2],
+        }, site)
         check("floor_count_consistent",len(geometry.floor_plates)==int(p["floor_count"]),len(geometry.floor_plates),p["floor_count"])
         gfa=sum(float(f.dimensions["area"]) for f in geometry.floor_plates)
         check("gfa_consistent",abs(gfa-float(metrics["gross_floor_area_m2"]))<1e-4,gfa,metrics["gross_floor_area_m2"])
@@ -133,8 +168,17 @@ class GeometryValidator:
         check("height_consistent",abs(float(dims["height"])-expected_height)<1e-6,dims["height"],expected_height)
         objects=1+len(geometry.setbacks)+len(geometry.masses)+len(geometry.floor_plates)+len(geometry.cores)+len(geometry.structural_grids)+len(geometry.dimensions)
         check("object_limit",objects<=self.config.max_scene_objects,objects,self.config.max_scene_objects)
-        max_coord=max(float(site["width"]),float(site["depth"]),float(dims["height"]))
-        check("coordinate_limit",max_coord<=self.config.max_coordinate_m,max_coord,self.config.max_coordinate_m)
+        objects = [
+            geometry.site, *geometry.setbacks, *geometry.masses, *geometry.floor_plates,
+            *geometry.cores, *geometry.structural_grids, *geometry.dimensions,
+        ]
+        coordinates = [
+            abs(float(value))
+            for item in objects
+            for value in item.transform.translation
+        ]
+        max_coord = max(float(site["width"]), float(site["depth"]), float(dims["height"]), *coordinates)
+        check("coordinate_limit", max_coord <= self.config.max_coordinate_m, max_coord, self.config.max_coordinate_m)
         refs=all(obj.source_reference for group in [geometry.masses,geometry.floor_plates,geometry.cores,geometry.structural_grids] for obj in group)
         check("source_references_present",refs,refs,True)
         return GeometryValidationResult(valid=not errors,checks=checks,errors=errors)

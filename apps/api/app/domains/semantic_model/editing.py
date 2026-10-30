@@ -33,6 +33,8 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "coverage_ratio": {"kind": "number", "unit": None, "minimum": 0, "maximum": 1},
         "footprint_width_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
         "footprint_depth_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
+        "translation_m": {"kind": "vector3", "unit": "m"},
+        "rotation_deg": {"kind": "number", "unit": "degree"},
     },
     "Storey": {
         "elevation_m": {"kind": "number", "unit": "m", "minimum": -1_000, "maximum": 10_000},
@@ -79,7 +81,7 @@ CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window"}
 GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
-    "footprint_width_m", "footprint_depth_m", "elevation_m", "level_number",
+    "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "elevation_m", "level_number",
     "length_m", "thickness_m", "spaces",
 }
 
@@ -120,7 +122,16 @@ def _normalise(element_type: str, property_name: str, value: Any) -> tuple[Any, 
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic property is not editable", element_type=element_type,
                     property=property_name, allowed=sorted(PROPERTY_SPECS.get(element_type, {})))
     kind = spec["kind"]
-    if kind == "string":
+    if kind == "vector3":
+        if not isinstance(value, dict) or set(value) != {"x", "y", "z"}:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Value must contain finite x, y and z coordinates", property=property_name)
+        normalised = {}
+        for axis in ("x", "y", "z"):
+            coordinate = value[axis]
+            if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)) or not math.isfinite(float(coordinate)):
+                raise error(422, "INVALID_PROPERTY_VALUE", "Vector coordinates must be finite numbers", property=property_name, axis=axis)
+            normalised[axis] = float(coordinate)
+    elif kind == "string":
         if not isinstance(value, str) or not value.strip() or len(value.strip()) > 500:
             raise error(422, "INVALID_PROPERTY_VALUE", "Value must be a non-empty string of at most 500 characters",
                         property=property_name)
@@ -328,6 +339,10 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
                     element_ids=hosted_components, space_ids=canonical_spaces, requested_floor_count=count)
         if property_name in {"footprint_width_m", "footprint_depth_m"}:
             model.setdefault("properties", {})[property_name] = value
+        elif property_name == "translation_m":
+            model.setdefault("properties", {})["building_translation_m"] = value
+        elif property_name == "rotation_deg":
+            model.setdefault("properties", {})["building_rotation_deg"] = value
         else:
             key, quantity_unit = mapping[property_name]
             building[key] = _quantity(value, quantity_unit) if quantity_unit else value
@@ -565,6 +580,10 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
         return
     if element_type == "Building" and property_name in {"footprint_width_m", "footprint_depth_m"}:
         model.setdefault("properties", {}).pop(property_name, None)
+    elif element_type == "Building" and property_name == "translation_m":
+        model.setdefault("properties", {}).pop("building_translation_m", None)
+    elif element_type == "Building" and property_name == "rotation_deg":
+        model.setdefault("properties", {}).pop("building_rotation_deg", None)
     elif element_type == "Site":
         if property_name == "city":
             model.setdefault("site", {}).setdefault("location", {}).pop("city", None)
@@ -644,7 +663,7 @@ def edit_property(model: dict[str, Any], state: dict[str, Any], element_id: str,
     _assert_element_editable(model, state, element)
     new_value, unit, kind = _normalise(element["element_type"], property_name, value)
     current = element.get("properties", {}).get(property_name)
-    before = current.get("value") if isinstance(current, dict) else None
+    before = current.get("value") if isinstance(current, dict) and "value" in current else current
     override_key = f"{element_id}:{property_name}"
     before_override = copy.deepcopy(state.get("overrides", {}).get(override_key))
     if before == new_value:
