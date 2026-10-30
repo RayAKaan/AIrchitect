@@ -137,8 +137,17 @@ class GeometryValidator:
         check("height_consistent",abs(float(dims["height"])-expected_height)<1e-6,dims["height"],expected_height)
         objects=1+len(geometry.setbacks)+len(geometry.masses)+len(geometry.floor_plates)+len(geometry.cores)+len(geometry.structural_grids)+len(geometry.dimensions)
         check("object_limit",objects<=self.config.max_scene_objects,objects,self.config.max_scene_objects)
-        max_coord=max(float(site["width"]),float(site["depth"]),float(dims["height"]))
-        check("coordinate_limit",max_coord<=self.config.max_coordinate_m,max_coord,self.config.max_coordinate_m)
+        objects = [
+            geometry.site, *geometry.setbacks, *geometry.masses, *geometry.floor_plates,
+            *geometry.cores, *geometry.structural_grids, *geometry.dimensions,
+        ]
+        coordinates = [
+            abs(float(value))
+            for item in objects
+            for value in item.transform.translation
+        ]
+        max_coord = max(float(site["width"]), float(site["depth"]), float(dims["height"]), *coordinates)
+        check("coordinate_limit", max_coord <= self.config.max_coordinate_m, max_coord, self.config.max_coordinate_m)
         refs=all(obj.source_reference for group in [geometry.masses,geometry.floor_plates,geometry.cores,geometry.structural_grids] for obj in group)
         check("source_references_present",refs,refs,True)
         return GeometryValidationResult(valid=not errors,checks=checks,errors=errors)
