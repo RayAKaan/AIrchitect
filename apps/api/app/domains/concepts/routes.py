@@ -6,6 +6,7 @@ from app.db.site_models import SiteRevision
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.engine import ENGINE, DesignGenerationError
+from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
 from app.domains.foundation.service import error, resolve_project_version, resolve_world_model
 
 router = APIRouter(tags=["concepts"])
@@ -64,7 +65,17 @@ async def list_concepts(project_id: str, version_ref: str, user: User = Depends(
     world = await resolve_world_model(session, version.id)
     rows = list((await session.scalars(select(DesignAlternative).where(DesignAlternative.project_version_id == version.id)
         .order_by(DesignAlternative.created_at.desc()))).all())
-    return {"world_model_hash":world.model_hash,"alternatives":[{"id":r.id,"name":r.name,"strategy_id":r.strategy_id,
-        "status":r.status,"metrics":r.key_metrics_json,"constraints":r.constraint_results_json,"tradeoffs":r.tradeoffs_json,
-        "assumptions":r.assumptions_json,"unknowns":r.unknowns_json,"reasoning":r.reasoning_json,"design_hash":r.design_hash,
-        "provenance":r.provenance_json} for r in rows]}
+    lineage = await current_design_input_lineage(session, version.id)
+    alternatives = []
+    for row in rows:
+        status = row.status
+        if status in {"VALID", "SELECTED"} and alternative_is_stale(row, world.model_hash or "", lineage):
+            status = "STALE"
+        alternatives.append({
+            "id": row.id, "name": row.name, "strategy_id": row.strategy_id, "status": status,
+            "metrics": row.key_metrics_json, "constraints": row.constraint_results_json,
+            "tradeoffs": row.tradeoffs_json, "assumptions": row.assumptions_json,
+            "unknowns": row.unknowns_json, "reasoning": row.reasoning_json,
+            "design_hash": row.design_hash, "provenance": row.provenance_json,
+        })
+    return {"world_model_hash": world.model_hash, "input_lineage": lineage, "alternatives": alternatives}

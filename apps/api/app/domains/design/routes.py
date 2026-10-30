@@ -10,14 +10,21 @@ from app.db.models import DesignAlternative, DesignGenerationRun, GeometryArtifa
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.engine import ENGINE, DesignGenerationError
+from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
 from app.domains.foundation.service import audit, error, resolve_project_version, resolve_world_model
 from .schemas import AlternativeSelection
 
 router=APIRouter(tags=["computational-design"])
 
 
-def alternative_out(row:DesignAlternative,geometry:GeometryArtifact|None,current_hash:str)->dict[str,Any]:
-    status="STALE" if row.input_world_model_hash!=current_hash and row.status in {"VALID","SELECTED"} else row.status
+def alternative_out(
+    row: DesignAlternative,
+    geometry: GeometryArtifact | None,
+    current_hash: str,
+    current_lineage: dict[str, str | None] | None = None,
+) -> dict[str, Any]:
+    lineage = current_lineage or {}
+    status = "STALE" if alternative_is_stale(row, current_hash, lineage) and row.status in {"VALID", "SELECTED"} else row.status
     return {"id":row.id,"project_id":row.project_id,"project_version_id":row.project_version_id,
         "world_model_revision_id":row.world_model_revision_id,"generation_run_id":row.generation_run_id,
         "name":row.name,"description":row.description,"strategy_id":row.strategy_id,"strategy_version":row.strategy_version,
@@ -76,8 +83,12 @@ async def list_alternatives(project_id:str,version_ref:str,user:User=Depends(cur
     by_alt={}
     for geometry_row in geometries:
         by_alt.setdefault(geometry_row.alternative_id,geometry_row)
-    return {"project_version_id":version.id,"world_model_hash":world.model_hash,
-        "alternatives":[alternative_out(row,by_alt.get(row.id),world.model_hash or "") for row in rows]}
+    lineage = await current_design_input_lineage(session, version.id)
+    return {"project_version_id": version.id, "world_model_hash": world.model_hash,
+        "input_lineage": lineage,
+        "alternatives": [
+            alternative_out(row, by_alt.get(row.id), world.model_hash or "", lineage) for row in rows
+        ]}
 
 
 @router.get("/projects/{project_id}/versions/{version_ref}/design/alternatives/{alternative_id}")
@@ -105,10 +116,21 @@ async def get_geometry(project_id:str,version_ref:str,alternative_id:str,user:Us
 @router.get("/projects/{project_id}/versions/{version_ref}/design/comparison")
 async def design_comparison(project_id:str,version_ref:str,user:User=Depends(current_user),session:AsyncSession=Depends(get_session)):
     payload=await list_alternatives(project_id,version_ref,user,session)
-    return {"project_version_id":payload["project_version_id"],"world_model_hash":payload["world_model_hash"],
-        "comparison_dimensions":["strategy_id","gross_floor_area_m2","building_footprint_m2","site_coverage_ratio",
-            "floor_count","building_height_m","open_site_area_m2","parking_count"],
-        "alternatives":payload["alternatives"],"notice":"No single optimal design is claimed; compare explicit trade-offs."}
+    current_alternatives = [
+        row for row in payload["alternatives"] if row["status"] in {"VALID", "SELECTED"}
+    ]
+    return {
+        "project_version_id": payload["project_version_id"],
+        "world_model_hash": payload["world_model_hash"],
+        "input_lineage": payload["input_lineage"],
+        "comparison_dimensions": [
+            "strategy_id", "gross_floor_area_m2", "building_footprint_m2", "site_coverage_ratio",
+            "floor_count", "building_height_m", "open_site_area_m2", "parking_count",
+        ],
+        "alternatives": payload["alternatives"],
+        "comparable": len(current_alternatives) > 1,
+        "notice": "Only alternatives with current matching source lineage are comparable. No single optimal design is claimed.",
+    }
 
 
 @router.post("/projects/{project_id}/versions/{version_ref}/design/alternatives/{alternative_id}/select")
