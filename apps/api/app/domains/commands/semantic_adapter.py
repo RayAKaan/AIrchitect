@@ -6,17 +6,20 @@ from app.domains.semantic_model.editing import edit_property, redo, set_lock, un
 
 from .schemas import CommandEnvelope
 
-SUPPORTED = {"MoveBuilding": "translation_m", "RotateBuilding": "rotation_deg", "ResizeSpace": "area_m2"}
-EXECUTABLE_COMMAND_TYPES = frozenset({"ResizeSpace", "LockEntity", "Undo", "Redo"})
+# This adapter owns only commands that map to editable semantic properties.
+# Geometric transforms must be implemented by their canonical geometry/domain
+# command path; they must never be routed through this property adapter.
+SUPPORTED = {"ResizeSpace": "area_m2"}
+EXECUTABLE_CONTROL_COMMAND_TYPES = frozenset({"LockEntity", "Undo", "Redo"})
 
 
 def supports_semantic_command(command_type: str) -> bool:
-    """Return whether the command currently has a canonical mutation adapter."""
-    return command_type in EXECUTABLE_COMMAND_TYPES
+    """Return whether the semantic command adapter owns this command."""
+    return command_type in SUPPORTED or command_type in EXECUTABLE_CONTROL_COMMAND_TYPES
 
 
 def semantic_edit_from_command(command: CommandEnvelope) -> tuple[str, str, Any]:
-    """Translate a small, explicit command subset into the existing semantic mutation primitive."""
+    """Translate a supported property command into the semantic edit primitive."""
     if command.type not in SUPPORTED:
         raise ValueError(f"command is not handled by semantic adapter: {command.type}")
     element_id = command.payload.get("element_id")
