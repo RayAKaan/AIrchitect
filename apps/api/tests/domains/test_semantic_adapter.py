@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from app.domains.commands.executor import execute_semantic_command
 from app.domains.commands.schemas import CommandEnvelope
+from app.domains.commands.semantic_adapter import semantic_edit_from_command, supports_semantic_command
 from app.domains.semantic_model.editing import initial_designer_state
 from app.domains.semantic_model.service import compile_semantic_model
 
@@ -35,7 +38,6 @@ def test_lock_entity_updates_canonical_designer_state() -> None:
     assert state["locks"]["space-1"]["locked"] is True
     assert state["locks"]["space-1"]["reason"] == "protect reviewed space"
     assert model["designer_state"] is state
-
 
 
 def test_redo_reapplies_the_last_undone_canonical_edit() -> None:
@@ -111,3 +113,32 @@ def test_redo_reapplies_the_last_undone_canonical_edit() -> None:
     assert state["redo_stack"] == []
     assert state["undo_stack"]
     assert model["designer_state"] is state
+
+
+@pytest.mark.parametrize(
+    ("command_type", "payload"),
+    [
+        ("MoveBuilding", {"element_id": "building-1", "translation_m": {"x": 1, "y": 0, "z": 0}}),
+        ("RotateBuilding", {"element_id": "building-1", "angle_deg": 15}),
+        ("MoveSpace", {"element_id": "space-1", "translation_m": {"x": 1, "y": 0, "z": 0}}),
+    ],
+)
+def test_geometric_commands_are_not_claimed_by_semantic_property_adapter(
+    command_type: str, payload: dict[str, object],
+) -> None:
+    command = CommandEnvelope(
+        command_id=f"command-{command_type}",
+        type=command_type,
+        schema_version=1,
+        project_id="project-1",
+        version_id="version-1",
+        base_revision_hash="revision-hash",
+        idempotency_key=f"idempotency-{command_type}-1",
+        mode="commit",
+        reason="test command adapter boundary",
+        payload=payload,
+    )
+
+    assert supports_semantic_command(command_type) is False
+    with pytest.raises(ValueError, match="not handled by semantic adapter"):
+        semantic_edit_from_command(command)
