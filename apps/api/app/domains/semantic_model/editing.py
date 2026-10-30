@@ -22,6 +22,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "width_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
         "depth_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
         "orientation_deg": {"kind": "number", "unit": "degree", "minimum": 0, "maximum": 360},
+        "setback_m": {"kind": "number", "unit": "m", "minimum": 0, "maximum": 100_000},
         "city": {"kind": "string", "unit": None},
     },
     "Building": {
@@ -82,7 +83,7 @@ CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window"}
 GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
-    "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "elevation_m", "level_number",
+    "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "setback_m", "elevation_m", "level_number",
     "length_m", "thickness_m", "spaces",
 }
 
@@ -401,9 +402,20 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
     else:
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic element cannot be edited", element_type=element_type)
 
-    model.setdefault("provenance", {})[f"designer:{element['id']}:{property_name}"] = {
-        "source_type": "HUMAN_REVIEW", "source_id": element["id"], "confirmed": True,
+    provenance = {
+        "source_type": "HUMAN_REVIEW",
+        "source_id": element["id"],
+        "confirmed": True,
     }
+    if element_type == "Site" and property_name == "setback_m":
+        provenance = {
+            "source_type": "USER_DESIGN_PARAMETER",
+            "source_id": element["id"],
+            "confirmed": False,
+            "status": "DESIGN_PARAMETER",
+            "authority": "NONE",
+        }
+    model.setdefault("provenance", {})[f"designer:{element['id']}:{property_name}"] = provenance
     if element_type == "Building" and property_name in {"floor_count", "floor_to_floor_height_m", "height_m"}:
         building = model.get("building") or {}
         floors = building.get("floor_count")
@@ -602,6 +614,8 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
     elif element_type == "Site":
         if property_name == "city":
             model.setdefault("site", {}).setdefault("location", {}).pop("city", None)
+        elif property_name == "setback_m":
+            model.setdefault("properties", {}).pop("setback_m", None)
         else:
             key = {"area_m2": "area", "width_m": "width", "depth_m": "depth", "orientation_deg": "orientation"}[property_name]
             model.setdefault("site", {})[key] = None
@@ -786,6 +800,8 @@ def _assert_element_editable(model: dict[str, Any], state: dict[str, Any], eleme
                     element_id=element["id"], locked_ancestor_id=locked_ancestor, reason=lock.get("reason"))
 
 def impact_groups(element_type: str, property_name: str) -> list[str]:
+    if property_name == "setback_m":
+        return ["planning_envelope", "design_alternatives", "parametric_geometry_intents", "validation"]
     if property_name in {"city", "orientation_deg", "coverage_ratio"}:
         return ["feasibility", "regulatory_review", "design_alternatives", "validation"]
     if property_name in {"use"}:
