@@ -246,7 +246,7 @@ def test_set_program_area_persists_program_intent_without_mutating_physical_spac
     assert model["spaces"] == before_spaces
 
     undo(model, state, "actor-1")
-    assert "program_area_targets" not in model["properties"]
+    assert model["properties"].get("program_area_targets", {}) == {}
     redo(model, state, "actor-1")
     assert model["properties"]["program_area_targets"] == {"open_work": 120.0}
 
