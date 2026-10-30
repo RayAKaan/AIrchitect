@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from app.domains.commands.intent_contract import contract_for
-from app.domains.commands.intent_parser import parse_intent
+from app.domains.commands.intent_parser import IntentProposal, parse_intent
 
 
 def test_complete_but_unimplemented_intent_is_not_executable() -> None:
-    contract = contract_for(parse_intent("move the building 2 m x 3 m id:b1"))
+    contract = contract_for(IntentProposal("SetSiteBoundary", {"site_id": "site-1", "boundary": {}}, 0.95, (), False))
     assert contract.executable is False
     assert contract.reason == "command has no canonical mutation adapter yet"
 
