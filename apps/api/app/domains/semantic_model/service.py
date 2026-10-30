@@ -110,6 +110,7 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         "width_m": _property(site.get("width"), "m"),
         "depth_m": _property(site.get("depth"), "m"),
         "orientation_deg": _property(site.get("orientation"), "degree"),
+        "setback_m": _property((world_model.get("properties") or {}).get("setback_m"), "m"),
         "city": _property((site.get("location") or {}).get("city"), data_type="string"),
         "country": _property((site.get("location") or {}).get("country"), data_type="string"),
     }, ["site_area", "city"])
@@ -120,8 +121,29 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         "floor_to_floor_height_m": _property(building.get("floor_to_floor_height"), "m"),
         "target_gfa_m2": _property(building.get("target_gfa"), "m2"),
         "coverage_ratio": _property(building.get("coverage"), data_type="number"),
-        "footprint_width_m": _property((world_model.get("properties") or {}).get("footprint_width_m"), "m"),
-        "footprint_depth_m": _property((world_model.get("properties") or {}).get("footprint_depth_m"), "m"),
+        "footprint_width_m": _property(
+            (world_model.get("properties") or {}).get("footprint_width_m")
+            or building.get("footprint_width_m"), "m"
+        ),
+        "footprint_depth_m": _property(
+            (world_model.get("properties") or {}).get("footprint_depth_m")
+            or building.get("footprint_depth_m"), "m"
+        ),
+        "translation_m": {
+            "value": (world_model.get("properties") or {}).get(
+                "building_translation_m", {"x": 0.0, "y": 0.0, "z": 0.0}
+            ),
+            "unit": "m",
+            "data_type": "vector3",
+        },
+        "rotation_deg": _property(
+            (world_model.get("properties") or {}).get("building_rotation_deg", 0.0), "degree"
+        ),
+        "program_area_targets": {
+            "value": (world_model.get("properties") or {}).get("program_area_targets", {}),
+            "unit": "m2",
+            "data_type": "area_targets",
+        },
     }, ["building_use", "floor_count", "building_height", "floor_to_floor_height", "target_gfa"])
     add_relationship(building_id, "located_on", site_id)
 
@@ -142,6 +164,11 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         space_id = add_element("Space", key, str(space.get("name") or "Unspecified space"), {
             "use": _property(space.get("use"), data_type="string"),
             "area_m2": _property(space.get("area"), "m2"),
+            "translation_m": {
+                "value": space.get("translation") or {"x": 0.0, "y": 0.0, "z": 0.0},
+                "unit": "m",
+                "data_type": "vector3",
+            },
         })
         number = space.get("level_number")
         if number is not None and int(number) in level_ids:
@@ -320,6 +347,14 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
             }
         elif element_type in {"Space", "Wall", "Slab", "Roof", "Door", "Window"}:
             missing.append("storey_placement")
+        if element_type == "Space":
+            translation_item = (element.get("properties") or {}).get("translation_m")
+            if isinstance(translation_item, dict) and isinstance(translation_item.get("value"), dict):
+                placement = {
+                    **(placement or {}),
+                    "local_translation_m": translation_item["value"],
+                    "coordinate_space": "building_local_space_anchor",
+                }
         warnings = []
         if storey_area_issue and element_type in {"Building", "Storey"}:
             warnings.append(storey_area_issue.get("message") or "Storey areas do not reconcile with target GFA; review before native CAD generation.")

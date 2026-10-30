@@ -8,10 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Project, User
+from app.db.models import Project, ProjectVersion, User
 from app.db.site_command_models import SiteCommandLog
 from app.db.site_models import Site, SiteEvidence, SiteLayerSnapshot, SiteRevision
 from app.domains.foundation.service import resolve_project_version
+from app.domains.commands.artifact_lifecycle import invalidate_and_enqueue
 from app.domains.site.schemas import SetSiteBoundaryCommand
 from app.domains.site.validation import validate_boundary
 
@@ -64,6 +65,39 @@ async def _materialize_stale_derived_state(
     )
     for evidence in old_evidence:
         evidence.status = "STALE"
+
+
+
+
+SITE_ARTIFACT_IMPACT_GROUPS = (
+    "planning_envelope",
+    "design_alternatives",
+    "parametric_geometry_intents",
+    "quantities",
+    "cost",
+    "structural_review",
+    "validation",
+)
+
+
+async def invalidate_site_artifacts(
+    session: AsyncSession,
+    project: Project,
+    version: ProjectVersion,
+    revision: SiteRevision,
+) -> tuple[str, ...]:
+    """Invalidate project artifacts bound to the superseded site boundary."""
+    source_hash = _hash_payload({
+        "site_revision_id": revision.id,
+        "site_revision_hash": revision.content_hash,
+    })
+    return await invalidate_and_enqueue(
+        session,
+        project=project,
+        version=version,
+        source_revision_hash=source_hash,
+        groups=list(SITE_ARTIFACT_IMPACT_GROUPS),
+    )
 
 
 async def set_site_boundary(session: AsyncSession, project: Project, user: User, body: SetSiteBoundaryCommand) -> SiteRevision:
@@ -156,6 +190,7 @@ async def set_site_boundary(session: AsyncSession, project: Project, user: User,
     session.add(revision)
     await session.flush()
     await _materialize_stale_derived_state(session, site.id, revision.id)
+    await invalidate_site_artifacts(session, project, version, revision)
     command_log.status = "COMMITTED"
     command_log.site_revision_id = revision.id
     await session.commit()
