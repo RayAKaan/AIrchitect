@@ -142,3 +142,31 @@ def test_geometric_commands_are_not_claimed_by_semantic_property_adapter(
     assert supports_semantic_command(command_type) is False
     with pytest.raises(ValueError, match="not handled by semantic adapter"):
         semantic_edit_from_command(command)
+
+
+@pytest.mark.parametrize(
+    ("command_type", "payload"),
+    [
+        ("MoveBuilding", {"element_id": "building-1", "translation_m": {"x": 1, "y": 0, "z": 0}}),
+        ("RotateBuilding", {"element_id": "building-1", "angle_deg": 15}),
+        ("MoveSpace", {"element_id": "space-1", "translation_m": {"x": 1, "y": 0, "z": 0}}),
+    ],
+)
+def test_geometric_commands_fail_closed_at_command_executor(
+    command_type: str, payload: dict[str, object],
+) -> None:
+    command = CommandEnvelope(
+        command_id=f"executor-{command_type}",
+        type=command_type,
+        schema_version=1,
+        project_id="project-1",
+        version_id="version-1",
+        base_revision_hash="revision-hash",
+        idempotency_key=f"executor-idempotency-{command_type}",
+        mode="commit",
+        reason="test unsupported command execution",
+        payload=payload,
+    )
+
+    with pytest.raises(ValueError, match="COMMAND_NOT_EXECUTABLE"):
+        execute_semantic_command({}, {}, command, "actor-1", "revision-hash")
