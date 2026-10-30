@@ -124,3 +124,91 @@ def test_massing_geometry_applies_the_canonical_building_translation():
     assert mass.transform.translation == (45.0, 38.0, 3.0)
     assert geometry.floor_plates[0].transform.translation == (45.0, 38.0, 3.0)
     assert GeometryValidator(DEFAULT_CONFIG).validate(geometry, candidate).valid
+
+
+def rotate_command(element_id, angle_deg):
+    return CommandEnvelope(
+        command_id="rotate-building-1",
+        type="RotateBuilding",
+        schema_version=1,
+        project_id="move-building-project",
+        version_id="move-building-version",
+        base_revision_hash="world-hash-1",
+        idempotency_key="rotate-building-key-1",
+        mode="commit",
+        reason="Rotate the building to align with the street",
+        payload={"element_id": element_id, "angle_deg": angle_deg},
+    )
+
+
+def test_rotate_building_updates_canonical_rotation_and_supports_undo_redo():
+    model = world_fixture()
+    state = model["designer_state"]
+    building = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Building")
+    command = rotate_command(building["id"], 90)
+
+    preview = preview_command(command.model_copy(update={"mode": "preview"}))
+    assert preview.accepted is True
+    assert preview.executable is True
+
+    result = execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
+
+    assert result.status == "committed"
+    assert model["properties"]["building_rotation_deg"] == 90.0
+    updated_building = next(item for item in model["semantic_model"]["elements"] if item["id"] == building["id"])
+    assert updated_building["properties"]["rotation_deg"]["value"] == 90.0
+
+    undo(model, state, "actor-1")
+    assert "building_rotation_deg" not in model["properties"]
+    redo(model, state, "actor-1")
+    assert model["properties"]["building_rotation_deg"] == 90.0
+
+
+def test_rotate_building_rejects_a_rotated_footprint_that_exceeds_site_bounds():
+    model = world_fixture()
+    model["properties"]["footprint_width_m"] = 100.0
+    model["properties"]["footprint_depth_m"] = 100.0
+    model["semantic_model"] = compile_semantic_model(model)
+    state = model["designer_state"]
+    building = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Building")
+
+    with pytest.raises(ValueError, match="BUILDING_TRANSFORM_OUTSIDE_SITE"):
+        execute_semantic_command(
+            model, state, rotate_command(building["id"], 45), "actor-1", "world-hash-1"
+        )
+
+    assert "building_rotation_deg" not in model["properties"]
+    assert state["history"] == []
+
+
+def test_massing_geometry_rotates_mass_floor_plates_cores_and_grid_together():
+    candidate = SimpleNamespace(
+        candidate_key="rotated-1",
+        assumptions=[],
+        parameters={
+            "footprint_width_m": 20.0,
+            "footprint_depth_m": 10.0,
+            "floor_count": 1,
+            "floor_to_floor_height_m": 4.0,
+            "setback_m": 0.0,
+            "orientation_degrees": 0.0,
+            "rotation_deg": 90.0,
+            "core_ratio": 0.1,
+            "translation_m": {"x": 0.0, "y": 0.0, "z": 0.0},
+        },
+        metrics={
+            "building_height_m": 4.0,
+            "gross_floor_area_m2": 200.0,
+            "building_footprint_m2": 200.0,
+            "site_coverage_ratio": 0.02,
+            "parking_count": None,
+        },
+    )
+    geometry = MassingGeometryEngine(DEFAULT_CONFIG).generate(candidate, "alternative-rotated", 100.0, 100.0)
+
+    assert geometry.masses[0].transform.translation == pytest.approx((55.0, 40.0, 0.0))
+    assert geometry.masses[0].transform.rotation_degrees == (0.0, 0.0, 90.0)
+    assert geometry.floor_plates[0].transform.rotation_degrees == (0.0, 0.0, 90.0)
+    assert geometry.cores[0].transform.rotation_degrees == (0.0, 0.0, 90.0)
+    assert geometry.structural_grids[0].transform.rotation_degrees == (0.0, 0.0, 90.0)
+    assert GeometryValidator(DEFAULT_CONFIG).validate(geometry, candidate).valid
