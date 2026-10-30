@@ -5,13 +5,13 @@ from app.domains.commands.schemas import CommandEnvelope
 def test_preview_never_reports_canonical_mutation():
     command = CommandEnvelope(
         command_id="cmd-preview-1",
-        type="ChangeSetback",
+        type="SetSiteBoundary",
         schema_version=1,
         project_id="project-1",
         version_id="version-1",
         base_revision_hash="sha256:base",
         idempotency_key="preview-12345678",
-        payload={"setback_m": 5},
+        payload={"site_id": "site-1", "boundary": {}},
         mode="preview",
         reason="Test planning change",
     )

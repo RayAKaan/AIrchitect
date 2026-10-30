@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from pyproj import CRS, Transformer
 from shapely.geometry import shape, mapping
 from sqlalchemy import select
@@ -8,6 +10,7 @@ from app.db.models import ArtifactVersion, Project, ProjectVersion, User, WorldM
 from app.db.site_models import SiteRevision
 from app.domains.foundation.service import error, resolve_project_version, resolve_world_model
 from app.domains.lifecycle.service import canonical_hash, new_artifact
+from .schemas import PlanningRule
 
 
 def _projected_transformer(boundary):
@@ -20,6 +23,33 @@ def _projected_transformer(boundary):
 
 def _rule(rule):
     return None if rule is None or rule.value is None else float(rule.value)
+
+
+
+
+def effective_envelope_request(body, world):
+    """Use a canonical user design parameter when present, never as verified regulation."""
+    properties = world.model_json.get("properties") or {}
+    raw_setback = properties.get("setback_m")
+    if raw_setback is None:
+        return body
+    if isinstance(raw_setback, dict):
+        raw_setback = raw_setback.get("value")
+    try:
+        setback = float(raw_setback)
+    except (TypeError, ValueError):
+        raise error(409, "CANONICAL_SETBACK_INVALID", "The canonical setback design parameter is invalid") from None
+    if not math.isfinite(setback) or setback < 0:
+        raise error(409, "CANONICAL_SETBACK_INVALID", "The canonical setback design parameter must be finite and non-negative")
+    return body.model_copy(update={
+        "setback_m": PlanningRule(
+            value=setback,
+            unit="m",
+            source="USER_DESIGN_PARAMETER",
+            status="DESIGN_PARAMETER",
+            applicability="User-authored design parameter; not verified planning regulation",
+        )
+    })
 
 
 def build_envelope(boundary: dict, request) -> dict:
@@ -62,7 +92,18 @@ async def generate(session: AsyncSession, project_id: str, version_ref: str, bod
         .order_by(SiteRevision.revision.desc()).limit(1))
     if site_revision is None:
         raise error(409, "SITE_REQUIRED", "Set and commit a canonical site boundary before envelope generation")
-    payload = build_envelope(site_revision.boundary_geojson, body)
+    effective_body = effective_envelope_request(body, world)
+    payload = build_envelope(site_revision.boundary_geojson, effective_body)
+    payload["source_lineage"] = {
+        "site_revision_id": site_revision.id,
+        "site_revision_number": site_revision.revision,
+        "site_revision_hash": site_revision.content_hash,
+        "world_model_revision_id": world.id,
+        "world_model_hash": world.model_hash,
+    }
+    payload["envelope_hash"] = canonical_hash({
+        key: value for key, value in payload.items() if key != "envelope_hash"
+    })
     previous = await session.scalar(select(ArtifactVersion).where(ArtifactVersion.project_version_id == version.id,
         ArtifactVersion.artifact_type == "planning_envelope").order_by(ArtifactVersion.version.desc()).limit(1))
     if previous and previous.output_hash == payload["envelope_hash"]:
