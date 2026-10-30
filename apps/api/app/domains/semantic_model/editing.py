@@ -22,6 +22,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "width_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
         "depth_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
         "orientation_deg": {"kind": "number", "unit": "degree", "minimum": 0, "maximum": 360},
+        "setback_m": {"kind": "number", "unit": "m", "minimum": 0, "maximum": 100_000},
         "city": {"kind": "string", "unit": None},
     },
     "Building": {
@@ -33,6 +34,9 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "coverage_ratio": {"kind": "number", "unit": None, "minimum": 0, "maximum": 1},
         "footprint_width_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
         "footprint_depth_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
+        "translation_m": {"kind": "vector3", "unit": "m"},
+        "rotation_deg": {"kind": "number", "unit": "degree"},
+        "program_area_targets": {"kind": "area_targets", "unit": "m2"},
     },
     "Storey": {
         "elevation_m": {"kind": "number", "unit": "m", "minimum": -1_000, "maximum": 10_000},
@@ -79,7 +83,7 @@ CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window"}
 GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
-    "footprint_width_m", "footprint_depth_m", "elevation_m", "level_number",
+    "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "setback_m", "elevation_m", "level_number",
     "length_m", "thickness_m", "spaces",
 }
 
@@ -120,7 +124,26 @@ def _normalise(element_type: str, property_name: str, value: Any) -> tuple[Any, 
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic property is not editable", element_type=element_type,
                     property=property_name, allowed=sorted(PROPERTY_SPECS.get(element_type, {})))
     kind = spec["kind"]
-    if kind == "string":
+    if kind == "area_targets":
+        if not isinstance(value, dict):
+            raise error(422, "INVALID_PROPERTY_VALUE", "Program area targets must be a space-type map", property=property_name)
+        normalised = {}
+        for space_type, area in value.items():
+            if not isinstance(space_type, str) or not space_type.strip() or len(space_type) > 80:
+                raise error(422, "INVALID_PROPERTY_VALUE", "Program target keys must be non-empty space-type identifiers", property=property_name)
+            if isinstance(area, bool) or not isinstance(area, (int, float)) or not math.isfinite(float(area)) or float(area) <= 0:
+                raise error(422, "INVALID_PROPERTY_VALUE", "Program target areas must be positive finite numbers", property=property_name, space_type=space_type)
+            normalised[space_type] = float(area)
+    elif kind == "vector3":
+        if not isinstance(value, dict) or set(value) != {"x", "y", "z"}:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Value must contain finite x, y and z coordinates", property=property_name)
+        normalised = {}
+        for axis in ("x", "y", "z"):
+            coordinate = value[axis]
+            if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)) or not math.isfinite(float(coordinate)):
+                raise error(422, "INVALID_PROPERTY_VALUE", "Vector coordinates must be finite numbers", property=property_name, axis=axis)
+            normalised[axis] = float(coordinate)
+    elif kind == "string":
         if not isinstance(value, str) or not value.strip() or len(value.strip()) > 500:
             raise error(422, "INVALID_PROPERTY_VALUE", "Value must be a non-empty string of at most 500 characters",
                         property=property_name)
@@ -295,6 +318,8 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
         site = model.setdefault("site", {})
         if property_name == "city":
             site.setdefault("location", {})["city"] = value
+        elif property_name == "setback_m":
+            model.setdefault("properties", {})["setback_m"] = value
         else:
             key = {"area_m2": "area", "width_m": "width", "depth_m": "depth",
                    "orientation_deg": "orientation"}[property_name]
@@ -328,6 +353,12 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
                     element_ids=hosted_components, space_ids=canonical_spaces, requested_floor_count=count)
         if property_name in {"footprint_width_m", "footprint_depth_m"}:
             model.setdefault("properties", {})[property_name] = value
+        elif property_name == "translation_m":
+            model.setdefault("properties", {})["building_translation_m"] = value
+        elif property_name == "rotation_deg":
+            model.setdefault("properties", {})["building_rotation_deg"] = value
+        elif property_name == "program_area_targets":
+            model.setdefault("properties", {})["program_area_targets"] = value
         else:
             key, quantity_unit = mapping[property_name]
             building[key] = _quantity(value, quantity_unit) if quantity_unit else value
@@ -373,9 +404,20 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
     else:
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic element cannot be edited", element_type=element_type)
 
-    model.setdefault("provenance", {})[f"designer:{element['id']}:{property_name}"] = {
-        "source_type": "HUMAN_REVIEW", "source_id": element["id"], "confirmed": True,
+    provenance = {
+        "source_type": "HUMAN_REVIEW",
+        "source_id": element["id"],
+        "confirmed": True,
     }
+    if element_type == "Site" and property_name == "setback_m":
+        provenance = {
+            "source_type": "USER_DESIGN_PARAMETER",
+            "source_id": element["id"],
+            "confirmed": False,
+            "status": "DESIGN_PARAMETER",
+            "authority": "NONE",
+        }
+    model.setdefault("provenance", {})[f"designer:{element['id']}:{property_name}"] = provenance
     if element_type == "Building" and property_name in {"floor_count", "floor_to_floor_height_m", "height_m"}:
         building = model.get("building") or {}
         floors = building.get("floor_count")
@@ -565,9 +607,17 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
         return
     if element_type == "Building" and property_name in {"footprint_width_m", "footprint_depth_m"}:
         model.setdefault("properties", {}).pop(property_name, None)
+    elif element_type == "Building" and property_name == "translation_m":
+        model.setdefault("properties", {}).pop("building_translation_m", None)
+    elif element_type == "Building" and property_name == "rotation_deg":
+        model.setdefault("properties", {}).pop("building_rotation_deg", None)
+    elif element_type == "Building" and property_name == "program_area_targets":
+        model.setdefault("properties", {}).pop("program_area_targets", None)
     elif element_type == "Site":
         if property_name == "city":
             model.setdefault("site", {}).setdefault("location", {}).pop("city", None)
+        elif property_name == "setback_m":
+            model.setdefault("properties", {}).pop("setback_m", None)
         else:
             key = {"area_m2": "area", "width_m": "width", "depth_m": "depth", "orientation_deg": "orientation"}[property_name]
             model.setdefault("site", {})[key] = None
@@ -644,7 +694,7 @@ def edit_property(model: dict[str, Any], state: dict[str, Any], element_id: str,
     _assert_element_editable(model, state, element)
     new_value, unit, kind = _normalise(element["element_type"], property_name, value)
     current = element.get("properties", {}).get(property_name)
-    before = current.get("value") if isinstance(current, dict) else None
+    before = current.get("value") if isinstance(current, dict) and "value" in current else current
     override_key = f"{element_id}:{property_name}"
     before_override = copy.deepcopy(state.get("overrides", {}).get(override_key))
     if before == new_value:
@@ -752,6 +802,8 @@ def _assert_element_editable(model: dict[str, Any], state: dict[str, Any], eleme
                     element_id=element["id"], locked_ancestor_id=locked_ancestor, reason=lock.get("reason"))
 
 def impact_groups(element_type: str, property_name: str) -> list[str]:
+    if property_name == "setback_m":
+        return ["planning_envelope", "design_alternatives", "parametric_geometry_intents", "validation"]
     if property_name in {"city", "orientation_deg", "coverage_ratio"}:
         return ["feasibility", "regulatory_review", "design_alternatives", "validation"]
     if property_name in {"use"}:

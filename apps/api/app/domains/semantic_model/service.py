@@ -110,6 +110,7 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         "width_m": _property(site.get("width"), "m"),
         "depth_m": _property(site.get("depth"), "m"),
         "orientation_deg": _property(site.get("orientation"), "degree"),
+        "setback_m": _property((world_model.get("properties") or {}).get("setback_m"), "m"),
         "city": _property((site.get("location") or {}).get("city"), data_type="string"),
         "country": _property((site.get("location") or {}).get("country"), data_type="string"),
     }, ["site_area", "city"])
@@ -120,8 +121,29 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         "floor_to_floor_height_m": _property(building.get("floor_to_floor_height"), "m"),
         "target_gfa_m2": _property(building.get("target_gfa"), "m2"),
         "coverage_ratio": _property(building.get("coverage"), data_type="number"),
-        "footprint_width_m": _property((world_model.get("properties") or {}).get("footprint_width_m"), "m"),
-        "footprint_depth_m": _property((world_model.get("properties") or {}).get("footprint_depth_m"), "m"),
+        "footprint_width_m": _property(
+            (world_model.get("properties") or {}).get("footprint_width_m")
+            or building.get("footprint_width_m"), "m"
+        ),
+        "footprint_depth_m": _property(
+            (world_model.get("properties") or {}).get("footprint_depth_m")
+            or building.get("footprint_depth_m"), "m"
+        ),
+        "translation_m": {
+            "value": (world_model.get("properties") or {}).get(
+                "building_translation_m", {"x": 0.0, "y": 0.0, "z": 0.0}
+            ),
+            "unit": "m",
+            "data_type": "vector3",
+        },
+        "rotation_deg": _property(
+            (world_model.get("properties") or {}).get("building_rotation_deg", 0.0), "degree"
+        ),
+        "program_area_targets": {
+            "value": (world_model.get("properties") or {}).get("program_area_targets", {}),
+            "unit": "m2",
+            "data_type": "area_targets",
+        },
     }, ["building_use", "floor_count", "building_height", "floor_to_floor_height", "target_gfa"])
     add_relationship(building_id, "located_on", site_id)
 
