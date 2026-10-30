@@ -40,6 +40,9 @@ def _validate_building_translation(model: dict[str, Any], translation: dict[str,
     if footprint_width > site_width or footprint_depth > site_depth:
         raise ValueError("BUILDING_MOVE_OUTSIDE_SITE: the canonical building footprint exceeds the site bounds")
 
+    if abs(translation["z"]) > 100_000:
+        raise ValueError("BUILDING_MOVE_OUTSIDE_COORDINATE_LIMIT: vertical translation exceeds the supported coordinate range")
+
     origin_x = (site_width - footprint_width) / 2 + translation["x"]
     origin_y = (site_depth - footprint_depth) / 2 + translation["y"]
     if (
