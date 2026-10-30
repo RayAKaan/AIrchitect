@@ -34,6 +34,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "footprint_width_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
         "footprint_depth_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
         "translation_m": {"kind": "vector3", "unit": "m"},
+        "rotation_deg": {"kind": "number", "unit": "degree"},
     },
     "Storey": {
         "elevation_m": {"kind": "number", "unit": "m", "minimum": -1_000, "maximum": 10_000},
@@ -80,7 +81,7 @@ CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window"}
 GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
-    "footprint_width_m", "footprint_depth_m", "translation_m", "elevation_m", "level_number",
+    "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "elevation_m", "level_number",
     "length_m", "thickness_m", "spaces",
 }
 
@@ -340,6 +341,8 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
             model.setdefault("properties", {})[property_name] = value
         elif property_name == "translation_m":
             model.setdefault("properties", {})["building_translation_m"] = value
+        elif property_name == "rotation_deg":
+            model.setdefault("properties", {})["building_rotation_deg"] = value
         else:
             key, quantity_unit = mapping[property_name]
             building[key] = _quantity(value, quantity_unit) if quantity_unit else value
@@ -579,6 +582,8 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
         model.setdefault("properties", {}).pop(property_name, None)
     elif element_type == "Building" and property_name == "translation_m":
         model.setdefault("properties", {}).pop("building_translation_m", None)
+    elif element_type == "Building" and property_name == "rotation_deg":
+        model.setdefault("properties", {}).pop("building_rotation_deg", None)
     elif element_type == "Site":
         if property_name == "city":
             model.setdefault("site", {}).setdefault("location", {}).pop("city", None)
