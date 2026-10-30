@@ -54,7 +54,9 @@ class MassingGeometryEngine:
         p, m = candidate.parameters, candidate.metrics
         width, depth = float(p["footprint_width_m"]), float(p["footprint_depth_m"])
         floors, floor_height = int(p["floor_count"]), float(p["floor_to_floor_height_m"])
-        x, y = (site_width - width) / 2, (site_depth - depth) / 2
+        translation = p.get("translation_m") or {"x": 0.0, "y": 0.0, "z": 0.0}
+        dx, dy, dz = (float(translation.get(axis, 0.0)) for axis in ("x", "y", "z"))
+        x, y = (site_width - width) / 2 + dx, (site_depth - depth) / 2 + dy
         source = f"design_alternative:{alternative_ref}"
         site = GeometryObject(id="site", type="site_boundary", dimensions={"width": site_width, "depth": site_depth, "area": site_width * site_depth},
             material_class="site", source_reference="resolved_design_context",
@@ -67,18 +69,18 @@ class MassingGeometryEngine:
                 dimensions={"width": site_width - 2*setback, "depth": site_depth - 2*setback},
                 material_class="constraint", source_reference="design_constraint:setback"))
         mass = GeometryObject(id="mass-1", type="building_mass", parent_id="site",
-            transform=Transform(translation=(x, y, 0), rotation_degrees=(0, 0, float(p.get("orientation_degrees") or 0))),
+            transform=Transform(translation=(x, y, dz), rotation_degrees=(0, 0, float(p.get("orientation_degrees") or 0))),
             dimensions={"width": width, "depth": depth, "height": float(m["building_height_m"])},
             material_class="conceptual_mass", source_reference=source,
             metadata={"preliminary": True, "not_for_construction": True})
         plates = [GeometryObject(id=f"floor-{level}", type="floor_plate", parent_id="mass-1",
-            transform=Transform(translation=(x, y, (level-1)*floor_height)),
+            transform=Transform(translation=(x, y, dz + (level-1)*floor_height)),
             dimensions={"width": width, "depth": depth, "thickness": .25, "elevation": (level-1)*floor_height,
                         "area": width*depth}, material_class="floor_plate", source_reference=source,
             metadata={"level_number": level}) for level in range(1, floors+1)]
         core_ratio = float(p["core_ratio"]); core_width = width * core_ratio ** .5; core_depth = depth * core_ratio ** .5
         cores = [GeometryObject(id="core-1", type="core", parent_id="mass-1",
-            transform=Transform(translation=(x+(width-core_width)/2, y+(depth-core_depth)/2, 0)),
+            transform=Transform(translation=(x+(width-core_width)/2, y+(depth-core_depth)/2, dz)),
             dimensions={"width": core_width, "depth": core_depth, "height": float(m["building_height_m"])},
             material_class="preliminary_core", source_reference=source,
             metadata={"preliminary": True, "not_engineering_approved": True})]
