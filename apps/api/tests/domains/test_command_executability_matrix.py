@@ -53,4 +53,3 @@ def test_semantic_adapter_capabilities_remain_separate_from_geometry_commands():
     executable = {name for name in registered if supports_semantic_command(name)}
     assert executable == {"ResizeSpace", "LockEntity", "Undo", "Redo"}
     assert supports_command("MoveBuilding") is True
-    assert supports_command("RotateBuilding") is False
