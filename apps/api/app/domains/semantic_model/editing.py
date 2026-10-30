@@ -47,6 +47,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "use": {"kind": "string", "unit": None},
         "area_m2": {"kind": "number", "unit": "m2", "minimum": 0.01},
         "level_number": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 100},
+        "translation_m": {"kind": "vector3", "unit": "m"},
     },
     "ParkingFacility": {
         "arrangement": {"kind": "string", "unit": None},
@@ -398,9 +399,12 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
             if locked_target is not None:
                 raise error(409, "LOCKED_DEPENDENCY", "Cannot move a space into a locked storey",
                             locked_element_id=locked_target, level_number=target_level)
-        mapping = {"use": "use", "area_m2": "area", "level_number": "level_number"}
-        key = mapping[property_name]
-        space[key] = _quantity(value, unit) if property_name == "area_m2" else value
+        if property_name == "translation_m":
+            space["translation"] = value
+        else:
+            mapping = {"use": "use", "area_m2": "area", "level_number": "level_number"}
+            key = mapping[property_name]
+            space[key] = _quantity(value, unit) if property_name == "area_m2" else value
     else:
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic element cannot be edited", element_type=element_type)
 
@@ -637,7 +641,10 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
     elif element_type == "Space":
         space = next((item for item in model.get("spaces", []) if str(item.get("id") or item.get("name") or "") == identity_key), None)
         if space:
-            space[{"use": "use", "area_m2": "area", "level_number": "level_number"}[property_name]] = None
+            if property_name == "translation_m":
+                space.pop("translation", None)
+            else:
+                space[{"use": "use", "area_m2": "area", "level_number": "level_number"}[property_name]] = None
     state = model.setdefault("designer_state", initial_designer_state())
     state.setdefault("overrides", {}).pop(f"{element['id']}:{property_name}", None)
     model.setdefault("provenance", {}).pop(f"designer:{element['id']}:{property_name}", None)
