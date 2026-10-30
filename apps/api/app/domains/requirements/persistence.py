@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import RequirementRecord, User
 from app.domains.foundation.service import audit, error, persist_world_model, resolve_project_version
 from app.domains.requirements.service import analyze_brief
+from app.domains.commands.artifact_lifecycle import invalidate_and_enqueue
 
 
 def _out(row: RequirementRecord) -> dict:
@@ -77,5 +78,20 @@ async def set_status(session: AsyncSession, project_id: str, version_ref: str, r
     version.revision_number += 1
     await audit(session, project=project, version=version, actor=user.id, action=f"REQUIREMENT_{status}", entity="requirement", entity_id=row.id, metadata={"parameter": row.parameter})
     world = await persist_world_model(session, project, version, user.id, source="confirmed_requirements")
+    await invalidate_and_enqueue(
+        session,
+        project=project,
+        version=version,
+        source_revision_hash=world.model_hash,
+        groups=(
+            "program",
+            "design_alternatives",
+            "parametric_geometry_intents",
+            "quantities",
+            "cost",
+            "structural_review",
+            "validation",
+        ),
+    )
     await session.commit()
     return {"requirement": _out(row), "version_revision": version.revision_number, "world_model_revision_id": world.id, "world_model_hash": world.model_hash}
