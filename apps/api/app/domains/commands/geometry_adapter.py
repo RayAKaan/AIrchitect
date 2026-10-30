@@ -7,14 +7,23 @@ from app.domains.semantic_model.editing import edit_property
 
 from .schemas import CommandEnvelope
 from .semantic_adapter import supports_semantic_command
+from .program_adapter import supports_program_command
 
 
 GEOMETRY_COMMAND_TYPES = frozenset({"MoveBuilding", "RotateBuilding"})
 
 
+def supports_geometry_command(command_type: str) -> bool:
+    return command_type in GEOMETRY_COMMAND_TYPES
+
+
 def supports_command(command_type: str) -> bool:
     """Return whether a command has an executable canonical mutation adapter."""
-    return supports_semantic_command(command_type) or command_type in GEOMETRY_COMMAND_TYPES
+    return (
+        supports_semantic_command(command_type)
+        or command_type in GEOMETRY_COMMAND_TYPES
+        or supports_program_command(command_type)
+    )
 
 
 def _number(value: Any) -> float | None:
