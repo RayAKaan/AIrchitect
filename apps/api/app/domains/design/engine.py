@@ -112,6 +112,19 @@ class ComputationalDesignEngine:
             generated=[]
             for strategy in STRATEGIES:
                 generated.extend(strategy.generate_candidates(context,self.config,target,floors,floor_height,parking))
+            model_properties = world.model_json.get("properties") or {}
+            placement = model_properties.get("building_translation_m", {"x": 0.0, "y": 0.0, "z": 0.0})
+            rotation = float(model_properties.get("building_rotation_deg", 0.0))
+            generated = [
+                candidate.model_copy(update={
+                    "parameters": {
+                        **candidate.parameters,
+                        "translation_m": placement,
+                        "rotation_deg": rotation,
+                    }
+                })
+                for candidate in generated
+            ]
             self._stage(run,"generate_candidates",{"candidate_count":len(generated),"strategy_ids":[s.id for s in STRATEGIES]})
             selected=self._select_diverse(generated)
             self._stage(run,"validate_candidates",{"valid_candidate_count":sum(c.valid for c in generated),"selected_count":len(selected),
