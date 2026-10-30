@@ -243,7 +243,7 @@ def test_move_space_updates_its_building_local_anchor_and_geometry_intent():
     assert intent["placement"]["coordinate_space"] == "building_local_space_anchor"
 
     undo(model, state, "actor-1")
-    assert "translation" not in model["spaces"][0]
+    assert model["spaces"][0]["translation"] == {"x": 0.0, "y": 0.0, "z": 0.0}
     redo(model, state, "actor-1")
     assert model["spaces"][0]["translation"] == {"x": 3.0, "y": 4.0, "z": 0.5}
 
