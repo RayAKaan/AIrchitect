@@ -195,3 +195,88 @@ def test_add_level_is_atomic_when_the_existing_top_storey_is_locked():
     assert model["building"]["floor_count"] == 1
     assert len(model["levels"]) == 1
     assert state["history"] == []
+
+
+def test_move_space_updates_its_building_local_anchor_and_geometry_intent():
+    from app.domains.semantic_model.editing import redo, undo
+    from app.domains.semantic_model.service import compile_parametric_geometry
+
+    model = model_fixture()
+    model["properties"]["footprint_width_m"] = 20.0
+    model["properties"]["footprint_depth_m"] = 20.0
+    model["spaces"] = [{
+        "id": "space-office-1",
+        "name": "Office",
+        "use": "office",
+        "area": {"value": 100.0, "unit": "m2"},
+        "level_number": 1,
+    }]
+    model["semantic_model"] = compile_semantic_model(model)
+    state = model["designer_state"]
+    space = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Space")
+    command = CommandEnvelope(
+        command_id="move-space-1",
+        type="MoveSpace",
+        schema_version=1,
+        project_id="setback-project",
+        version_id="setback-version",
+        base_revision_hash="world-hash-1",
+        idempotency_key="move-space-key-1",
+        mode="commit",
+        reason="Move the office space anchor within its storey",
+        payload={"element_id": space["id"], "translation_m": {"x": 3, "y": 4, "z": 0.5}},
+    )
+
+    preview = preview_command(command.model_copy(update={"mode": "preview"}))
+    assert preview.accepted is True
+    assert preview.executable is True
+
+    result = execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
+
+    assert result.status == "committed"
+    assert model["spaces"][0]["translation"] == {"x": 3.0, "y": 4.0, "z": 0.5}
+    intent = next(
+        item for item in compile_parametric_geometry(model, model["semantic_model"])["intents"]
+        if item["element_id"] == space["id"]
+    )
+    assert intent["placement"]["local_translation_m"] == {"x": 3.0, "y": 4.0, "z": 0.5}
+    assert intent["placement"]["coordinate_space"] == "building_local_space_anchor"
+
+    undo(model, state, "actor-1")
+    assert "translation" not in model["spaces"][0]
+    redo(model, state, "actor-1")
+    assert model["spaces"][0]["translation"] == {"x": 3.0, "y": 4.0, "z": 0.5}
+
+
+def test_move_space_rejects_anchor_outside_building_footprint():
+    model = model_fixture()
+    model["properties"]["footprint_width_m"] = 20.0
+    model["properties"]["footprint_depth_m"] = 20.0
+    model["spaces"] = [{
+        "id": "space-office-1",
+        "name": "Office",
+        "use": "office",
+        "area": {"value": 100.0, "unit": "m2"},
+        "level_number": 1,
+    }]
+    model["semantic_model"] = compile_semantic_model(model)
+    state = model["designer_state"]
+    space = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Space")
+    command = CommandEnvelope(
+        command_id="move-space-outside",
+        type="MoveSpace",
+        schema_version=1,
+        project_id="setback-project",
+        version_id="setback-version",
+        base_revision_hash="world-hash-1",
+        idempotency_key="move-space-outside-key",
+        mode="commit",
+        reason="Move the office anchor outside the footprint",
+        payload={"element_id": space["id"], "translation_m": {"x": 21, "y": 0, "z": 0}},
+    )
+
+    with pytest.raises(ValueError, match="SPACE_MOVE_OUTSIDE_BUILDING"):
+        execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
+
+    assert "translation" not in model["spaces"][0]
+    assert state["history"] == []
