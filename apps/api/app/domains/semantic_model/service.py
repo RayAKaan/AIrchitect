@@ -164,6 +164,11 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         space_id = add_element("Space", key, str(space.get("name") or "Unspecified space"), {
             "use": _property(space.get("use"), data_type="string"),
             "area_m2": _property(space.get("area"), "m2"),
+            "translation_m": {
+                "value": space.get("translation") or {"x": 0.0, "y": 0.0, "z": 0.0},
+                "unit": "m",
+                "data_type": "vector3",
+            },
         })
         number = space.get("level_number")
         if number is not None and int(number) in level_ids:
@@ -342,6 +347,14 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
             }
         elif element_type in {"Space", "Wall", "Slab", "Roof", "Door", "Window"}:
             missing.append("storey_placement")
+        if element_type == "Space":
+            translation_item = (element.get("properties") or {}).get("translation_m")
+            if isinstance(translation_item, dict) and isinstance(translation_item.get("value"), dict):
+                placement = {
+                    **(placement or {}),
+                    "local_translation_m": translation_item["value"],
+                    "coordinate_space": "building_local_space_anchor",
+                }
         warnings = []
         if storey_area_issue and element_type in {"Building", "Storey"}:
             warnings.append(storey_area_issue.get("message") or "Storey areas do not reconcile with target GFA; review before native CAD generation.")
