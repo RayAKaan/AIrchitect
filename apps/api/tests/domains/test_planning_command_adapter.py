@@ -144,7 +144,7 @@ def test_add_level_updates_floor_count_and_elevation_as_one_undoable_event():
     result = execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
 
     assert result.status == "committed"
-    assert result.event["action"] == "BATCH_EDIT"
+    assert state["history"][-1]["action"] == "BATCH_EDIT"
     assert len(state["undo_stack"]) == 1
     assert model["building"]["floor_count"] == 2
     assert len(model["levels"]) == 2
