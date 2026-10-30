@@ -135,6 +135,9 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
             "unit": "m",
             "data_type": "vector3",
         },
+        "rotation_deg": _property(
+            (world_model.get("properties") or {}).get("building_rotation_deg", 0.0), "degree"
+        ),
     }, ["building_use", "floor_count", "building_height", "floor_to_floor_height", "target_gfa"])
     add_relationship(building_id, "located_on", site_id)
 
