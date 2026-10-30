@@ -12,6 +12,7 @@ from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.semantic_model.editing import check_expected_revision, load_editable_model, persist_designer_mutation
 
+from .artifact_lifecycle import invalidate_and_enqueue as _shared_invalidate_and_enqueue
 from .artifact_invalidation import ArtifactInvalidationService
 from .executor import execute_semantic_command
 from .plan_execution import execute_plan
@@ -28,6 +29,30 @@ from .schemas import CommandEnvelope, CommandPreview, CommandResult
 from .target_resolution import resolve_target
 
 router = APIRouter(tags=["commands"])
+
+
+async def _invalidate_and_enqueue(
+    session: AsyncSession,
+    *,
+    project: Any,
+    version: Any,
+    source_revision_hash: str,
+    groups: list[str] | tuple[str, ...],
+) -> tuple[str, ...]:
+    """Keep the route-level dependency seam while sharing the lifecycle implementation."""
+    return await _shared_invalidate_and_enqueue(
+        session,
+        project=project,
+        version=version,
+        source_revision_hash=source_revision_hash,
+        groups=groups,
+        invalidation_service=ArtifactInvalidationService(),
+        state_repository_factory=RegenerationStateRepository,
+        queue_factory=RegenerationQueue,
+        handler_registry=RegenerationHandlerRegistry(),
+        select_fn=select,
+    )
+
 
 
 class IntentPreviewRequest(BaseModel):
@@ -92,45 +117,6 @@ _EXPECTED_TYPES = {
     "ResizeSpace": "Space",
     "MoveSpace": "Space",
 }
-
-
-async def _invalidate_and_enqueue(
-    session: AsyncSession,
-    *,
-    project: Any,
-    version: Any,
-    source_revision_hash: str,
-    groups: list[str] | tuple[str, ...],
-) -> tuple[str, ...]:
-    invalidated_artifact_ids = await ArtifactInvalidationService().invalidate_groups(
-        session,
-        organization_id=project.organization_id,
-        project_id=project.id,
-        project_version_id=version.id,
-        source_revision_hash=source_revision_hash,
-        groups=groups,
-    )
-    if not invalidated_artifact_ids:
-        return ()
-
-    states = RegenerationStateRepository()
-    queue = RegenerationQueue(states)
-    artifact_result = await session.scalars(
-        select(ArtifactVersion)
-        .where(ArtifactVersion.id.in_(invalidated_artifact_ids))
-        .order_by(ArtifactVersion.id)
-    )
-    handlers = RegenerationHandlerRegistry()
-    for artifact in artifact_result.all():
-        # Unsupported artifact types stay stale and block release; do not
-        # enqueue work that has no deterministic implementation.
-        if not handlers.supports(artifact.artifact_type):
-            continue
-        regeneration_state = await states.get_for_update(session, artifact.id)
-        if regeneration_state is None:
-            raise ValueError("artifact invalidation created no regeneration state")
-        await queue.enqueue(session, regeneration_state)
-    return tuple(invalidated_artifact_ids)
 
 
 @router.post("/commands/intent-preview", response_model=IntentPreviewResponse)
