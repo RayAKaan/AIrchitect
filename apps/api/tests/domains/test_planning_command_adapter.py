@@ -112,3 +112,86 @@ def test_envelope_geometry_and_evidence_use_the_canonical_setback():
     assert result["setback_m"] == 7.5
     assert result["planning_evidence"]["setback"]["source"] == "USER_DESIGN_PARAMETER"
     assert result["planning_evidence"]["setback"]["status"] == "DESIGN_PARAMETER"
+
+
+def add_level_command(building_id, elevation_m):
+    return CommandEnvelope(
+        command_id="add-level-1",
+        type="AddLevel",
+        schema_version=1,
+        project_id="setback-project",
+        version_id="setback-version",
+        base_revision_hash="world-hash-1",
+        idempotency_key="add-level-key-1",
+        mode="commit",
+        reason="Add a new upper storey",
+        payload={"building_id": building_id, "elevation_m": elevation_m},
+    )
+
+
+def test_add_level_updates_floor_count_and_elevation_as_one_undoable_event():
+    from app.domains.semantic_model.editing import redo, undo
+
+    model = model_fixture()
+    state = model["designer_state"]
+    building = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Building")
+    command = add_level_command(building["id"], 4.5)
+
+    preview = preview_command(command.model_copy(update={"mode": "preview"}))
+    assert preview.accepted is True
+    assert preview.executable is True
+
+    result = execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
+
+    assert result.status == "committed"
+    assert result.event["action"] == "BATCH_EDIT"
+    assert len(state["undo_stack"]) == 1
+    assert model["building"]["floor_count"] == 2
+    assert len(model["levels"]) == 2
+    assert model["levels"][1]["elevation"]["value"] == 4.5
+    assert model["levels"][0]["floor_to_floor_height"]["value"] == 4.5
+
+    undo(model, state, "actor-1")
+    assert model["building"]["floor_count"] == 1
+    assert len(model["levels"]) == 1
+    assert model["levels"][0]["floor_to_floor_height"]["value"] == 4.0
+
+    redo(model, state, "actor-1")
+    assert model["building"]["floor_count"] == 2
+    assert len(model["levels"]) == 2
+    assert model["levels"][1]["elevation"]["value"] == 4.5
+
+
+def test_add_level_rejects_non_increasing_elevation_without_partial_mutation():
+    model = model_fixture()
+    state = model["designer_state"]
+    building = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Building")
+
+    with pytest.raises(ValueError, match="INVALID_NEW_LEVEL_ELEVATION"):
+        execute_semantic_command(
+            model, state, add_level_command(building["id"], 0.0), "actor-1", "world-hash-1"
+        )
+
+    assert model["building"]["floor_count"] == 1
+    assert len(model["levels"]) == 1
+    assert state["history"] == []
+
+
+def test_add_level_is_atomic_when_the_existing_top_storey_is_locked():
+    from fastapi import HTTPException
+
+    model = model_fixture()
+    state = model["designer_state"]
+    building = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Building")
+    top_storey = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Storey")
+    state["locks"][top_storey["id"]] = {"locked": True, "actor_id": "reviewer", "reason": "approved storey"}
+
+    with pytest.raises(HTTPException) as raised:
+        execute_semantic_command(
+            model, state, add_level_command(building["id"], 4.5), "actor-1", "world-hash-1"
+        )
+
+    assert raised.value.status_code == 409
+    assert model["building"]["floor_count"] == 1
+    assert len(model["levels"]) == 1
+    assert state["history"] == []
