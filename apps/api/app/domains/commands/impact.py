@@ -9,7 +9,7 @@ IMPACT_GROUPS: dict[str, tuple[str, ...]] = {
     "ChangeSetback": ("planning_envelope", "design_alternatives", "parametric_geometry_intents", "validation"),
     "AddLevel": ("program", "design_alternatives", "parametric_geometry_intents", "quantities", "cost", "structural_review", "regulatory_review", "validation"),
     "ResizeSpace": ("program", "parametric_geometry_intents", "quantities", "cost", "validation"),
-    "MoveSpace": ("parametric_geometry_intents", "quantities", "validation"),
+    "MoveSpace": ("parametric_geometry_intents", "validation"),
     "SetProgramArea": ("program", "design_alternatives", "parametric_geometry_intents", "quantities", "cost"),
     "LockEntity": (),
 }
