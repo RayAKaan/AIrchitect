@@ -77,7 +77,7 @@ def test_move_building_is_executable_and_updates_canonical_world_model():
     assert updated_building["properties"]["translation_m"]["value"] == {"x": 5.0, "y": -2.0, "z": 1.0}
 
     undo(model, state, "actor-1")
-    assert "building_translation_m" not in model["properties"]
+    assert model["properties"]["building_translation_m"] == {"x": 0.0, "y": 0.0, "z": 0.0}
     redo(model, state, "actor-1")
     assert model["properties"]["building_translation_m"] == {"x": 5.0, "y": -2.0, "z": 1.0}
 
@@ -159,7 +159,7 @@ def test_rotate_building_updates_canonical_rotation_and_supports_undo_redo():
     assert updated_building["properties"]["rotation_deg"]["value"] == 90.0
 
     undo(model, state, "actor-1")
-    assert "building_rotation_deg" not in model["properties"]
+    assert model["properties"]["building_rotation_deg"] == 0.0
     redo(model, state, "actor-1")
     assert model["properties"]["building_rotation_deg"] == 90.0
 
