@@ -124,8 +124,8 @@ def _normalise(element_type: str, property_name: str, value: Any) -> tuple[Any, 
                     property=property_name, allowed=sorted(PROPERTY_SPECS.get(element_type, {})))
     kind = spec["kind"]
     if kind == "area_targets":
-        if not isinstance(value, dict) or not value:
-            raise error(422, "INVALID_PROPERTY_VALUE", "Program area targets must be a non-empty space-type map", property=property_name)
+        if not isinstance(value, dict):
+            raise error(422, "INVALID_PROPERTY_VALUE", "Program area targets must be a space-type map", property=property_name)
         normalised = {}
         for space_type, area in value.items():
             if not isinstance(space_type, str) or not space_type.strip() or len(space_type) > 80:
