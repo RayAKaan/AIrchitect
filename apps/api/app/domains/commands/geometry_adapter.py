@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from app.domains.semantic_model.editing import edit_property
@@ -19,7 +20,7 @@ def supports_command(command_type: str) -> bool:
 def _number(value: Any) -> float | None:
     if isinstance(value, dict):
         value = value.get("value")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
         return None
     return float(value)
 
@@ -32,7 +33,7 @@ def _validate_building_translation(model: dict[str, Any], translation: dict[str,
     site_depth = _number(site.get("depth"))
     footprint_width = _number(properties.get("footprint_width_m") or building.get("footprint_width_m"))
     footprint_depth = _number(properties.get("footprint_depth_m") or building.get("footprint_depth_m"))
-    if None in {site_width, site_depth, footprint_width, footprint_depth}:
+    if site_width is None or site_depth is None or footprint_width is None or footprint_depth is None:
         raise ValueError(
             "BUILDING_MOVE_UNDERCONSTRAINED: canonical site width/depth and building footprint dimensions are required"
         )
