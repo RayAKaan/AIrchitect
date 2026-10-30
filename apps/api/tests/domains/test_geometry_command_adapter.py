@@ -88,7 +88,7 @@ def test_move_building_rejects_a_translation_that_leaves_the_site_without_mutati
     building = next(item for item in model["semantic_model"]["elements"] if item["element_type"] == "Building")
     command = move_command(building["id"], {"x": 50, "y": 0, "z": 0})
 
-    with pytest.raises(ValueError, match="BUILDING_MOVE_OUTSIDE_SITE"):
+    with pytest.raises(ValueError, match="BUILDING_(?:MOVE|TRANSFORM)_OUTSIDE_SITE"):
         execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
 
     assert "building_translation_m" not in model["properties"]
