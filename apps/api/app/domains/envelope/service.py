@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from pyproj import CRS, Transformer
 from shapely.geometry import shape, mapping
 from sqlalchemy import select
