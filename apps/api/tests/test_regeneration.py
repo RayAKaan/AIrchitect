@@ -37,7 +37,7 @@ def test_batch_regeneration_follows_dependency_order_and_aggregates_impact() -> 
     )
     result = build_regeneration_batch_plan(plan, commands)
     assert result.command_order == ("building", "lock")
-    assert result.invalidated_groups == ("cost", "parametric_geometry_intents", "quantities", "validation")
+    assert result.invalidated_groups == ("cost", "design_alternatives", "parametric_geometry_intents", "quantities", "validation")
     assert result.requires_recomputation is True
 
 

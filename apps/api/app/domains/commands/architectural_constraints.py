@@ -5,6 +5,8 @@ from typing import Any
 
 from .schemas import CommandEnvelope
 
+from app.domains.program.service import CATALOG
+
 
 def validate_architectural_constraints(command: CommandEnvelope) -> list[str]:
     """Validate command-level invariants before model-specific mutation.
@@ -32,6 +34,14 @@ def validate_architectural_constraints(command: CommandEnvelope) -> list[str]:
         finite_number("area_m2", minimum=0, exclusive_minimum=True)
     elif command.type == "SetProgramArea":
         finite_number("area_m2", minimum=0, exclusive_minimum=True)
+        space_type = payload.get("space_type")
+        known_space_types = {
+            name.lower().replace(" ", "_")
+            for catalog in CATALOG.values()
+            for name, _, _ in catalog
+        }
+        if not isinstance(space_type, str) or space_type not in known_space_types:
+            errors.append("space_type must identify a known program space type")
     elif command.type == "AddLevel":
         finite_number("elevation_m")
     elif command.type == "RotateBuilding":
