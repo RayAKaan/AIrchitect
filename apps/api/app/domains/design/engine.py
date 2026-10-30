@@ -36,13 +36,26 @@ class ComputationalDesignEngine:
         self.geometry_engine = MassingGeometryEngine(config)
         self.geometry_validator = GeometryValidator(config)
 
-    def generation_key(self, world_hash: str) -> str:
-        return canonical_hash({"world_model_hash":world_hash,"engine_version":self.config.engine_version,
-            "config":self.config.canonical(),"strategies":[(s.id,s.version) for s in STRATEGIES]})
+    def generation_key(self, world_hash: str, input_lineage: dict[str, str] | None = None) -> str:
+        return canonical_hash({"world_model_hash": world_hash, "input_lineage": input_lineage or {},
+            "engine_version": self.config.engine_version, "config": self.config.canonical(),
+            "strategies": [(strategy.id, strategy.version) for strategy in STRATEGIES]})
 
     async def generate(self, session: AsyncSession, project: Project, version: ProjectVersion,
-                       world: WorldModelRevision, actor: User) -> DesignGenerationRun:
-        key = self.generation_key(world.model_hash or "")
+                       world: WorldModelRevision, actor: User,
+                       input_artifacts: dict[str, ArtifactVersion] | None = None) -> DesignGenerationRun:
+        input_artifacts = input_artifacts or {}
+        input_lineage = {
+            name: str(artifact.output_hash or "")
+            for name, artifact in sorted(input_artifacts.items())
+        }
+        if any(not digest for digest in input_lineage.values()):
+            raise DesignGenerationError(
+                "DESIGN_INPUT_HASH_MISSING",
+                "Every supplied design input artifact must have a persisted output hash",
+                {"input_names": sorted(name for name, digest in input_lineage.items() if not digest)},
+            )
+        key = self.generation_key(world.model_hash or "", input_lineage)
         existing = await session.scalar(select(DesignGenerationRun).where(
             DesignGenerationRun.project_version_id==version.id, DesignGenerationRun.generation_key==key))
         if existing and existing.status == "COMPLETED":
@@ -67,7 +80,11 @@ class ComputationalDesignEngine:
         await session.flush()
         await audit(session,project=project,version=version,actor=actor.id,action="DESIGN_GENERATION_REQUESTED",
             entity="design_generation_run",entity_id=run.id,metadata={"world_model_hash":world.model_hash,"engine_version":self.config.engine_version})
-        self._stage(run,"resolve_world_model",{"world_model_revision_id":world.id,"world_model_hash":world.model_hash})
+        self._stage(run, "resolve_world_model", {
+            "world_model_revision_id": world.id,
+            "world_model_hash": world.model_hash,
+            "input_lineage": input_lineage,
+        })
         logger.info("design_generation_started",extra={"project_id":project.id,"project_version_id":version.id,"generation_id":run.id,"engine_version":self.config.engine_version})
         # Persist the run before expensive work so even an unexpected failure has a durable lifecycle record.
         await session.commit()
@@ -75,7 +92,9 @@ class ComputationalDesignEngine:
         project_id, version_id, actor_id = project.id, version.id, actor.id
         run._idempotent_reuse = False
         try:
-            await self._mark_hash_mismatch_stale(session,version.id,world.model_hash or "",project,version,actor.id)
+            await self._mark_hash_mismatch_stale(
+                session, version.id, world.model_hash or "", project, version, actor.id, input_lineage
+            )
             context=self.resolver.resolve(world.model_json,world.model_hash or "")
             self._stage(run,"resolve_design_constraints",{"constraint_count":len(context.constraints),"conflicts":context.conflicts})
             for item in context.constraints:
@@ -102,7 +121,7 @@ class ComputationalDesignEngine:
                     {"invalid_candidates":[{"candidate":c.candidate_key,"reasons":c.invalid_reasons} for c in generated if not c.valid]})
             prepared_geometry: dict[str, tuple[str, Any, Any]] = {}
             for candidate in selected:
-                design_hash=self._design_hash(world.model_hash or "",candidate)
+                design_hash = self._design_hash(world.model_hash or "", candidate, input_lineage)
                 geometry=self.geometry_engine.generate(candidate,design_hash,context.search_space.site_width_m,context.search_space.site_depth_m)
                 validation=self.geometry_validator.validate(geometry,candidate)
                 if not validation.valid:
@@ -113,9 +132,13 @@ class ComputationalDesignEngine:
             alt_ids=[]
             for index,candidate in enumerate(selected,1):
                 design_hash,geometry,validation=prepared_geometry[candidate.candidate_key]
-                alt_av=await new_artifact(session,project=project,version=version,world=world,actor=actor.id,
-                    artifact_type="design_alternative",payload={"design_hash":design_hash,"parameters":candidate.parameters,
-                    "metrics":candidate.metrics},status="CURRENT")
+                alt_av = await new_artifact(
+                    session, project=project, version=version, world=world, actor=actor.id,
+                    artifact_type="design_alternative",
+                    payload={"design_hash": design_hash, "parameters": candidate.parameters, "metrics": candidate.metrics},
+                    dependencies=list(input_artifacts.values()),
+                    status="CURRENT",
+                )
                 strategy=next(s for s in STRATEGIES if s.id==candidate.strategy_id)
                 alt=DesignAlternative(artifact_version_id=alt_av.id,project_id=project.id,project_version_id=version.id,
                     world_model_revision_id=world.id,generation_run_id=run.id,name=f"{strategy.name} {index}",
@@ -125,8 +148,22 @@ class ComputationalDesignEngine:
                     assumptions_json=candidate.assumptions,unknowns_json=candidate.unknowns,tradeoffs_json=candidate.tradeoffs,
                     design_engine_version=self.config.engine_version,design_engine_config_version=self.config.config_version,
                     input_world_model_hash=world.model_hash or "",design_hash=design_hash,
-                    provenance_json={"world_model_revision_id":world.id,"world_model_hash":world.model_hash,
-                        "generation_run_id":run.id,"candidate_key":candidate.candidate_key,"deterministic":True},
+                    provenance_json={
+                        "world_model_revision_id": world.id,
+                        "world_model_hash": world.model_hash,
+                        "generation_run_id": run.id,
+                        "candidate_key": candidate.candidate_key,
+                        "deterministic": True,
+                        "input_lineage": input_lineage,
+                        **{
+                            f"{name}_artifact_id": artifact.id
+                            for name, artifact in sorted(input_artifacts.items())
+                        },
+                        **{
+                            f"{name}_hash": digest
+                            for name, digest in input_lineage.items()
+                        },
+                    },
                     status="VALID",payload_json={"parameters":candidate.parameters,"metrics":candidate.metrics})
                 session.add(alt); await session.flush(); alt_av.alternative_id=alt.id
                 ir=geometry.model_dump(mode="json")
@@ -139,8 +176,16 @@ class ComputationalDesignEngine:
                     alternative_id=alt.id,world_model_revision_id=world.id,geometry_hash=geometry_hash,
                     input_world_model_hash=world.model_hash or "",design_hash=design_hash,
                     engine_name=self.config.geometry_engine_name,engine_version=self.config.geometry_engine_version,
-                    status="CURRENT",provenance_json={"world_model_revision_id":world.id,"world_model_hash":world.model_hash,
-                        "design_alternative_id":alt.id,"design_hash":design_hash,"generation_run_id":run.id},
+                    status="CURRENT", provenance_json={
+                        "world_model_revision_id": world.id,
+                        "world_model_hash": world.model_hash,
+                        "design_alternative_id": alt.id,
+                        "design_hash": design_hash,
+                        "generation_run_id": run.id,
+                        "input_lineage": input_lineage,
+                        **{f"{name}_artifact_id": artifact.id for name, artifact in sorted(input_artifacts.items())},
+                        **{f"{name}_hash": digest for name, digest in input_lineage.items()},
+                    },
                     payload_json={"geometry_ir":ir,"validation":validation.model_dump(mode="json")})
                 session.add(geom); await session.flush(); alt_ids.append(alt.id)
                 await audit(session,project=project,version=version,actor=actor.id,action="ALTERNATIVE_CREATED",
@@ -186,10 +231,18 @@ class ComputationalDesignEngine:
             raise DesignGenerationError("DESIGN_GENERATION_INTERNAL_ERROR",
                 "Design generation failed unexpectedly; retry or contact support",{"generation_id":run_id}) from exc
 
-    def _design_hash(self,world_hash:str,candidate:DesignCandidate)->str:
-        return canonical_hash({"world_model_hash":world_hash,"strategy_id":candidate.strategy_id,
-            "strategy_version":candidate.strategy_version,"parameters":candidate.parameters,
-            "engine_version":self.config.engine_version,"config_version":self.config.config_version})
+    def _design_hash(
+        self, world_hash: str, candidate: DesignCandidate, input_lineage: dict[str, str] | None = None
+    ) -> str:
+        return canonical_hash({
+            "world_model_hash": world_hash,
+            "input_lineage": input_lineage or {},
+            "strategy_id": candidate.strategy_id,
+            "strategy_version": candidate.strategy_version,
+            "parameters": candidate.parameters,
+            "engine_version": self.config.engine_version,
+            "config_version": self.config.config_version,
+        })
 
     def _select_diverse(self,candidates:list[DesignCandidate])->list[DesignCandidate]:
         chosen=[]; hashes=set()
@@ -204,11 +257,29 @@ class ComputationalDesignEngine:
     def _stage(self,run:DesignGenerationRun,name:str,details:dict[str,Any])->None:
         run.progress_json=[*run.progress_json,{"stage":name,"status":"COMPLETED","at":datetime.now(timezone.utc).isoformat(),"details":details}]
 
-    async def _mark_hash_mismatch_stale(self,session:AsyncSession,version_id:str,current_hash:str,
-                                        project:Project,version:ProjectVersion,actor:str)->None:
-        alternatives=list((await session.scalars(select(DesignAlternative).where(
-            DesignAlternative.project_version_id==version_id,DesignAlternative.input_world_model_hash!=current_hash,
-            DesignAlternative.status.in_(["VALID","SELECTED"])))).all())
+    async def _mark_hash_mismatch_stale(
+        self,
+        session: AsyncSession,
+        version_id: str,
+        current_hash: str,
+        project: Project,
+        version: ProjectVersion,
+        actor: str,
+        input_lineage: dict[str, str] | None = None,
+    ) -> None:
+        current_lineage = input_lineage or {}
+        candidates = list((await session.scalars(select(DesignAlternative).where(
+            DesignAlternative.project_version_id == version_id,
+            DesignAlternative.status.in_(["VALID", "SELECTED"]),
+        ))).all())
+        alternatives = [
+            alternative for alternative in candidates
+            if alternative.input_world_model_hash != current_hash
+            or any(
+                (alternative.provenance_json or {}).get(f"{name}_hash") != digest
+                for name, digest in current_lineage.items()
+            )
+        ]
         # CAD runs are invalidated by the same predicate, but they must be handled
         # independently of the design side. A run can outlive its alternative (the
         # alternative may already be stale, or the run was recorded without one), and
@@ -242,7 +313,10 @@ class ComputationalDesignEngine:
         for av in artifact_versions:av.status="STALE"
         await audit(session,project=project,version=version,actor=actor,action="GEOMETRY_INVALIDATED",
             entity="project_version",entity_id=version.id,metadata={"stale_alternative_ids":ids,
-            "stale_cad_job_run_ids":run_ids,"reason":"world_model_hash_changed"})
+            "stale_cad_job_run_ids": run_ids,
+            "reason": "design_input_hash_changed" if current_lineage else "world_model_hash_changed",
+            "input_lineage": current_lineage,
+        })
 
 
 ENGINE=ComputationalDesignEngine()
