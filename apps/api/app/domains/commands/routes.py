@@ -30,6 +30,7 @@ from .target_resolution import resolve_target
 
 router = APIRouter(tags=["commands"])
 
+
 async def _invalidate_and_enqueue(
     session: AsyncSession,
     *,
