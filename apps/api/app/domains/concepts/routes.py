@@ -25,7 +25,14 @@ async def generate_concepts(project_id: str, version_ref: str, user: User = Depe
     world = await resolve_world_model(session, version.id)
     program, envelope = await _inputs(session, version.id)
     try:
-        run = await ENGINE.generate(session, project, version, world, user)
+        run = await ENGINE.generate(
+            session,
+            project,
+            version,
+            world,
+            user,
+            input_artifacts={"program": program, "envelope": envelope},
+        )
     except DesignGenerationError as exc:
         raise error(409, exc.code, exc.message, **exc.context) from exc
     alternatives = list((await session.scalars(select(DesignAlternative).where(DesignAlternative.generation_run_id == run.id))).all())
