@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 from app.domains.design.config import DesignEngineConfig
@@ -80,13 +81,23 @@ class MassingGeometryEngine:
             material_class="conceptual_mass", source_reference=source,
             metadata={"preliminary": True, "not_for_construction": True})
         plates = [GeometryObject(id=f"floor-{level}", type="floor_plate", parent_id="mass-1",
-            transform=Transform(translation=(x, y, dz + (level-1)*floor_height)),
+            transform=Transform(
+                translation=(x, y, dz + (level-1)*floor_height),
+                rotation_degrees=(0, 0, rotation_degrees),
+            ),
             dimensions={"width": width, "depth": depth, "thickness": .25, "elevation": (level-1)*floor_height,
                         "area": width*depth}, material_class="floor_plate", source_reference=source,
             metadata={"level_number": level}) for level in range(1, floors+1)]
         core_ratio = float(p["core_ratio"]); core_width = width * core_ratio ** .5; core_depth = depth * core_ratio ** .5
+        core_local_x = (width - core_width) / 2
+        core_local_y = (depth - core_depth) / 2
+        core_x = x + cosine * core_local_x - sine * core_local_y
+        core_y = y + sine * core_local_x + cosine * core_local_y
         cores = [GeometryObject(id="core-1", type="core", parent_id="mass-1",
-            transform=Transform(translation=(x+(width-core_width)/2, y+(depth-core_depth)/2, dz)),
+            transform=Transform(
+                translation=(core_x, core_y, dz),
+                rotation_degrees=(0, 0, rotation_degrees),
+            ),
             dimensions={"width": core_width, "depth": core_depth, "height": float(m["building_height_m"])},
             material_class="preliminary_core", source_reference=source,
             metadata={"preliminary": True, "not_engineering_approved": True})]
@@ -101,7 +112,7 @@ class MassingGeometryEngine:
             structural_grids=grid, dimensions=dims,
             parking={"capacity": m.get("parking_count"), "geometry_status": "NOT_GENERATED",
                 "note": "Capacity metric only; no parking layout is claimed."},
-            orientation_degrees=p.get("orientation_degrees"), metadata={"alternative_reference":alternative_ref,
+            orientation_degrees=rotation_degrees, metadata={"alternative_reference":alternative_ref,
                 "geometry_engine_name":self.name, "geometry_engine_version":self.config.geometry_engine_version,
                 "preliminary":True, "human_review_required":True})
 
