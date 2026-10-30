@@ -22,6 +22,9 @@ GROUP_TO_ARTIFACT_TYPE: dict[str, str] = {
     "cost": "cost",
     "structural_review": "structural",
     "validation": "validation",
+    # These decision domains currently materialize through the shared validation artifact.
+    "feasibility": "validation",
+    "regulatory_review": "validation",
 }
 
 
