@@ -9,6 +9,7 @@ from .preconditions import check_preconditions
 from .schemas import CommandEnvelope, CommandResult
 from .geometry_adapter import apply_geometry_command, supports_command, supports_geometry_command
 from .program_adapter import apply_program_command, supports_program_command
+from .planning_adapter import apply_planning_command, supports_planning_command
 from .semantic_adapter import apply_semantic_command, supports_semantic_command
 from .service import validate_command
 
@@ -37,6 +38,8 @@ def execute_semantic_command(model: dict[str, Any], state: dict[str, Any], comma
         event = apply_geometry_command(model, state, canonical, actor_id)
     elif supports_program_command(canonical.type):
         event = apply_program_command(model, state, canonical, actor_id)
+    elif supports_planning_command(canonical.type):
+        event = apply_planning_command(model, state, canonical, actor_id)
     else:
         raise ValueError(f"COMMAND_NOT_EXECUTABLE: {canonical.type} has no canonical mutation adapter")
     result = CommandResult(
