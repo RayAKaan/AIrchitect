@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +20,15 @@ async def invalidate_and_enqueue(
     version: Any,
     source_revision_hash: str,
     groups: Sequence[str],
+    invalidation_service: Any | None = None,
+    state_repository_factory: Callable[[], Any] = RegenerationStateRepository,
+    queue_factory: Callable[[Any], Any] = RegenerationQueue,
+    handler_registry: Any | None = None,
+    select_fn: Callable[..., Any] = select,
 ) -> tuple[str, ...]:
     """Invalidate affected artifacts and enqueue only supported regeneration work."""
-    invalidated_artifact_ids = await ArtifactInvalidationService().invalidate_groups(
+    service = invalidation_service or ArtifactInvalidationService()
+    invalidated_artifact_ids = await service.invalidate_groups(
         session,
         organization_id=project.organization_id,
         project_id=project.id,
@@ -33,14 +39,14 @@ async def invalidate_and_enqueue(
     if not invalidated_artifact_ids:
         return ()
 
-    states = RegenerationStateRepository()
-    queue = RegenerationQueue(states)
+    states = state_repository_factory()
+    queue = queue_factory(states)
     artifact_result = await session.scalars(
-        select(ArtifactVersion)
+        select_fn(ArtifactVersion)
         .where(ArtifactVersion.id.in_(invalidated_artifact_ids))
         .order_by(ArtifactVersion.id)
     )
-    handlers = RegenerationHandlerRegistry()
+    handlers = handler_registry or RegenerationHandlerRegistry()
     for artifact in artifact_result.all():
         # Unsupported artifact types stay stale and block release; do not
         # enqueue work that has no deterministic implementation.
