@@ -35,6 +35,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "footprint_depth_m": {"kind": "number", "unit": "m", "minimum": 0.1, "maximum": 100_000},
         "translation_m": {"kind": "vector3", "unit": "m"},
         "rotation_deg": {"kind": "number", "unit": "degree"},
+        "program_area_targets": {"kind": "area_targets", "unit": "m2"},
     },
     "Storey": {
         "elevation_m": {"kind": "number", "unit": "m", "minimum": -1_000, "maximum": 10_000},
@@ -122,7 +123,17 @@ def _normalise(element_type: str, property_name: str, value: Any) -> tuple[Any, 
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic property is not editable", element_type=element_type,
                     property=property_name, allowed=sorted(PROPERTY_SPECS.get(element_type, {})))
     kind = spec["kind"]
-    if kind == "vector3":
+    if kind == "area_targets":
+        if not isinstance(value, dict) or not value:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Program area targets must be a non-empty space-type map", property=property_name)
+        normalised = {}
+        for space_type, area in value.items():
+            if not isinstance(space_type, str) or not space_type.strip() or len(space_type) > 80:
+                raise error(422, "INVALID_PROPERTY_VALUE", "Program target keys must be non-empty space-type identifiers", property=property_name)
+            if isinstance(area, bool) or not isinstance(area, (int, float)) or not math.isfinite(float(area)) or float(area) <= 0:
+                raise error(422, "INVALID_PROPERTY_VALUE", "Program target areas must be positive finite numbers", property=property_name, space_type=space_type)
+            normalised[space_type] = float(area)
+    elif kind == "vector3":
         if not isinstance(value, dict) or set(value) != {"x", "y", "z"}:
             raise error(422, "INVALID_PROPERTY_VALUE", "Value must contain finite x, y and z coordinates", property=property_name)
         normalised = {}
@@ -343,6 +354,8 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
             model.setdefault("properties", {})["building_translation_m"] = value
         elif property_name == "rotation_deg":
             model.setdefault("properties", {})["building_rotation_deg"] = value
+        elif property_name == "program_area_targets":
+            model.setdefault("properties", {})["program_area_targets"] = value
         else:
             key, quantity_unit = mapping[property_name]
             building[key] = _quantity(value, quantity_unit) if quantity_unit else value
@@ -584,6 +597,8 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
         model.setdefault("properties", {}).pop("building_translation_m", None)
     elif element_type == "Building" and property_name == "rotation_deg":
         model.setdefault("properties", {}).pop("building_rotation_deg", None)
+    elif element_type == "Building" and property_name == "program_area_targets":
+        model.setdefault("properties", {}).pop("program_area_targets", None)
     elif element_type == "Site":
         if property_name == "city":
             model.setdefault("site", {}).setdefault("location", {}).pop("city", None)
