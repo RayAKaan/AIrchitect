@@ -841,6 +841,8 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user_agent: Mapped[str] = mapped_column(String(512), default="")
     ip_address: Mapped[str] = mapped_column(String(64), default="")
+    refresh_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OrganizationInvitation(Base):

@@ -35,4 +35,9 @@ class AuthOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int = 86400
+    refresh_token: str | None = None
     user: UserOut
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str | None = Field(default=None, min_length=32, max_length=256)
