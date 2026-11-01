@@ -102,7 +102,7 @@ jobs:
       - name: Install Chromium for Playwright
         run: cd apps/web && npx playwright install --with-deps chromium
       - name: Run full product browser acceptance
-        run: cd apps/web && npm run test:e2e -- e2e/phase1-navigation-acceptance.spec.ts e2e/phase28-release-acceptance.spec.ts e2e/phase29-site-workspace.spec.ts e2e/phase30-s16-acceptance.spec.ts
+        run: cd apps/web && npm run test:e2e -- e2e/phase1-navigation-acceptance.spec.ts e2e/phase28-release-acceptance.spec.ts e2e/phase29-site-workspace.spec.ts e2e/phase30-s16-acceptance.spec.ts e2e/phase2-identity-acceptance.spec.ts
       - name: Upload browser-test diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
