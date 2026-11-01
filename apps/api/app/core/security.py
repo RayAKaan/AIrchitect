@@ -37,6 +37,14 @@ def issue_token(user_id: str, session_id: str | None = None) -> str:
     return f"{payload}.{signature}"
 
 
+def issue_refresh_token(session_id: str) -> str:
+    return session_id + "." + secrets.token_urlsafe(48)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def read_token_claims(token: str) -> dict[str, Any]:
     try:
         payload, signature = token.rsplit(".", 1)
