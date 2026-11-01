@@ -46,13 +46,13 @@ async def test_email_verification_is_single_use_and_required_before_login(api: h
 
 @pytest.mark.asyncio
 async def test_password_reset_is_generic_single_use_and_revokes_sessions(api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    sent = configure_mail(monkeypatch)
     email = "reset-" + uuid.uuid4().hex + "@example.com"
     registered = await api.post("/api/v1/auth/register", json={
         "email": email, "name": "Reset User", "password": "a-very-secure-password", "organization_name": "Reset Org"
     })
     assert registered.status_code == 201
     headers = {"Authorization": "Bearer " + registered.json()["access_token"]}
+    sent = configure_mail(monkeypatch)
     unknown = await api.post("/api/v1/auth/forgot-password", json={"email": "unknown@example.com"})
     requested = await api.post("/api/v1/auth/forgot-password", json={"email": email})
     assert unknown.status_code == requested.status_code == 200
