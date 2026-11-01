@@ -15,7 +15,7 @@ from app.core.security import hash_password, verify_password, issue_token, read_
 from app.db.models import User, Organization, Membership, Project, AuditEvent, AuthSession, now
 from app.domains.foundation.service import create_initial_state
 from app.db.session import get_engine, get_session, dispose_engine
-from app.dependencies import current_user, require_membership
+from app.dependencies import current_user, require_membership, bearer
 from app.domains.identity.schemas import RegisterRequest, LoginRequest, AuthOut, UserOut
 from app.domains.projects.schemas import ProjectCreate, ProjectOut
 
