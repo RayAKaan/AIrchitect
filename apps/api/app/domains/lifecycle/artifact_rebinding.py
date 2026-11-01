@@ -20,6 +20,7 @@ async def rebind_artifact(
     source_revision_hash: str,
     dependencies: list[ArtifactVersion],
     engine_version: str,
+    output_hash: str | None = None,
 ) -> ArtifactVersion:
     """Publish a regenerated artifact as a new immutable version.
 
@@ -37,7 +38,8 @@ async def rebind_artifact(
     if any(dep.project_id != project.id or dep.project_version_id != version.id for dep in dependencies):
         raise ValueError("artifact dependencies must belong to the same project version")
 
-    output_hash = canonical_hash(payload)
+    resolved_output_hash = output_hash or canonical_hash(payload)
+    dependency_ids = [dependency.id for dependency in dependencies]
     candidates = list(
         (
             await session.scalars(
@@ -45,24 +47,37 @@ async def rebind_artifact(
                 .where(
                     ArtifactVersion.project_version_id == version.id,
                     ArtifactVersion.artifact_type == previous.artifact_type,
+                    ArtifactVersion.alternative_id == previous.alternative_id,
                     ArtifactVersion.status == "current",
-                    ArtifactVersion.output_hash == output_hash,
+                    ArtifactVersion.output_hash == resolved_output_hash,
                 )
                 .order_by(ArtifactVersion.version.desc())
             )
         ).all()
     )
+    same_source_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.provenance_json.get("source_revision_hash") == source_revision_hash
+    ]
     current = next(
         (
             candidate
-            for candidate in candidates
-            if candidate.provenance_json.get("source_revision_hash") == source_revision_hash
+            for candidate in same_source_candidates
+            if candidate.input_references_json == dependency_ids
         ),
         None,
     )
     if current is not None:
         previous.status = "stale"
+        for candidate in same_source_candidates:
+            if candidate.id != current.id:
+                candidate.status = "stale"
         return current
+    # Same-source outputs with obsolete dependency lineage must not remain
+    # current beside the successor being published.
+    for candidate in same_source_candidates:
+        candidate.status = "stale"
 
     latest = await session.scalar(
         select(ArtifactVersion.version)
@@ -91,7 +106,7 @@ async def rebind_artifact(
             "supersedes_artifact_version_id": previous.id,
         },
         input_references_json=[dependency.id for dependency in dependencies],
-        output_hash=output_hash,
+        output_hash=resolved_output_hash,
         payload_json=payload,
         created_by=actor,
     )
