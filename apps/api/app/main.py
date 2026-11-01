@@ -17,6 +17,7 @@ from app.domains.foundation.service import create_initial_state
 from app.db.session import get_engine, get_session, dispose_engine
 from app.dependencies import current_user, require_membership, bearer
 from app.domains.identity.schemas import RegisterRequest, LoginRequest, AuthOut, UserOut
+from app.domains.identity.routes import router as identity_router
 from app.domains.projects.schemas import ProjectCreate, ProjectOut
 
 configure_logging()
@@ -202,6 +203,7 @@ async def update_project(project_id: str, body: ProjectCreate, user: User = Depe
     project.name, project.description = body.name.strip(), body.description; session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id, project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_UPDATED", resource_type="project", resource_id=project.id)); await session.commit(); await session.refresh(project); set_context(revision_id=project.current_version_id); return project
 
 from app.domains.world_model.routes import router as world_model_router
+app.include_router(identity_router, prefix=settings.api_prefix)
 app.include_router(world_model_router, prefix=settings.api_prefix)
 from app.domains.semantic_model.routes import router as semantic_model_router
 app.include_router(semantic_model_router, prefix=settings.api_prefix)

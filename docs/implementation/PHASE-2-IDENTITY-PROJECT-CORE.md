@@ -38,3 +38,11 @@ Run from `apps/api`: `pytest`, `ruff check app tests`, and `mypy app` after inst
 - Session rows are user-owned; cross-user revocation returns not-found.
 - Legacy stateless tokens without persisted session records are intentionally rejected after deployment; users must sign in again.
 - Remaining Phase 2 work: organization invitations/member management, password reset/email verification, secure browser cookie/CSRF flow, project optimistic concurrency, and expanded PostgreSQL tenant-isolation evidence.
+
+
+## Phase 2 implementation update — organization invitations and membership
+- Added single-use, seven-day organization invitations. Only a token digest is stored; the raw token is returned once to the authorized inviter for sharing.
+- Invitation acceptance requires an authenticated account whose normalized email matches the invitation and whose inviter still has administrator authority.
+- Added organization member listing, role changes, member removal, invitation listing/revocation, and audit events.
+- Organization owners cannot be demoted or removed through member-management endpoints; administrator privilege boundaries are enforced server-side.
+- Remaining Phase 2 work: secure browser cookie/CSRF flow, password reset/email verification and refresh, project optimistic concurrency, PostgreSQL tenant-isolation coverage, and invitation/member UI.
