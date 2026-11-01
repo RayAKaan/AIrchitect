@@ -86,7 +86,7 @@ def test_set_program_area_updates_canonical_target_and_supports_undo():
     assert updated["properties"]["program_area_targets"]["value"] == {"open_work": 200.0}
 
     undo(model, state, "architect-1")
-    assert "program_area_targets" not in model["properties"]
+    assert model["properties"]["program_area_targets"] == {}
 
 
 def test_program_generation_applies_explicit_targets_and_preserves_gfa():
