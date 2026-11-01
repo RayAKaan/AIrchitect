@@ -25,12 +25,23 @@ def _use(requirements: list[RequirementRecord]) -> str:
     return "office"
 
 
+def _world_value(value):
+    return value.get("value") if isinstance(value, dict) and "value" in value else value
+
+
 def build_program(requirements: list[RequirementRecord], world: WorldModelRevision) -> dict:
     confirmed = [r for r in requirements if r.status in {"CONFIRMED", "ASSUMED"}]
     gfa_row = next((r for r in reversed(confirmed) if r.parameter == "target_gfa"), None)
     floors_row = next((r for r in reversed(confirmed) if r.parameter == "floor_count"), None)
-    gfa = float(gfa_row.normalized_value_json) if gfa_row else None
-    floors = int(floors_row.normalized_value_json) if floors_row else None
+    building = world.model_json.get("building") or {}
+    canonical_gfa = _world_value(building.get("target_gfa"))
+    canonical_floors = _world_value(building.get("floor_count"))
+    gfa = float(canonical_gfa) if canonical_gfa is not None else (float(gfa_row.normalized_value_json) if gfa_row else None)
+    floors = int(canonical_floors) if canonical_floors is not None else (int(floors_row.normalized_value_json) if floors_row else None)
+    canonical_use = building.get("use")
+    use = str(canonical_use).strip().lower() if isinstance(canonical_use, str) and canonical_use.strip() else _use(requirements)
+    if use not in CATALOG:
+        raise error(409, "UNKNOWN_BUILDING_USE", "Canonical building use is not supported by the program catalog", building_use=use)
     assumptions = []
     unknowns = []
     if gfa is None:
@@ -44,7 +55,6 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
     if floors is None: unknowns.append("floor_count")
     if gfa is None:
         raise error(409, "PROGRAM_INPUT_INCOMPLETE", "A target GFA or enough confirmed site/floor information is required to build a bounded program", unknowns=unknowns)
-    use = _use(requirements)
     catalog = CATALOG[use]
     raw_targets = (world.model_json.get("properties") or {}).get("program_area_targets", {})
     if not isinstance(raw_targets, dict):
