@@ -39,6 +39,7 @@ async def rebind_artifact(
         raise ValueError("artifact dependencies must belong to the same project version")
 
     resolved_output_hash = output_hash or canonical_hash(payload)
+    dependency_ids = [dependency.id for dependency in dependencies]
     candidates = list(
         (
             await session.scalars(
@@ -46,6 +47,7 @@ async def rebind_artifact(
                 .where(
                     ArtifactVersion.project_version_id == version.id,
                     ArtifactVersion.artifact_type == previous.artifact_type,
+                    ArtifactVersion.alternative_id == previous.alternative_id,
                     ArtifactVersion.status == "current",
                     ArtifactVersion.output_hash == resolved_output_hash,
                 )
@@ -58,6 +60,7 @@ async def rebind_artifact(
             candidate
             for candidate in candidates
             if candidate.provenance_json.get("source_revision_hash") == source_revision_hash
+            and candidate.input_references_json == dependency_ids
         ),
         None,
     )

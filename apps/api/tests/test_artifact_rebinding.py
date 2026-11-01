@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.models import ArtifactDependency, ArtifactVersion, Base, Project, ProjectVersion, User, WorldModelRevision
 from app.domains.lifecycle.artifact_rebinding import rebind_artifact
+from app.domains.lifecycle.service import canonical_hash
 
 
 @pytest.fixture
@@ -58,6 +59,7 @@ async def test_rebinding_preserves_history_and_creates_dependency_edges(session_
             project_id=project.id,
             project_version_id=version.id,
             world_model_revision_id=world.id,
+            alternative_id="alternative-1",
             artifact_type="geometry",
             version=1,
             status="stale",
@@ -78,7 +80,7 @@ async def test_rebinding_preserves_history_and_creates_dependency_edges(session_
             payload_json={"dependency": True},
             created_by=user.id,
         )
-        session.add_all([previous, dependency])
+        session.add_all([previous, dependency, same_payload_without_dependency])
         await session.flush()
 
         successor = await rebind_artifact(
@@ -96,8 +98,9 @@ async def test_rebinding_preserves_history_and_creates_dependency_edges(session_
         await session.commit()
 
         assert successor.id != previous.id
-        assert successor.version == 2
+        assert successor.version == 3
         assert successor.status == "current"
+        assert successor.id != same_payload_without_dependency.id
         assert previous.status == "stale"
         assert successor.provenance_json["supersedes_artifact_version_id"] == previous.id
         edges = list(
