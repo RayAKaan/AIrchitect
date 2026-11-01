@@ -55,18 +55,29 @@ async def rebind_artifact(
             )
         ).all()
     )
+    same_source_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.provenance_json.get("source_revision_hash") == source_revision_hash
+    ]
     current = next(
         (
             candidate
-            for candidate in candidates
-            if candidate.provenance_json.get("source_revision_hash") == source_revision_hash
-            and candidate.input_references_json == dependency_ids
+            for candidate in same_source_candidates
+            if candidate.input_references_json == dependency_ids
         ),
         None,
     )
     if current is not None:
         previous.status = "stale"
+        for candidate in same_source_candidates:
+            if candidate.id != current.id:
+                candidate.status = "stale"
         return current
+    # Same-source outputs with obsolete dependency lineage must not remain
+    # current beside the successor being published.
+    for candidate in same_source_candidates:
+        candidate.status = "stale"
 
     latest = await session.scalar(
         select(ArtifactVersion.version)

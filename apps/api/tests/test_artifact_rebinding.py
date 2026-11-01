@@ -116,6 +116,7 @@ async def test_rebinding_preserves_history_and_creates_dependency_edges(session_
         assert successor.version == 3
         assert successor.status == "current"
         assert successor.id != same_payload_without_dependency.id
+        assert same_payload_without_dependency.status == "stale"
         assert previous.status == "stale"
         assert successor.provenance_json["supersedes_artifact_version_id"] == previous.id
         edges = list(
