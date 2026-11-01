@@ -112,3 +112,19 @@ def test_envelope_geometry_and_evidence_use_the_canonical_setback():
     assert result["setback_m"] == 7.5
     assert result["planning_evidence"]["setback"]["source"] == "USER_DESIGN_PARAMETER"
     assert result["planning_evidence"]["setback"]["status"] == "DESIGN_PARAMETER"
+
+
+def test_change_setback_respects_site_lock():
+    model = model_fixture()
+    state = model["designer_state"]
+    site = next(
+        item for item in model["semantic_model"]["elements"]
+        if item["element_type"] == "Site"
+    )
+    state["locks"][site["id"]] = {"locked": True, "reason": "reviewed"}
+    command = change_setback_command(7.5)
+
+    with pytest.raises(ValueError, match="SEMANTIC_ELEMENT_LOCKED"):
+        execute_semantic_command(model, state, command, "actor-1", "world-hash-1")
+
+    assert "setback_m" not in model["properties"]
