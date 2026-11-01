@@ -647,7 +647,12 @@ def _apply_entity_event(model: dict[str, Any], event: dict[str, Any], *, forward
     action = event["action"]
     snapshot = event.get("after") if forward else event.get("before")
     element_id = event.get("element_id")
-    if action == "EDIT":
+    if action == "BATCH_EDIT":
+        changes = event.get("changes") or []
+        ordered_changes = changes if forward else reversed(changes)
+        for change in ordered_changes:
+            _apply_entity_event(model, change, forward=forward)
+    elif action == "EDIT":
         semantic = compile_semantic_model(model)
         element = next((item for item in semantic["elements"] if item["id"] == element_id), None)
         if element is None:
@@ -713,6 +718,73 @@ def edit_property(model: dict[str, Any], state: dict[str, Any], element_id: str,
     model["designer_state"] = state
     model["semantic_model"] = compile_semantic_model(model)
     return event
+
+
+
+
+def edit_properties(
+    model: dict[str, Any],
+    state: dict[str, Any],
+    changes: list[dict[str, Any]],
+    actor_id: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Apply multiple property edits as one atomic, undoable designer event."""
+    if len(changes) < 2:
+        raise ValueError("BATCH_EDIT_REQUIRES_MULTIPLE_CHANGES")
+    model_snapshot = copy.deepcopy(model)
+    state_snapshot = copy.deepcopy(state)
+    history_start = len(state.get("history", []))
+    undo_start = len(state.get("undo_stack", []))
+    try:
+        child_events = []
+        for change in changes:
+            child_events.append(edit_property(
+                model,
+                state,
+                str(change["element_id"]),
+                str(change["property_name"]),
+                change["value"],
+                actor_id,
+                reason,
+            ))
+        impacts = sorted({
+            impact
+            for event in child_events
+            for impact in event.get("impacts", [])
+        })
+        batch_event = _append_event(
+            state,
+            action="BATCH_EDIT",
+            actor_id=actor_id,
+            element_id=None,
+            details={
+                "changes": child_events,
+                "reason": reason,
+                "impacts": impacts,
+            },
+        )
+        state["history"] = state["history"][:history_start] + [batch_event]
+        state["undo_stack"] = state["undo_stack"][:undo_start] + [batch_event["event_id"]]
+        state["redo_stack"] = []
+        model["designer_state"] = state
+        model["semantic_model"] = compile_semantic_model(model)
+        return batch_event
+    except Exception:
+        model.clear()
+        model.update(model_snapshot)
+        state.clear()
+        state.update(state_snapshot)
+        model["designer_state"] = state
+        raise
+
+
+def _assert_batch_editable(model: dict[str, Any], state: dict[str, Any], event: dict[str, Any]) -> None:
+    for change in event.get("changes", []):
+        if change.get("action") not in {"EDIT", "HOST_CHANGE"} or not change.get("element_id"):
+            continue
+        element = _element(model, str(change["element_id"]))
+        _assert_element_editable(model, state, element)
 
 
 def locked_ancestor_for(semantic: dict[str, Any], state: dict[str, Any], element_id: str) -> str | None:
@@ -1020,7 +1092,9 @@ def undo(model: dict[str, Any], state: dict[str, Any], actor_id: str) -> dict[st
     if event is None:
         raise error(409, "UNDO_HISTORY_INVALID", "Undo history is inconsistent")
     element_id = event.get("element_id")
-    if element_id and event.get("action") in {"EDIT", "HOST_CHANGE"}:
+    if event.get("action") == "BATCH_EDIT":
+        _assert_batch_editable(model, state, event)
+    elif element_id and event.get("action") in {"EDIT", "HOST_CHANGE"}:
         element = _element(model, element_id)
         _assert_element_editable(model, state, element)
     if event.get("action") in {"CREATE", "DELETE"}:

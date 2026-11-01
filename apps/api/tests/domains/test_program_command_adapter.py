@@ -163,3 +163,45 @@ def test_set_program_area_respects_building_lock():
         execute_semantic_command(model, state, command, "architect-1", "program-revision-1")
 
     assert "program_area_targets" not in model["properties"]
+
+
+def test_program_generation_prefers_canonical_building_use_and_floor_count():
+    requirements = [
+        SimpleNamespace(
+            id="requirement-gfa",
+            parameter="target_gfa",
+            status="CONFIRMED",
+            normalized_value_json=1000.0,
+        ),
+        SimpleNamespace(
+            id="requirement-floors",
+            parameter="floor_count",
+            status="CONFIRMED",
+            normalized_value_json=1,
+        ),
+        SimpleNamespace(
+            id="requirement-use",
+            parameter="building_use",
+            status="CONFIRMED",
+            normalized_value_json="office",
+        ),
+    ]
+    world = SimpleNamespace(
+        model_json={
+            "site": {"area": {"value": 10000.0}},
+            "building": {
+                "use": "retail",
+                "floor_count": 3,
+                "target_gfa": {"value": 1200.0, "unit": "m2"},
+            },
+            "properties": {},
+        },
+        model_hash="canonical-program-world-hash",
+    )
+
+    program = build_program(requirements, world)
+
+    assert program["use"] == "retail"
+    assert program["floor_count"] == 3
+    assert program["target_gfa_m2"] == 1200.0
+    assert any(space["space_type"] == "sales_floor" for space in program["spaces"])
