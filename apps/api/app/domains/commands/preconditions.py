@@ -42,4 +42,16 @@ def check_preconditions(model: dict[str, Any], state: dict[str, Any], command: C
         element = _find_element(model, str(command.payload.get("element_id", "")))
         if element is not None and _element_type(element) != "Space":
             errors.append("COMMAND_TARGET_TYPE_MISMATCH: expected Space")
+    if command.type == "SetProgramArea":
+        building = next(
+            (
+                item for item in (model.get("semantic_model") or {}).get("elements", [])
+                if _element_type(item) == "Building"
+            ),
+            None,
+        )
+        if building is None:
+            errors.append("SEMANTIC_BUILDING_NOT_FOUND")
+        elif state.get("locks", {}).get(building.get("id"), {}).get("locked"):
+            errors.append("SEMANTIC_ELEMENT_LOCKED")
     return errors
