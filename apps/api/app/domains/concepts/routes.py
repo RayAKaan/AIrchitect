@@ -6,7 +6,6 @@ from app.db.site_models import SiteRevision
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.engine import ENGINE, DesignGenerationError
-from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
 from app.domains.foundation.service import error, resolve_project_version, resolve_world_model
 
 router = APIRouter(tags=["concepts"])
@@ -26,14 +25,7 @@ async def generate_concepts(project_id: str, version_ref: str, user: User = Depe
     world = await resolve_world_model(session, version.id)
     program, envelope = await _inputs(session, version.id)
     try:
-        run = await ENGINE.generate(
-            session,
-            project,
-            version,
-            world,
-            user,
-            input_artifacts={"program": program, "envelope": envelope},
-        )
+        run = await ENGINE.generate(session, project, version, world, user)
     except DesignGenerationError as exc:
         raise error(409, exc.code, exc.message, **exc.context) from exc
     alternatives = list((await session.scalars(select(DesignAlternative).where(DesignAlternative.generation_run_id == run.id))).all())
@@ -65,17 +57,7 @@ async def list_concepts(project_id: str, version_ref: str, user: User = Depends(
     world = await resolve_world_model(session, version.id)
     rows = list((await session.scalars(select(DesignAlternative).where(DesignAlternative.project_version_id == version.id)
         .order_by(DesignAlternative.created_at.desc()))).all())
-    lineage = await current_design_input_lineage(session, version.id)
-    alternatives = []
-    for row in rows:
-        status = row.status
-        if status in {"VALID", "SELECTED"} and alternative_is_stale(row, world.model_hash or "", lineage):
-            status = "STALE"
-        alternatives.append({
-            "id": row.id, "name": row.name, "strategy_id": row.strategy_id, "status": status,
-            "metrics": row.key_metrics_json, "constraints": row.constraint_results_json,
-            "tradeoffs": row.tradeoffs_json, "assumptions": row.assumptions_json,
-            "unknowns": row.unknowns_json, "reasoning": row.reasoning_json,
-            "design_hash": row.design_hash, "provenance": row.provenance_json,
-        })
-    return {"world_model_hash": world.model_hash, "input_lineage": lineage, "alternatives": alternatives}
+    return {"world_model_hash":world.model_hash,"alternatives":[{"id":r.id,"name":r.name,"strategy_id":r.strategy_id,
+        "status":r.status,"metrics":r.key_metrics_json,"constraints":r.constraint_results_json,"tradeoffs":r.tradeoffs_json,
+        "assumptions":r.assumptions_json,"unknowns":r.unknowns_json,"reasoning":r.reasoning_json,"design_hash":r.design_hash,
+        "provenance":r.provenance_json} for r in rows]}

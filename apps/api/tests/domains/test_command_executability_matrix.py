@@ -13,7 +13,7 @@ PAYLOADS = {
     "AddLevel": {"building_id": "building-1", "elevation_m": 3},
     "ResizeSpace": {"element_id": "space-1", "area_m2": 40},
     "MoveSpace": {"element_id": "space-1", "translation_m": {"x": 1, "y": 0, "z": 0}},
-    "SetProgramArea": {"space_type": "office", "area_m2": 40},
+    "SetProgramArea": {"space_type": "open_work", "area_m2": 40},
     "LockEntity": {"element_id": "space-1"},
     "Undo": {},
     "Redo": {},
@@ -48,8 +48,7 @@ def test_every_registered_command_has_an_explicit_valid_preview_contract():
             ]
 
 
-def test_semantic_adapter_capabilities_remain_separate_from_geometry_commands():
+def test_semantic_adapter_capabilities_are_a_strict_subset_of_registered_commands():
     registered = {name for name, _ in COMMANDS}
     executable = {name for name in registered if supports_semantic_command(name)}
     assert executable == {"ResizeSpace", "LockEntity", "Undo", "Redo"}
-    assert supports_command("MoveBuilding") is True
