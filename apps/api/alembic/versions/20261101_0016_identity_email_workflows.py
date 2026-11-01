@@ -30,13 +30,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_identity_tokens_user_id", "identity_tokens", ["user_id"])
     op.create_index("ix_identity_tokens_purpose", "identity_tokens", ["purpose"])
-    op.create_index("ix_identity_tokens_token_hash", "identity_tokens", ["token_hash"])
     op.create_index("ix_identity_tokens_expires_at", "identity_tokens", ["expires_at"])
 
 
 def downgrade() -> None:
     op.drop_index("ix_identity_tokens_expires_at", table_name="identity_tokens")
-    op.drop_index("ix_identity_tokens_token_hash", table_name="identity_tokens")
     op.drop_index("ix_identity_tokens_purpose", table_name="identity_tokens")
     op.drop_index("ix_identity_tokens_user_id", table_name="identity_tokens")
     op.drop_table("identity_tokens")
