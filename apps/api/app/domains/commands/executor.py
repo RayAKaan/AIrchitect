@@ -51,7 +51,7 @@ def execute_semantic_command(model: dict[str, Any], state: dict[str, Any], comma
         status="committed",
         revision_hash=revision_hash,
         canonical_mutation=True,
-        impact=impact_for(command),
+        impact=event.get("impacts") or impact_for(command),
         warnings=[],
     )
     record_command(state, canonical, {**result.model_dump(), "event": event})
