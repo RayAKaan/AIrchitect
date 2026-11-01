@@ -46,3 +46,11 @@ Run from `apps/api`: `pytest`, `ruff check app tests`, and `mypy app` after inst
 - Added organization member listing, role changes, member removal, invitation listing/revocation, and audit events.
 - Organization owners cannot be demoted or removed through member-management endpoints; administrator privilege boundaries are enforced server-side.
 - Remaining Phase 2 work: secure browser cookie/CSRF flow, password reset/email verification and refresh, project optimistic concurrency, PostgreSQL tenant-isolation coverage, and invitation/member UI.
+
+
+## Phase 2 implementation update — secure browser sessions and refresh rotation
+- Browser authentication now uses HttpOnly, SameSite=Lax session and refresh cookies; Secure is enabled outside local/test environments.
+- Cookie-authenticated unsafe requests require a matching CSRF cookie/header pair. Bearer-token API clients remain supported.
+- Refresh tokens are random opaque values; only their SHA-256 digests are stored. Refresh rotates the token and extends the server-side session expiry.
+- Browser bootstrap can renew a session without storing bearer tokens in sessionStorage. Logout and logout-all clear browser cookies.
+- Remaining Phase 2 work: organization management/invitation UI, optimistic project concurrency, and real PostgreSQL tenant-isolation acceptance tests.
