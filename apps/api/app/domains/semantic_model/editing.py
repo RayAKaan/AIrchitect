@@ -47,6 +47,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "use": {"kind": "string", "unit": None},
         "area_m2": {"kind": "number", "unit": "m2", "minimum": 0.01},
         "level_number": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 100},
+        "translation_m": {"kind": "vector3", "unit": "m"},
     },
     "ParkingFacility": {
         "arrangement": {"kind": "string", "unit": None},
@@ -398,9 +399,12 @@ def apply_property(model: dict[str, Any], element: dict[str, Any], property_name
             if locked_target is not None:
                 raise error(409, "LOCKED_DEPENDENCY", "Cannot move a space into a locked storey",
                             locked_element_id=locked_target, level_number=target_level)
-        mapping = {"use": "use", "area_m2": "area", "level_number": "level_number"}
-        key = mapping[property_name]
-        space[key] = _quantity(value, unit) if property_name == "area_m2" else value
+        if property_name == "translation_m":
+            space["translation"] = value
+        else:
+            mapping = {"use": "use", "area_m2": "area", "level_number": "level_number"}
+            key = mapping[property_name]
+            space[key] = _quantity(value, unit) if property_name == "area_m2" else value
     else:
         raise error(422, "PROPERTY_NOT_EDITABLE", "This semantic element cannot be edited", element_type=element_type)
 
@@ -637,7 +641,10 @@ def _unset_property(model: dict[str, Any], element: dict[str, Any], property_nam
     elif element_type == "Space":
         space = next((item for item in model.get("spaces", []) if str(item.get("id") or item.get("name") or "") == identity_key), None)
         if space:
-            space[{"use": "use", "area_m2": "area", "level_number": "level_number"}[property_name]] = None
+            if property_name == "translation_m":
+                space.pop("translation", None)
+            else:
+                space[{"use": "use", "area_m2": "area", "level_number": "level_number"}[property_name]] = None
     state = model.setdefault("designer_state", initial_designer_state())
     state.setdefault("overrides", {}).pop(f"{element['id']}:{property_name}", None)
     model.setdefault("provenance", {}).pop(f"designer:{element['id']}:{property_name}", None)
@@ -876,10 +883,14 @@ def _assert_element_editable(model: dict[str, Any], state: dict[str, Any], eleme
 def impact_groups(element_type: str, property_name: str) -> list[str]:
     if property_name == "setback_m":
         return ["planning_envelope", "design_alternatives", "parametric_geometry_intents", "validation"]
+    if property_name == "program_area_targets":
+        return ["program", "design_alternatives", "parametric_geometry_intents", "validation"]
+    if element_type == "Site" and property_name in {"area_m2", "width_m", "depth_m", "orientation_deg"}:
+        return ["planning_envelope", "design_alternatives", "parametric_geometry_intents", "validation"]
     if property_name in {"city", "orientation_deg", "coverage_ratio"}:
         return ["feasibility", "regulatory_review", "design_alternatives", "validation"]
     if property_name in {"use"}:
-        return ["design_alternatives", "quantities", "cost", "structural_review", "regulatory_review", "validation"]
+        return ["program", "design_alternatives", "quantities", "cost", "structural_review", "regulatory_review", "validation"]
     if element_type in {"Wall", "Slab", "Roof", "Door", "Window", "Space"} or property_name in {
         "footprint_width_m", "footprint_depth_m", "width_m", "depth_m", "length_m", "thickness_m",
         "elevation_m", "level_number",
@@ -887,7 +898,7 @@ def impact_groups(element_type: str, property_name: str) -> list[str]:
         return ["parametric_geometry_intents", "quantities", "cost", "validation"]
     if property_name in {"area_m2", "target_gfa_m2", "floor_count", "floor_to_floor_height_m",
                          "height_m", "spaces", "arrangement"}:
-        return ["design_alternatives", "parametric_geometry_intents", "quantities", "cost",
+        return ["program", "design_alternatives", "parametric_geometry_intents", "quantities", "cost",
                 "structural_review", "regulatory_review", "validation"]
     return ["design_alternatives", "parametric_geometry_intents", "validation"]
 
@@ -1158,6 +1169,30 @@ def _stable_id(project_id: str, element_type: str, key: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"airchitect:{project_id}:{element_type}:{key}"))
 
 
+
+
+async def invalidate_designer_artifacts(
+    session: AsyncSession,
+    project: Project,
+    version: ProjectVersion,
+    source_revision_hash: str,
+    event: dict[str, Any] | None,
+) -> tuple[str, ...]:
+    """Run the shared persisted-artifact lifecycle for a direct designer mutation."""
+    groups = sorted(set((event or {}).get("impacts") or []))
+    if not groups:
+        return ()
+    from app.domains.commands.artifact_lifecycle import invalidate_and_enqueue
+
+    return await invalidate_and_enqueue(
+        session,
+        project=project,
+        version=version,
+        source_revision_hash=source_revision_hash,
+        groups=groups,
+    )
+
+
 async def persist_designer_mutation(session: AsyncSession, *, project: Project, version: ProjectVersion,
                                     user: User, model: dict[str, Any], action: str,
                                     event: dict[str, Any] | None = None,
@@ -1174,6 +1209,9 @@ async def persist_designer_mutation(session: AsyncSession, *, project: Project, 
         created_by=user.id)
     session.add(row)
     await session.flush()
+    invalidated_artifact_ids = await invalidate_designer_artifacts(
+        session, project, version, row.model_hash, event
+    )
     await audit(session, project=project, version=version, actor=user.id, action=f"DESIGNER_{action}",
         entity="semantic_model", entity_id=event.get("event_id") if event else row.id,
         metadata={"world_model_revision_id": row.id, "model_hash": row.model_hash,
@@ -1183,7 +1221,8 @@ async def persist_designer_mutation(session: AsyncSession, *, project: Project, 
                   "property": event.get("property") if event else None,
                   "reason": event.get("reason") if event else None,
                   "target_event_id": event.get("target_event_id") if event else None,
-                  "impacts": event.get("impacts") if event else []})
+                  "impacts": event.get("impacts") if event else [],
+                  "invalidated_artifact_ids": list(invalidated_artifact_ids)})
     if commit:
         await session.commit()
     return row

@@ -596,3 +596,79 @@ async def test_api_edit_lock_undo_redo_and_override_survives_rebuild(api):
     assert next_model["designer_state"]["locks"][storey_id]["locked"] is True
     assert next_model["designer_state"]["undo_stack"] == []
     assert next_model["designer_state"]["redo_stack"] == []
+
+
+@pytest.mark.asyncio
+async def test_direct_designer_mutation_invalidates_persisted_artifacts_atomically(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.domains.commands import artifact_lifecycle
+    from app.domains.semantic_model.editing import persist_designer_mutation
+
+    calls = []
+
+    async def fake_invalidate_and_enqueue(
+        session,
+        *,
+        project,
+        version,
+        source_revision_hash,
+        groups,
+    ):
+        calls.append({
+            "session": session,
+            "project": project,
+            "version": version,
+            "source_revision_hash": source_revision_hash,
+            "groups": groups,
+        })
+        return ("artifact-design-1", "artifact-validation-1")
+
+    monkeypatch.setattr(artifact_lifecycle, "invalidate_and_enqueue", fake_invalidate_and_enqueue)
+    model = world_fixture()
+    state = model["designer_state"]
+    building = semantic_element(model, "Building")
+    event = edit_property(
+        model, state, building["id"], "floor_count", 3, "designer-1", "Add a reviewed floor"
+    )
+    project = SimpleNamespace(id="project-phase25", organization_id="org-phase25")
+    version = SimpleNamespace(id="version-phase25", revision_number=0)
+    user = SimpleNamespace(id="designer-1")
+
+    class Session:
+        def __init__(self):
+            self.rows = []
+
+        async def scalar(self, statement):
+            return 0
+
+        def add(self, row):
+            self.rows.append(row)
+
+        async def flush(self):
+            return None
+
+        async def commit(self):
+            return None
+
+    session = Session()
+    revision = await persist_designer_mutation(
+        session,
+        project=project,
+        version=version,
+        user=user,
+        model=model,
+        action="EDIT",
+        event=event,
+    )
+
+    assert revision.model_hash
+    assert version.revision_number == 1
+    assert len(calls) == 1
+    assert calls[0]["session"] is session
+    assert calls[0]["project"] is project
+    assert calls[0]["version"] is version
+    assert calls[0]["source_revision_hash"] == revision.model_hash
+    assert "program" in calls[0]["groups"]
+    assert "design_alternatives" in calls[0]["groups"]
+    assert "validation" in calls[0]["groups"]
