@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     jev_input_cost_per_million_usd: float = 0.042
     assistant_rate_limit_per_minute: int = 20
     auth_secret: str = "local-only-change-this-secret"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_sender: str = ""
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    public_app_url: str = "http://localhost:5173"
 
     geometry_engine: str = "cad_bim"
     cad_worker_python: str = ""
@@ -89,3 +97,15 @@ def validate_production_settings(config: Settings) -> None:
         raise ValueError("GEOMETRY_ENGINE must be cad_bim in production")
     if config.cad_allow_legacy_engine:
         raise ValueError("CAD_ALLOW_LEGACY_ENGINE must be false in production")
+
+    if not config.smtp_host.strip() or not config.smtp_sender.strip():
+        raise ValueError("SMTP_HOST and SMTP_SENDER are required for production identity email workflows")
+    if not config.smtp_ssl and not config.smtp_starttls:
+        raise ValueError("SMTP must use implicit TLS or STARTTLS in production")
+    if not 1 <= config.smtp_port <= 65535:
+        raise ValueError("SMTP_PORT must be between 1 and 65535")
+    if config.smtp_username.strip() and not config.smtp_password:
+        raise ValueError("SMTP_PASSWORD is required when SMTP_USERNAME is configured")
+    public_url = urlsplit(config.public_app_url)
+    if public_url.scheme != "https" or not public_url.netloc:
+        raise ValueError("PUBLIC_APP_URL must be an absolute HTTPS URL")

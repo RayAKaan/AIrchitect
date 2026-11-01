@@ -36,8 +36,31 @@ class AuthOut(BaseModel):
     token_type: str = "bearer"
     expires_in: int = 86400
     refresh_token: str | None = None
+    verification_required: bool = False
+    message: str | None = None
+    debug_token: str | None = None
     user: UserOut
 
 
 class RefreshRequest(BaseModel):
     refresh_token: str | None = Field(default=None, min_length=32, max_length=256)
+
+
+class EmailAddressRequest(BaseModel):
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value.count("@") != 1 or "." not in value.rsplit("@", 1)[-1]:
+            raise ValueError("A valid email address is required")
+        return value
+
+    email: str
+
+
+class IdentityTokenRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+
+
+class PasswordResetRequest(IdentityTokenRequest):
+    new_password: str = Field(min_length=12, max_length=128)

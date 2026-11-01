@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.session import get_session
+from app.core.config import settings
 from app.main import app
 
 
@@ -115,6 +116,46 @@ async def test_postgres_tenant_isolation_and_concurrent_project_updates() -> Non
             assert current.status_code == 200
             assert current.json()["version"] == 2
             assert current.headers["etag"] == '"2"'
+    finally:
+        app.dependency_overrides.clear()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgres_password_reset_requests_are_serialized_per_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    database_url = os.getenv("DATABASE_URL", "")
+    if not database_url.startswith("postgresql+asyncpg://"):
+        pytest.skip("PostgreSQL identity-token concurrency requires DATABASE_URL")
+
+    sent: list[str] = []
+    engine = create_async_engine(database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def override_session():
+        async with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_session
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://postgres-test") as client:
+            email = "pg-reset-" + uuid.uuid4().hex + "@example.com"
+            registered = await client.post("/api/v1/auth/register", json={
+                "email": email, "name": "Postgres Reset", "password": "a-very-secure-password",
+                "organization_name": "Postgres Reset Org",
+            })
+            assert registered.status_code == 201, registered.text
+            monkeypatch.setattr(settings, "smtp_host", "smtp.example.test")
+            monkeypatch.setattr(settings, "smtp_sender", "noreply@example.test")
+            import app.main as main
+            monkeypatch.setattr(main, "send_email", lambda recipient, subject, body: sent.append(recipient))
+
+            first, second = await asyncio.gather(
+                client.post("/api/v1/auth/forgot-password", json={"email": email}),
+                client.post("/api/v1/auth/forgot-password", json={"email": email}),
+            )
+            assert first.status_code == second.status_code == 200
+            assert first.json()["message"] == second.json()["message"]
+            assert sent == [email]
     finally:
         app.dependency_overrides.clear()
         await engine.dispose()

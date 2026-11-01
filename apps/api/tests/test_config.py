@@ -18,6 +18,10 @@ def production_settings(**overrides) -> Settings:
         "auth_secret": "x" * 48,
         "database_url": "postgresql+asyncpg://prod_user:strong-password@db.example.com/building",
         "cad_allow_legacy_engine": False,
+        "smtp_host": "smtp.example.com",
+        "smtp_sender": "noreply@example.com",
+        "smtp_starttls": True,
+        "public_app_url": "https://app.example.com",
     }
     values.update(overrides)
     return Settings(**values)
@@ -52,3 +56,28 @@ def test_production_rejects_legacy_fallback() -> None:
 
 def test_test_environment_can_use_isolated_test_database() -> None:
     validate_production_settings(Settings(app_env="test", database_url="sqlite+aiosqlite:///./test.db"))
+
+
+def test_production_requires_secure_smtp_transport() -> None:
+    with pytest.raises(ValueError, match="SMTP must use implicit TLS or STARTTLS"):
+        validate_production_settings(production_settings(smtp_starttls=False, smtp_ssl=False))
+
+
+def test_production_requires_https_public_app_url() -> None:
+    with pytest.raises(ValueError, match="PUBLIC_APP_URL"):
+        validate_production_settings(production_settings(public_app_url="http://app.example.com"))
+
+
+def test_production_requires_email_delivery_configuration() -> None:
+    with pytest.raises(ValueError, match="SMTP_HOST and SMTP_SENDER"):
+        validate_production_settings(production_settings(smtp_host="", smtp_sender=""))
+
+
+def test_production_rejects_invalid_smtp_port() -> None:
+    with pytest.raises(ValueError, match="SMTP_PORT"):
+        validate_production_settings(production_settings(smtp_port=70000))
+
+
+def test_production_requires_smtp_password_when_username_is_set() -> None:
+    with pytest.raises(ValueError, match="SMTP_PASSWORD"):
+        validate_production_settings(production_settings(smtp_username="smtp-user", smtp_password=""))
