@@ -13,7 +13,7 @@ PAYLOADS = {
     "AddLevel": {"building_id": "building-1", "elevation_m": 3},
     "ResizeSpace": {"element_id": "space-1", "area_m2": 40},
     "MoveSpace": {"element_id": "space-1", "translation_m": {"x": 1, "y": 0, "z": 0}},
-    "SetProgramArea": {"space_type": "office", "area_m2": 40},
+    "SetProgramArea": {"space_type": "open_work", "area_m2": 40},
     "LockEntity": {"element_id": "space-1"},
     "Undo": {},
     "Redo": {},
