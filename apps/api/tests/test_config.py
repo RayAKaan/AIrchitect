@@ -71,3 +71,13 @@ def test_production_requires_https_public_app_url() -> None:
 def test_production_requires_email_delivery_configuration() -> None:
     with pytest.raises(ValueError, match="SMTP_HOST and SMTP_SENDER"):
         validate_production_settings(production_settings(smtp_host="", smtp_sender=""))
+
+
+def test_production_rejects_invalid_smtp_port() -> None:
+    with pytest.raises(ValueError, match="SMTP_PORT"):
+        validate_production_settings(production_settings(smtp_port=70000))
+
+
+def test_production_requires_smtp_password_when_username_is_set() -> None:
+    with pytest.raises(ValueError, match="SMTP_PASSWORD"):
+        validate_production_settings(production_settings(smtp_username="smtp-user", smtp_password=""))

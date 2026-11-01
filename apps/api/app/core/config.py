@@ -102,5 +102,10 @@ def validate_production_settings(config: Settings) -> None:
         raise ValueError("SMTP_HOST and SMTP_SENDER are required for production identity email workflows")
     if not config.smtp_ssl and not config.smtp_starttls:
         raise ValueError("SMTP must use implicit TLS or STARTTLS in production")
-    if urlsplit(config.public_app_url).scheme != "https":
-        raise ValueError("PUBLIC_APP_URL must use HTTPS in production")
+    if not 1 <= config.smtp_port <= 65535:
+        raise ValueError("SMTP_PORT must be between 1 and 65535")
+    if config.smtp_username.strip() and not config.smtp_password:
+        raise ValueError("SMTP_PASSWORD is required when SMTP_USERNAME is configured")
+    public_url = urlsplit(config.public_app_url)
+    if public_url.scheme != "https" or not public_url.netloc:
+        raise ValueError("PUBLIC_APP_URL must be an absolute HTTPS URL")
