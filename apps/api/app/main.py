@@ -128,7 +128,7 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
     user = await session.scalar(select(User).where(User.email == str(body.email).lower()))
     if user is None or not verify_password(body.password, user.password_hash): raise HTTPException(401, "Invalid email or password")
     set_context(actor_id=user.id)
-    auth_session = AuthSession(id=uuid4().hex, user_id=user.id, expires_at=now() + timedelta(hours=24))
+    auth_session = AuthSession(id=uuid4().hex, user_id=user.id, expires_at=now() + timedelta(days=30))
     session.add(auth_session)
     await session.flush()
     refresh_token = issue_refresh_token(auth_session.id)
@@ -151,7 +151,7 @@ async def refresh_session(body: RefreshRequest, request: Request, response: Resp
         session_id, _secret = refresh_token.split(".", 1)
     except ValueError:
         raise HTTPException(401, "Invalid refresh session") from None
-    auth_session = await session.get(AuthSession, session_id)
+    auth_session = await session.scalar(select(AuthSession).where(AuthSession.id == session_id).with_for_update())
     if auth_session is None or auth_session.revoked_at is not None or not auth_session.refresh_token_hash:
         raise HTTPException(401, "Refresh session is no longer active")
     refresh_expires_at = auth_session.refresh_expires_at
