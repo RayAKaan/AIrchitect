@@ -46,6 +46,10 @@ async def test_project_updates_require_if_match_and_reject_stale_versions(api: h
     assert stale.json()["error"]["code"] == "PRECONDITION_FAILED"
     invalid = await api.patch("/api/v1/projects/" + project["id"], headers={**headers, "If-Match": "not-a-version"}, json=body)
     assert invalid.status_code == 400
+    weak = await api.patch("/api/v1/projects/" + project["id"], headers={**headers, "If-Match": 'W/"2"'}, json=body)
+    assert weak.status_code == 400
+    wildcard = await api.patch("/api/v1/projects/" + project["id"], headers={**headers, "If-Match": "*"}, json=body)
+    assert wildcard.status_code == 400
 
 
 @pytest.mark.asyncio
