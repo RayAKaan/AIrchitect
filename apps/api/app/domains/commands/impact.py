@@ -5,7 +5,7 @@ from .schemas import CommandEnvelope
 
 IMPACT_GROUPS: dict[str, tuple[str, ...]] = {
     "MoveBuilding": ("design_alternatives", "parametric_geometry_intents", "quantities", "cost", "validation"),
-    "RotateBuilding": ("parametric_geometry_intents", "quantities", "cost", "validation"),
+    "RotateBuilding": ("design_alternatives", "parametric_geometry_intents", "quantities", "cost", "validation"),
     "ChangeSetback": ("planning_envelope", "design_alternatives", "parametric_geometry_intents", "validation"),
     "AddLevel": ("program", "parametric_geometry_intents", "quantities", "cost", "structural_review", "validation"),
     "ResizeSpace": ("program", "parametric_geometry_intents", "quantities", "cost", "validation"),
