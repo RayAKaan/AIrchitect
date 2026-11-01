@@ -20,6 +20,7 @@ async def rebind_artifact(
     source_revision_hash: str,
     dependencies: list[ArtifactVersion],
     engine_version: str,
+    output_hash: str | None = None,
 ) -> ArtifactVersion:
     """Publish a regenerated artifact as a new immutable version.
 
@@ -37,7 +38,7 @@ async def rebind_artifact(
     if any(dep.project_id != project.id or dep.project_version_id != version.id for dep in dependencies):
         raise ValueError("artifact dependencies must belong to the same project version")
 
-    output_hash = canonical_hash(payload)
+    resolved_output_hash = output_hash or canonical_hash(payload)
     candidates = list(
         (
             await session.scalars(
@@ -46,7 +47,7 @@ async def rebind_artifact(
                     ArtifactVersion.project_version_id == version.id,
                     ArtifactVersion.artifact_type == previous.artifact_type,
                     ArtifactVersion.status == "current",
-                    ArtifactVersion.output_hash == output_hash,
+                    ArtifactVersion.output_hash == resolved_output_hash,
                 )
                 .order_by(ArtifactVersion.version.desc())
             )
@@ -91,7 +92,7 @@ async def rebind_artifact(
             "supersedes_artifact_version_id": previous.id,
         },
         input_references_json=[dependency.id for dependency in dependencies],
-        output_hash=output_hash,
+        output_hash=resolved_output_hash,
         payload_json=payload,
         created_by=actor,
     )
