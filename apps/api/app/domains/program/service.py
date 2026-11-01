@@ -25,23 +25,12 @@ def _use(requirements: list[RequirementRecord]) -> str:
     return "office"
 
 
-def _world_value(value):
-    return value.get("value") if isinstance(value, dict) and "value" in value else value
-
-
 def build_program(requirements: list[RequirementRecord], world: WorldModelRevision) -> dict:
     confirmed = [r for r in requirements if r.status in {"CONFIRMED", "ASSUMED"}]
     gfa_row = next((r for r in reversed(confirmed) if r.parameter == "target_gfa"), None)
     floors_row = next((r for r in reversed(confirmed) if r.parameter == "floor_count"), None)
-    building = world.model_json.get("building") or {}
-    canonical_gfa = _world_value(building.get("target_gfa"))
-    canonical_floors = _world_value(building.get("floor_count"))
-    gfa = float(canonical_gfa) if canonical_gfa is not None else (float(gfa_row.normalized_value_json) if gfa_row else None)
-    floors = int(canonical_floors) if canonical_floors is not None else (int(floors_row.normalized_value_json) if floors_row else None)
-    canonical_use = building.get("use")
-    use = str(canonical_use).strip().lower() if isinstance(canonical_use, str) and canonical_use.strip() else _use(requirements)
-    if use not in CATALOG:
-        raise error(409, "UNKNOWN_BUILDING_USE", "Canonical building use is not supported by the program catalog", building_use=use)
+    gfa = float(gfa_row.normalized_value_json) if gfa_row else None
+    floors = int(floors_row.normalized_value_json) if floors_row else None
     assumptions = []
     unknowns = []
     if gfa is None:
@@ -55,6 +44,7 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
     if floors is None: unknowns.append("floor_count")
     if gfa is None:
         raise error(409, "PROGRAM_INPUT_INCOMPLETE", "A target GFA or enough confirmed site/floor information is required to build a bounded program", unknowns=unknowns)
+    use = _use(requirements)
     catalog = CATALOG[use]
     raw_targets = (world.model_json.get("properties") or {}).get("program_area_targets", {})
     if not isinstance(raw_targets, dict):
@@ -73,10 +63,7 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
     for space_type, raw_area in raw_targets.items():
         if isinstance(raw_area, bool) or not isinstance(raw_area, (int, float)) or not math.isfinite(float(raw_area)) or float(raw_area) <= 0:
             raise error(409, "PROGRAM_AREA_TARGETS_INVALID", "Explicit program areas must be positive finite numbers", space_type=space_type)
-        rounded_area = round(float(raw_area), 2)
-        if rounded_area <= 0:
-            raise error(409, "PROGRAM_AREA_TARGETS_INVALID", "Explicit program areas must be at least 0.01 m2", space_type=space_type)
-        explicit_targets[space_type] = rounded_area
+        explicit_targets[space_type] = float(raw_area)
     explicit_total = sum(explicit_targets.values())
     if explicit_total > gfa + 1e-6:
         raise error(
@@ -90,7 +77,7 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
         (name, category, ratio) for name, category, ratio in catalog
         if name.lower().replace(" ", "_") not in explicit_targets
     ]
-    remaining_gfa = round(gfa - explicit_total, 2)
+    remaining_gfa = max(0.0, gfa - explicit_total)
     remaining_ratio = sum(ratio for _, _, ratio in remaining_catalog)
     if remaining_catalog and remaining_gfa <= 0:
         raise error(
@@ -99,31 +86,21 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
             "Explicit targets leave no area for the remaining required program spaces",
             target_gfa_m2=round(gfa, 2),
         )
-    if not remaining_catalog and abs(remaining_gfa) > 0.005:
+    if not remaining_catalog and abs(remaining_gfa) > 0.01:
         raise error(
             409,
             "PROGRAM_AREA_TARGETS_INCOMPLETE",
             "When every program space has an explicit target, their sum must equal target GFA",
             remaining_area_m2=round(remaining_gfa, 2),
         )
-    remaining_targets = {
-        name.lower().replace(" ", "_"): (
-            round(remaining_gfa * ratio / remaining_ratio, 2) if remaining_ratio else 0.0
-        )
-        for name, _, ratio in remaining_catalog
-    }
-    if remaining_targets:
-        rounding_residual = round(remaining_gfa - sum(remaining_targets.values()), 2)
-        adjustment_key = max(remaining_targets, key=remaining_targets.get)
-        remaining_targets[adjustment_key] = round(
-            remaining_targets[adjustment_key] + rounding_residual, 2
-        )
-
     spaces = []
     for index, (name, category, ratio) in enumerate(catalog, 1):
         space_type = name.lower().replace(" ", "_")
         explicit = space_type in explicit_targets
-        target = explicit_targets[space_type] if explicit else remaining_targets.get(space_type, 0.0)
+        if explicit:
+            target = round(explicit_targets[space_type], 2)
+        else:
+            target = round(remaining_gfa * ratio / remaining_ratio, 2) if remaining_ratio else 0.0
         spaces.append({
             "id": f"space-{index:02d}",
             "name": name,

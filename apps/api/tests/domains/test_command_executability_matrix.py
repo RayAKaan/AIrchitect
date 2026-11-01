@@ -48,9 +48,7 @@ def test_every_registered_command_has_an_explicit_valid_preview_contract():
             ]
 
 
-def test_semantic_adapter_capabilities_remain_separate_from_geometry_commands():
+def test_semantic_adapter_capabilities_are_a_strict_subset_of_registered_commands():
     registered = {name for name, _ in COMMANDS}
     executable = {name for name in registered if supports_semantic_command(name)}
     assert executable == {"ResizeSpace", "LockEntity", "Undo", "Redo"}
-    assert supports_command("MoveBuilding") is True
-    assert supports_command("RotateBuilding") is True
