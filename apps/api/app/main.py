@@ -238,16 +238,15 @@ async def login(body: LoginRequest, request: Request, response: Response, sessio
 
 @app.post(f"{settings.api_prefix}/auth/verify-email", tags=["identity"])
 async def verify_email(body: IdentityTokenRequest, session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
-    token = await session.scalar(
-        select(IdentityToken).where(
-            IdentityToken.token_hash == _identity_token_digest(body.token),
-            IdentityToken.purpose == "EMAIL_VERIFICATION",
-        ).with_for_update()
-    )
-    if token is None or token.consumed_at is not None or _as_utc(token.expires_at) <= now():
+    candidate = await session.scalar(select(IdentityToken).where(
+        IdentityToken.token_hash == _identity_token_digest(body.token),
+        IdentityToken.purpose == "EMAIL_VERIFICATION",
+    ))
+    if candidate is None:
         raise HTTPException(400, "Verification link is invalid or expired")
-    user = await session.get(User, token.user_id)
-    if user is None:
+    user = await session.scalar(select(User).where(User.id == candidate.user_id).with_for_update())
+    token = await session.scalar(select(IdentityToken).where(IdentityToken.id == candidate.id).with_for_update())
+    if user is None or token is None or token.consumed_at is not None or _as_utc(token.expires_at) <= now():
         raise HTTPException(400, "Verification link is invalid or expired")
     token.consumed_at = now()
     user.email_verified_at = now()
@@ -258,7 +257,7 @@ async def verify_email(body: IdentityTokenRequest, session: AsyncSession = Depen
 @app.post(f"{settings.api_prefix}/auth/resend-verification", tags=["identity"])
 async def resend_verification(body: EmailAddressRequest, session: AsyncSession = Depends(get_session)) -> dict[str, str]:
     generic = {"message": "If the account requires verification, an email will be sent shortly."}
-    user = await session.scalar(select(User).where(User.email == body.email))
+    user = await session.scalar(select(User).where(User.email == body.email).with_for_update())
     if user is None or user.email_verified_at is not None or not settings.smtp_host.strip() or not settings.smtp_sender.strip():
         return generic
     recent = await session.scalar(select(IdentityToken.id).where(
@@ -280,7 +279,7 @@ async def resend_verification(body: EmailAddressRequest, session: AsyncSession =
 @app.post(f"{settings.api_prefix}/auth/forgot-password", tags=["identity"])
 async def forgot_password(body: EmailAddressRequest, session: AsyncSession = Depends(get_session)) -> dict[str, str | None]:
     generic = {"message": "If an account exists for that address, password-reset instructions will be sent.", "debug_token": None}
-    user = await session.scalar(select(User).where(User.email == body.email))
+    user = await session.scalar(select(User).where(User.email == body.email).with_for_update())
     if user is None or not settings.smtp_host.strip() or not settings.smtp_sender.strip():
         return generic
     recent = await session.scalar(select(IdentityToken.id).where(
@@ -301,16 +300,15 @@ async def forgot_password(body: EmailAddressRequest, session: AsyncSession = Dep
 
 @app.post(f"{settings.api_prefix}/auth/reset-password", tags=["identity"])
 async def reset_password(body: PasswordResetRequest, session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
-    token = await session.scalar(
-        select(IdentityToken).where(
-            IdentityToken.token_hash == _identity_token_digest(body.token),
-            IdentityToken.purpose == "PASSWORD_RESET",
-        ).with_for_update()
-    )
-    if token is None or token.consumed_at is not None or _as_utc(token.expires_at) <= now():
+    candidate = await session.scalar(select(IdentityToken).where(
+        IdentityToken.token_hash == _identity_token_digest(body.token),
+        IdentityToken.purpose == "PASSWORD_RESET",
+    ))
+    if candidate is None:
         raise HTTPException(400, "Password-reset link is invalid or expired")
-    user = await session.get(User, token.user_id)
-    if user is None:
+    user = await session.scalar(select(User).where(User.id == candidate.user_id).with_for_update())
+    token = await session.scalar(select(IdentityToken).where(IdentityToken.id == candidate.id).with_for_update())
+    if user is None or token is None or token.consumed_at is not None or _as_utc(token.expires_at) <= now():
         raise HTTPException(400, "Password-reset link is invalid or expired")
     token.consumed_at = now()
     user.password_hash = hash_password(body.new_password)
