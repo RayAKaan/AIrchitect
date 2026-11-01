@@ -93,10 +93,14 @@ def validate_production_settings(config: Settings) -> None:
     if config.database_pool_size < 1 or config.database_max_overflow < 0 or config.database_pool_timeout_seconds <= 0:
         raise ValueError("Production database pool settings are invalid")
 
-    if not config.smtp_host.strip() or not config.smtp_sender.strip():
-        raise ValueError("SMTP_HOST and SMTP_SENDER are required for production identity email workflows")
-
     if config.geometry_engine.lower() != "cad_bim":
         raise ValueError("GEOMETRY_ENGINE must be cad_bim in production")
     if config.cad_allow_legacy_engine:
         raise ValueError("CAD_ALLOW_LEGACY_ENGINE must be false in production")
+
+    if not config.smtp_host.strip() or not config.smtp_sender.strip():
+        raise ValueError("SMTP_HOST and SMTP_SENDER are required for production identity email workflows")
+    if not config.smtp_ssl and not config.smtp_starttls:
+        raise ValueError("SMTP must use implicit TLS or STARTTLS in production")
+    if urlsplit(config.public_app_url).scheme != "https":
+        raise ValueError("PUBLIC_APP_URL must use HTTPS in production")
