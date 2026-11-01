@@ -61,8 +61,14 @@ async def test_invitation_role_escalation_and_non_admin_invites_are_blocked(api:
     owner_headers, organization = await register(api, "owner-role")
     member_headers, _ = await register(api, "member-role")
     email = (await api.get("/api/v1/auth/me", headers=member_headers)).json()["email"]
+    membership_invite = await api.post("/api/v1/organizations/" + organization["id"] + "/invitations",
+        headers=owner_headers, json={"email": email, "role": "member"})
+    assert membership_invite.status_code == 201
+    accepted = await api.post("/api/v1/invitations/accept", headers=member_headers,
+        json={"token": membership_invite.json()["token"]})
+    assert accepted.status_code == 200
     forbidden = await api.post("/api/v1/organizations/" + organization["id"] + "/invitations",
-        headers=member_headers, json={"email": email, "role": "member"})
+        headers=member_headers, json={"email": "another-" + uuid.uuid4().hex + "@example.com", "role": "member"})
     assert forbidden.status_code == 403
     owner_invite = await api.post("/api/v1/organizations/" + organization["id"] + "/invitations",
         headers=owner_headers, json={"email": email, "role": "owner"})
