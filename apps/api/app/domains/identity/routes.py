@@ -194,6 +194,10 @@ async def accept_invitation(
         invitation.revoked_at = now()
         await session.commit()
         raise HTTPException(400, "Invitation is no longer valid")
+    if invitation.role == "admin" and inviter_membership.role != "owner":
+        invitation.revoked_at = now()
+        await session.commit()
+        raise HTTPException(400, "Invitation is no longer valid")
     existing = await session.scalar(
         select(Membership).where(Membership.organization_id == invitation.organization_id, Membership.user_id == user.id)
     )
