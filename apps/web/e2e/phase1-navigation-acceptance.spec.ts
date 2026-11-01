@@ -25,13 +25,13 @@ test('browser back and forward restore workspace mode without dropping unrelated
     window.history.replaceState({}, '', url);
   });
 
-  await page.getByRole('button', { name: /^Design/ }).click();
+  await page.getByRole('button', { name: /Design/ }).click();
   await expect(page.getByRole('heading', { name: 'Develop the chosen direction.' })).toBeVisible();
   await expect(page).toHaveURL(/campaign=phase1/);
   await expect(page).toHaveURL(/mode=Design/);
   await expect(page).toHaveURL(/#workspace$/);
 
-  await page.getByRole('button', { name: /^Site/ }).click();
+  await page.getByRole('button', { name: /Site/ }).click();
   await expect(page.getByRole('heading', { name: 'Understand the place.' })).toBeVisible();
   await expect(page).toHaveURL(/mode=Site/);
 
@@ -47,7 +47,7 @@ test('browser back and forward restore workspace mode without dropping unrelated
 
 test('a project and selected mode are restored from the deep link after a full reload', async ({ page }) => {
   await createWorkspace(page);
-  await page.getByRole('button', { name: /^Deliver/ }).click();
+  await page.getByRole('button', { name: /Deliver/ }).click();
   await expect(page).toHaveURL(/project=[^&]+/);
   await expect(page).toHaveURL(/mode=Deliver/);
 
@@ -55,5 +55,5 @@ test('a project and selected mode are restored from the deep link after a full r
 
   await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Prepare the professional outputs.' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Deliver/ })).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByRole('button', { name: /Deliver/ })).toHaveAttribute('aria-current', 'step');
 });
