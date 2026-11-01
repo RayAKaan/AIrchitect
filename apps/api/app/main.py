@@ -104,19 +104,73 @@ async def register(body: RegisterRequest, session: AsyncSession = Depends(get_se
     email = str(body.email).lower(); user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password)); session.add(user)
     try:
         await session.flush(); org = Organization(name=body.organization_name.strip(), created_by=user.id); session.add(org); await session.flush()
-        session.add(Membership(organization_id=org.id, user_id=user.id, role="owner")); session.add(AuditEvent(organization_id=org.id, actor_user_id=user.id, action="organization.created", resource_type="organization", resource_id=org.id)); await session.commit()
+        session.add(Membership(organization_id=org.id, user_id=user.id, role="owner"))
+        session.add(AuditEvent(organization_id=org.id, actor_user_id=user.id, action="organization.created", resource_type="organization", resource_id=org.id))
+        auth_session = AuthSession(user_id=user.id, expires_at=now() + timedelta(hours=24))
+        session.add(auth_session)
+        await session.flush()
+        access_token = issue_token(user.id, auth_session.id)
+        await session.commit()
     except IntegrityError:
         await session.rollback(); raise HTTPException(409, "An account with this email already exists") from None
-    return AuthOut(access_token=issue_token(user.id), user=UserOut(id=user.id, email=user.email, name=user.name))
+    return AuthOut(access_token=access_token, user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.post(f"{settings.api_prefix}/auth/login", response_model=AuthOut, tags=["identity"])
 async def login(body: LoginRequest, session: AsyncSession = Depends(get_session)) -> AuthOut:
     user = await session.scalar(select(User).where(User.email == str(body.email).lower()))
     if user is None or not verify_password(body.password, user.password_hash): raise HTTPException(401, "Invalid email or password")
-    set_context(actor_id=user.id); return AuthOut(access_token=issue_token(user.id), user=UserOut(id=user.id, email=user.email, name=user.name))
+    set_context(actor_id=user.id)
+    auth_session = AuthSession(user_id=user.id, expires_at=now() + timedelta(hours=24))
+    session.add(auth_session)
+    await session.flush()
+    access_token = issue_token(user.id, auth_session.id)
+    await session.commit()
+    return AuthOut(access_token=access_token, user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.get(f"{settings.api_prefix}/auth/me", response_model=UserOut, tags=["identity"])
 async def me(user: User = Depends(current_user)) -> UserOut: set_context(actor_id=user.id); return UserOut(id=user.id, email=user.email, name=user.name)
+
+@app.post(f"{settings.api_prefix}/auth/logout", tags=["identity"])
+async def logout(credentials=Depends(bearer), user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
+    claims = read_token_claims(credentials.credentials)
+    auth_session = await session.get(AuthSession, claims["sid"])
+    if auth_session is not None and auth_session.user_id == user.id and auth_session.revoked_at is None:
+        auth_session.revoked_at = now()
+        await session.commit()
+    return {"revoked": True}
+
+
+@app.post(f"{settings.api_prefix}/auth/logout-all", tags=["identity"])
+async def logout_all(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> dict[str, int]:
+    result = await session.execute(
+        update(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None)).values(revoked_at=now())
+    )
+    await session.commit()
+    return {"revoked_sessions": result.rowcount or 0}
+
+
+@app.get(f"{settings.api_prefix}/auth/sessions", tags=["identity"])
+async def list_auth_sessions(credentials=Depends(bearer), user: User = Depends(current_user),
+                             session: AsyncSession = Depends(get_session)) -> list[dict[str, object]]:
+    claims = read_token_claims(credentials.credentials)
+    rows = await session.scalars(select(AuthSession).where(AuthSession.user_id == user.id).order_by(AuthSession.created_at.desc()))
+    return [
+        {"id": item.id, "created_at": item.created_at.isoformat(), "expires_at": item.expires_at.isoformat(),
+         "revoked_at": item.revoked_at.isoformat() if item.revoked_at else None, "current": item.id == claims["sid"]}
+        for item in rows.all()
+    ]
+
+
+@app.delete(f"{settings.api_prefix}/auth/sessions/{{session_id}}", tags=["identity"])
+async def revoke_auth_session(session_id: str, user: User = Depends(current_user),
+                              session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
+    auth_session = await session.get(AuthSession, session_id)
+    if auth_session is None or auth_session.user_id != user.id:
+        raise HTTPException(404, "Session not found")
+    if auth_session.revoked_at is None:
+        auth_session.revoked_at = now()
+        await session.commit()
+    return {"revoked": True}
 
 @app.get(f"{settings.api_prefix}/organizations", tags=["organizations"])
 async def list_organizations(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[dict[str, str]]:
