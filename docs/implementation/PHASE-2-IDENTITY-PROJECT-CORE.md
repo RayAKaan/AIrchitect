@@ -29,3 +29,12 @@
 
 ## Verification
 Run from `apps/api`: `pytest`, `ruff check app tests`, and `mypy app` after installing project dependencies. Full PostgreSQL/PostGIS verification requires Docker or an external database.
+
+
+## Phase 2 implementation update — revocable sessions
+- Signed bearer tokens now carry a server-side session identifier and are accepted only while the persisted session is active and unexpired.
+- Registration and login create durable session records transactionally with token issuance.
+- Added logout, logout-all, session listing, and per-session revocation endpoints.
+- Session rows are user-owned; cross-user revocation returns not-found.
+- Legacy stateless tokens without persisted session records are intentionally rejected after deployment; users must sign in again.
+- Remaining Phase 2 work: organization invitations/member management, password reset/email verification, secure browser cookie/CSRF flow, project optimistic concurrency, and expanded PostgreSQL tenant-isolation evidence.
