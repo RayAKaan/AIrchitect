@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.domains.commands.executor import execute_semantic_command
 from app.domains.commands.preview import preview_command
@@ -46,7 +47,7 @@ def world_fixture():
     return model
 
 
-def set_program_area_command(element_id: str, area_m2: float = 200.0) -> CommandEnvelope:
+def set_program_area_command(area_m2: float = 200.0) -> CommandEnvelope:
     return CommandEnvelope(
         command_id="set-program-area-1",
         type="SetProgramArea",
@@ -57,7 +58,7 @@ def set_program_area_command(element_id: str, area_m2: float = 200.0) -> Command
         idempotency_key="set-program-area-idempotency-1",
         mode="commit",
         reason="Set reviewed open-work target",
-        payload={"element_id": element_id, "space_type": "open_work", "area_m2": area_m2},
+        payload={"space_type": "open_work", "area_m2": area_m2},
     )
 
 
@@ -68,7 +69,7 @@ def test_set_program_area_updates_canonical_target_and_supports_undo():
         item for item in model["semantic_model"]["elements"]
         if item["element_type"] == "Building"
     )
-    command = set_program_area_command(building["id"])
+    command = set_program_area_command()
 
     preview = preview_command(command.model_copy(update={"mode": "preview"}))
     assert preview.accepted is True
@@ -143,5 +144,6 @@ def test_program_generation_rejects_explicit_targets_that_exceed_gfa():
         model_hash="program-world-hash",
     )
 
-    with pytest.raises(Exception, match="PROGRAM_AREA_TARGETS_EXCEED_GFA"):
+    with pytest.raises(HTTPException) as exc_info:
         build_program(requirements, world)
+    assert exc_info.value.detail["error"]["code"] == "PROGRAM_AREA_TARGETS_EXCEED_GFA"
