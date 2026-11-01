@@ -80,6 +80,21 @@ async def test_rebinding_preserves_history_and_creates_dependency_edges(session_
             payload_json={"dependency": True},
             created_by=user.id,
         )
+        same_payload_without_dependency = ArtifactVersion(
+            organization_id=project.organization_id,
+            project_id=project.id,
+            project_version_id=version.id,
+            world_model_revision_id=world.id,
+            alternative_id="alternative-1",
+            artifact_type="geometry",
+            version=2,
+            status="current",
+            provenance_json={"source_revision_hash": "new" * 16},
+            input_references_json=[],
+            output_hash=canonical_hash({"new": True}),
+            payload_json={"new": True},
+            created_by=user.id,
+        )
         session.add_all([previous, dependency, same_payload_without_dependency])
         await session.flush()
 
