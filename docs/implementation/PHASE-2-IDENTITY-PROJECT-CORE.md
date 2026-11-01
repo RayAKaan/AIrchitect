@@ -24,8 +24,9 @@
 - Password minimum is 12 characters at registration. Login failures use a generic response.
 - Organization membership is checked server-side; cross-organization project reads return not-found.
 - Production deployment still requires a strong `AUTH_SECRET`, HTTPS, rate limiting, secure cookie/session strategy, migration execution, and security review.
-- Organization invitation/member-management UI, password reset, email verification, refresh/revocation, and comprehensive concurrency control are not implemented in this phase.
-- Project updates currently use a version increment, but optimistic concurrency with `If-Match`/expected-version is still outstanding.
+- Organization invitation/member-management APIs and UI, revocable sessions, refresh-token rotation, secure browser cookies, and CSRF protection are implemented.
+- Password reset and email verification remain explicitly deferred beyond Phase 2; they are not represented as delivered features.
+- Project updates require `If-Match` and return version ETags; stale concurrent writes fail with `412 Precondition Failed`.
 
 ## Verification
 Run from `apps/api`: `pytest`, `ruff check app tests`, and `mypy app` after installing project dependencies. Full PostgreSQL/PostGIS verification requires Docker or an external database.
@@ -54,3 +55,11 @@ Run from `apps/api`: `pytest`, `ruff check app tests`, and `mypy app` after inst
 - Refresh tokens are random opaque values; only their SHA-256 digests are stored. Refresh rotates the token and extends the server-side session expiry.
 - Browser bootstrap can renew a session without storing bearer tokens in sessionStorage. Logout and logout-all clear browser cookies.
 - Remaining Phase 2 work: organization management/invitation UI, optimistic project concurrency, and real PostgreSQL tenant-isolation acceptance tests.
+
+
+## Phase 2 implementation update — optimistic concurrency and PostgreSQL isolation
+- Project creation and reads return a strong ETag derived from the project version.
+- Project updates require a valid If-Match version; updates use a row lock and conditional versioned SQL update so concurrent writes cannot silently overwrite each other.
+- Stale updates return 412, missing preconditions return 428, and successful updates increment the project version and record the transition in the audit log.
+- Added real PostgreSQL integration coverage for cross-tenant project isolation and concurrent updates racing on the same ETag.
+- Final Phase 2 status remains in progress until the full CI matrix passes and this PR is merged.
