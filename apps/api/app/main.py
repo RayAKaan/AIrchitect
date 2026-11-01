@@ -314,7 +314,7 @@ async def update_project(
     project = await session.scalar(select(Project).where(Project.id == project_id).with_for_update())
     if project is None:
         raise HTTPException(404, "Project not found")
-    membership = await require_membership(project.organization_id, user, session, {"owner", "admin", "member"})
+    await require_membership(project.organization_id, user, session, {"owner", "admin", "member"})
     if body.organization_id != project.organization_id:
         raise HTTPException(422, "Project organization cannot be changed")
     if body.building_type != project.building_type or body.location != project.location:
