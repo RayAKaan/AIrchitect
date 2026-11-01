@@ -8,10 +8,11 @@ async function createWorkspace(page: Page) {
   await page.getByPlaceholder('name@company.com').fill(`phase1-navigation-${Date.now()}@example.com`);
   await page.getByPlaceholder('At least 12 characters').fill('phase-one-navigation-password');
   await page.getByRole('button', { name: /Create account/ }).click();
-  await expect(page.getByText('Your next project starts here.')).toBeVisible();
-  await page.getByPlaceholder('e.g. Riyadh Retail Centre').fill('Phase 1 Navigation Project');
-  await page.getByRole('button', { name: /Create project/ }).click();
-  await page.getByRole('button', { name: /Open workspace/ }).click();
+
+  await expect(page.getByRole('heading', { name: 'What are you building?' })).toBeVisible();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.getByLabel('New project name').fill('Phase 1 Navigation Project');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
 }
 
@@ -24,13 +25,15 @@ test('browser back and forward restore workspace mode without dropping unrelated
     window.history.replaceState({}, '', url);
   });
 
-  await page.getByRole('button', { name: /^Design\\b/ }).click();
+  const workflow = page.getByRole('navigation', { name: 'Project workflow' });
+  await expect(workflow).toBeVisible();
+  await workflow.getByRole('button', { name: /Design/ }).click();
   await expect(page.getByRole('heading', { name: 'Develop the chosen direction.' })).toBeVisible();
   await expect(page).toHaveURL(/campaign=phase1/);
   await expect(page).toHaveURL(/mode=Design/);
   await expect(page).toHaveURL(/#workspace$/);
 
-  await page.getByRole('button', { name: /^Site\\b/ }).click();
+  await workflow.getByRole('button', { name: /Site/ }).click();
   await expect(page.getByRole('heading', { name: 'Understand the place.' })).toBeVisible();
   await expect(page).toHaveURL(/mode=Site/);
 
@@ -46,7 +49,9 @@ test('browser back and forward restore workspace mode without dropping unrelated
 
 test('a project and selected mode are restored from the deep link after a full reload', async ({ page }) => {
   await createWorkspace(page);
-  await page.getByRole('button', { name: /^Deliver\\b/ }).click();
+  const workflow = page.getByRole('navigation', { name: 'Project workflow' });
+  await expect(workflow).toBeVisible();
+  await workflow.getByRole('button', { name: /Deliver/ }).click();
   await expect(page).toHaveURL(/project=[^&]+/);
   await expect(page).toHaveURL(/mode=Deliver/);
 
@@ -54,5 +59,5 @@ test('a project and selected mode are restored from the deep link after a full r
 
   await expect(page.getByRole('region', { name: 'AIrchitect project workspace' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Prepare the professional outputs.' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Deliver\\b/ })).toHaveAttribute('aria-current', 'step');
+  await expect(workflow.getByRole('button', { name: /Deliver/ })).toHaveAttribute('aria-current', 'step');
 });
