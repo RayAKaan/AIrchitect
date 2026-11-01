@@ -1,65 +1,32 @@
 # Phase 2 — Identity and Project Core
 
-## Implemented
-- Password hashing with scrypt; signed, expiring bearer sessions using HMAC-SHA256.
-- Registration creates a user, organization, owner membership, and audit event in one transaction.
-- Login and current-user endpoints.
-- Organization listing scoped to the authenticated member.
-- Project create/list/read/update endpoints, organization membership enforcement, role checks, version increment on edits, and audit events.
-- SQLAlchemy models for users, organizations, memberships, projects, and audit events.
-- Minimal web UI for registration/sign-in and project creation/listing. Token is held in sessionStorage (not a production-grade cookie/session deployment).
-- Local-only schema bootstrap; production schema changes are expected to use Alembic migrations.
+## Delivered scope
+- Scrypt password hashing and signed short-lived access tokens backed by revocable server-side sessions.
+- Registration, login, current-user lookup, logout, logout-all, session listing and per-session revocation.
+- Browser HttpOnly/SameSite cookies, CSRF double-submit validation, rotating refresh tokens, and no refresh-token exposure in browser JSON responses.
+- Organization membership and invitations: single-use expiring invitation tokens stored only as digests, email-bound acceptance, role management, member removal, revocation, and audit events.
+- Project create/list/read/update with tenant membership enforcement, strong ETags, required If-Match preconditions, atomic version increments, stale-write rejection, and audit metadata.
+- Email verification and password recovery using short-lived single-use random tokens; only token digests are persisted. Password reset revokes all active sessions.
+- SMTP delivery with TLS/STARTTLS support and generic forgot-password responses to prevent account enumeration.
+- PostgreSQL/PostGIS integration tests for schema availability, cross-tenant project isolation, and concurrent writes against one ETag.
 
-## API
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `GET /api/v1/auth/me`
-- `GET /api/v1/organizations`
-- `POST /api/v1/projects`
-- `GET /api/v1/projects?organization_id=...`
-- `GET /api/v1/projects/{project_id}`
-- `PATCH /api/v1/projects/{project_id}`
+## API surface
+- POST /api/v1/auth/register, /auth/login, /auth/refresh, /auth/logout, /auth/logout-all, /auth/sessions, /auth/sessions/{id}
+- POST /api/v1/auth/verify-email, /auth/resend-verification, /auth/forgot-password, /auth/reset-password
+- GET /api/v1/auth/me
+- GET /api/v1/organizations, organization invitation/member routes
+- POST /api/v1/projects, GET /api/v1/projects, GET /api/v1/projects/{id}, PATCH /api/v1/projects/{id}
 
-## Security and scope notes
-- Password minimum is 12 characters at registration. Login failures use a generic response.
-- Organization membership is checked server-side; cross-organization project reads return not-found.
-- Production deployment still requires a strong `AUTH_SECRET`, HTTPS, rate limiting, secure cookie/session strategy, migration execution, and security review.
-- Organization invitation/member-management APIs and UI, revocable sessions, refresh-token rotation, secure browser cookies, and CSRF protection are implemented.
-- Password reset and email verification remain explicitly deferred beyond Phase 2; they are not represented as delivered features.
-- Project updates require `If-Match` and return version ETags; stale concurrent writes fail with `412 Precondition Failed`.
+## Security properties
+- Passwords use scrypt; verification/reset/refresh/invitation tokens are random and only digests are stored.
+- Verification tokens expire after 24 hours; reset tokens expire after 30 minutes. Tokens are single-use, and issuing a new token invalidates prior outstanding tokens of the same purpose.
+- Login is blocked until email verification when SMTP-backed verification is enabled. Existing accounts are marked verified by the migration to avoid locking out current users.
+- Password reset rotates the password hash and revokes every active session.
+- Production startup requires a non-default authentication secret, PostgreSQL credentials, SMTP host/sender, CAD production configuration, and HTTPS deployment at the edge.
+- Cookie-authenticated unsafe methods require CSRF validation; bearer API clients remain supported.
+- Project updates require If-Match; stale writes return 412 and missing preconditions return 428.
 
 ## Verification
-Run from `apps/api`: `pytest`, `ruff check app tests`, and `mypy app` after installing project dependencies. Full PostgreSQL/PostGIS verification requires Docker or an external database.
-
-
-## Phase 2 implementation update — revocable sessions
-- Signed bearer tokens now carry a server-side session identifier and are accepted only while the persisted session is active and unexpired.
-- Registration and login create durable session records transactionally with token issuance.
-- Added logout, logout-all, session listing, and per-session revocation endpoints.
-- Session rows are user-owned; cross-user revocation returns not-found.
-- Legacy stateless tokens without persisted session records are intentionally rejected after deployment; users must sign in again.
-- Remaining Phase 2 work: organization invitations/member management, password reset/email verification, secure browser cookie/CSRF flow, project optimistic concurrency, and expanded PostgreSQL tenant-isolation evidence.
-
-
-## Phase 2 implementation update — organization invitations and membership
-- Added single-use, seven-day organization invitations. Only a token digest is stored; the raw token is returned once to the authorized inviter for sharing.
-- Invitation acceptance requires an authenticated account whose normalized email matches the invitation and whose inviter still has administrator authority.
-- Added organization member listing, role changes, member removal, invitation listing/revocation, and audit events.
-- Organization owners cannot be demoted or removed through member-management endpoints; administrator privilege boundaries are enforced server-side.
-- Remaining Phase 2 work: secure browser cookie/CSRF flow, password reset/email verification and refresh, project optimistic concurrency, PostgreSQL tenant-isolation coverage, and invitation/member UI.
-
-
-## Phase 2 implementation update — secure browser sessions and refresh rotation
-- Browser authentication now uses HttpOnly, SameSite=Lax session and refresh cookies; Secure is enabled outside local/test environments.
-- Cookie-authenticated unsafe requests require a matching CSRF cookie/header pair. Bearer-token API clients remain supported.
-- Refresh tokens are random opaque values; only their SHA-256 digests are stored. Refresh rotates the token and extends the server-side session expiry.
-- Browser bootstrap can renew a session without storing bearer tokens in sessionStorage. Logout and logout-all clear browser cookies.
-- Remaining Phase 2 work: organization management/invitation UI, optimistic project concurrency, and real PostgreSQL tenant-isolation acceptance tests.
-
-
-## Phase 2 implementation update — optimistic concurrency and PostgreSQL isolation
-- Project creation and reads return a strong ETag derived from the project version.
-- Project updates require a valid If-Match version; updates use a row lock and conditional versioned SQL update so concurrent writes cannot silently overwrite each other.
-- Stale updates return 412, missing preconditions return 428, and successful updates increment the project version and record the transition in the audit log.
-- Added real PostgreSQL integration coverage for cross-tenant project isolation and concurrent updates racing on the same ETag.
-- Final Phase 2 status remains in progress until the full CI matrix passes and this PR is merged.
+- API tests cover session lifecycle, refresh rotation/replay, CSRF, invitations and role boundaries, email verification/replay, password reset/replay/session revocation, ETag preconditions, and tenant authorization.
+- CI runs PostgreSQL/PostGIS-marked integration tests against a real PostGIS service, plus the full SQLite application suite, frontend tests/build, browser acceptance, Docker builds/Compose smoke, and release preflight.
+- The phase is complete only when all required CI jobs pass, all Phase 2 PRs are merged to main, and the tracker is marked Delivered.

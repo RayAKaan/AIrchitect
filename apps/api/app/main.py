@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import asyncio
+import hashlib
 from datetime import timedelta, timezone
 import logging
 import secrets
@@ -13,12 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings, validate_production_settings
 from app.core.observability import clear_context, configure_logging, log_event, new_context, set_context
 from app.core.security import hash_password, verify_password, issue_token, read_token_claims, issue_refresh_token, hash_refresh_token
-from app.db.models import User, Organization, Membership, Project, AuditEvent, AuthSession, now
+from app.db.models import User, Organization, Membership, Project, AuditEvent, AuthSession, IdentityToken, now
 from app.domains.foundation.service import create_initial_state
 from app.db.session import get_engine, get_session, dispose_engine
 from app.dependencies import current_user, require_membership, current_session_claims, validate_cookie_csrf
-from app.domains.identity.schemas import RegisterRequest, LoginRequest, AuthOut, UserOut, RefreshRequest
+from app.domains.identity.schemas import RegisterRequest, LoginRequest, AuthOut, UserOut, RefreshRequest, EmailAddressRequest, IdentityTokenRequest, PasswordResetRequest
 from app.domains.identity.cookies import set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE_NAME
+from app.domains.identity.email_delivery import send_email
 from app.domains.identity.routes import router as identity_router
 from app.domains.projects.schemas import ProjectCreate, ProjectOut
 
@@ -120,30 +123,107 @@ def _parse_project_if_match(value: str | None) -> int:
     return int(candidate)
 
 
+def _identity_token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _identity_email_link(token: str, parameter: str) -> str:
+    return settings.public_app_url.rstrip("/") + "/?" + parameter + "=" + token
+
+
+def _as_utc(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+async def _issue_identity_token(session: AsyncSession, user: User, purpose: str, lifetime: timedelta) -> str:
+    issued_at = now()
+    previous = await session.scalars(
+        select(IdentityToken).where(
+            IdentityToken.user_id == user.id,
+            IdentityToken.purpose == purpose,
+            IdentityToken.consumed_at.is_(None),
+        ).with_for_update()
+    )
+    for item in previous.all():
+        item.consumed_at = issued_at
+    raw_token = secrets.token_urlsafe(32)
+    session.add(IdentityToken(
+        user_id=user.id, purpose=purpose, token_hash=_identity_token_digest(raw_token),
+        created_at=issued_at, expires_at=issued_at + lifetime,
+    ))
+    return raw_token
+
+
+async def _deliver_identity_email(recipient: str, subject: str, body: str) -> None:
+    await asyncio.to_thread(send_email, recipient, subject, body)
+
+
 @app.post(f"{settings.api_prefix}/auth/register", response_model=AuthOut, status_code=201, tags=["identity"])
-async def register(body: RegisterRequest, request: Request, response: Response, session: AsyncSession = Depends(get_session)) -> AuthOut:
-    email = str(body.email).lower(); user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password)); session.add(user)
+async def register(body: RegisterRequest, request: Request, response: Response,
+                   session: AsyncSession = Depends(get_session)) -> AuthOut:
+    verification_required = bool(settings.smtp_host.strip() and settings.smtp_sender.strip())
+    if settings.app_env.strip().lower() not in {"local", "test"} and not verification_required:
+        raise HTTPException(503, "Email delivery is not configured")
+    email = str(body.email).strip().lower()
+    user = User(
+        email=email, name=body.name.strip(), password_hash=hash_password(body.password),
+        email_verified_at=None if verification_required else now(),
+    )
+    session.add(user)
     try:
-        await session.flush(); org = Organization(name=body.organization_name.strip(), created_by=user.id); session.add(org); await session.flush()
-        session.add(Membership(organization_id=org.id, user_id=user.id, role="owner"))
-        session.add(AuditEvent(organization_id=org.id, actor_user_id=user.id, action="organization.created", resource_type="organization", resource_id=org.id))
-        auth_session = AuthSession(id=uuid4().hex, user_id=user.id, expires_at=now() + timedelta(days=30))
-        session.add(auth_session)
         await session.flush()
-        refresh_token = issue_refresh_token(auth_session.id)
-        auth_session.refresh_token_hash = hash_refresh_token(refresh_token)
-        auth_session.refresh_expires_at = now() + timedelta(days=30)
-        access_token = issue_token(user.id, auth_session.id)
+        organization = Organization(name=body.organization_name.strip(), created_by=user.id)
+        session.add(organization)
+        await session.flush()
+        session.add(Membership(organization_id=organization.id, user_id=user.id, role="owner"))
+        session.add(AuditEvent(
+            organization_id=organization.id, actor_user_id=user.id, action="organization.created",
+            resource_type="organization", resource_id=organization.id,
+        ))
+        verification_token = None
+        if verification_required:
+            verification_token = await _issue_identity_token(session, user, "EMAIL_VERIFICATION", timedelta(hours=24))
+        else:
+            auth_session = AuthSession(id=uuid4().hex, user_id=user.id, expires_at=now() + timedelta(days=30))
+            session.add(auth_session)
+            await session.flush()
+            refresh_token = issue_refresh_token(auth_session.id)
+            auth_session.refresh_token_hash = hash_refresh_token(refresh_token)
+            auth_session.refresh_expires_at = now() + timedelta(days=30)
+            access_token = issue_token(user.id, auth_session.id)
         await session.commit()
-        set_auth_cookies(response, access_token, refresh_token)
     except IntegrityError:
-        await session.rollback(); raise HTTPException(409, "An account with this email already exists") from None
-    return AuthOut(access_token=access_token, refresh_token=None if _is_browser_request(request) else refresh_token, user=UserOut(id=user.id, email=user.email, name=user.name))
+        await session.rollback()
+        raise HTTPException(409, "An account with this email already exists") from None
+    if verification_token:
+        try:
+            await _deliver_identity_email(
+                email, "Verify your AIrchitect email address",
+                "Verify your email address within 24 hours:\n\n" + _identity_email_link(verification_token, "verify_token"),
+            )
+        except Exception:
+            logger.exception("identity.email_verification_delivery_failed")
+            raise HTTPException(503, "Verification email could not be delivered. Request another email to retry.") from None
+        return AuthOut(
+            access_token="", verification_required=True,
+            debug_token=verification_token if settings.app_env.strip().lower() in {"local", "test"} else None,
+            message="Check your email to verify your account.",
+            user=UserOut(id=user.id, email=user.email, name=user.name),
+        )
+    set_auth_cookies(response, access_token, refresh_token)
+    return AuthOut(
+        access_token=access_token,
+        refresh_token=None if _is_browser_request(request) else refresh_token,
+        user=UserOut(id=user.id, email=user.email, name=user.name),
+    )
+
 
 @app.post(f"{settings.api_prefix}/auth/login", response_model=AuthOut, tags=["identity"])
 async def login(body: LoginRequest, request: Request, response: Response, session: AsyncSession = Depends(get_session)) -> AuthOut:
     user = await session.scalar(select(User).where(User.email == str(body.email).lower()))
     if user is None or not verify_password(body.password, user.password_hash): raise HTTPException(401, "Invalid email or password")
+    if user.email_verified_at is None:
+        raise HTTPException(403, {"error": {"code": "EMAIL_NOT_VERIFIED", "message": "Verify your email address before signing in."}})
     set_context(actor_id=user.id)
     auth_session = AuthSession(id=uuid4().hex, user_id=user.id, expires_at=now() + timedelta(days=30))
     session.add(auth_session)
@@ -155,6 +235,97 @@ async def login(body: LoginRequest, request: Request, response: Response, sessio
     await session.commit()
     set_auth_cookies(response, access_token, refresh_token)
     return AuthOut(access_token=access_token, refresh_token=None if _is_browser_request(request) else refresh_token, user=UserOut(id=user.id, email=user.email, name=user.name))
+
+@app.post(f"{settings.api_prefix}/auth/verify-email", tags=["identity"])
+async def verify_email(body: IdentityTokenRequest, session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
+    token = await session.scalar(
+        select(IdentityToken).where(
+            IdentityToken.token_hash == _identity_token_digest(body.token),
+            IdentityToken.purpose == "EMAIL_VERIFICATION",
+        ).with_for_update()
+    )
+    if token is None or token.consumed_at is not None or _as_utc(token.expires_at) <= now():
+        raise HTTPException(400, "Verification link is invalid or expired")
+    user = await session.get(User, token.user_id)
+    if user is None:
+        raise HTTPException(400, "Verification link is invalid or expired")
+    token.consumed_at = now()
+    user.email_verified_at = now()
+    await session.commit()
+    return {"verified": True}
+
+
+@app.post(f"{settings.api_prefix}/auth/resend-verification", tags=["identity"])
+async def resend_verification(body: EmailAddressRequest, session: AsyncSession = Depends(get_session)) -> dict[str, str]:
+    generic = {"message": "If the account requires verification, an email will be sent shortly."}
+    user = await session.scalar(select(User).where(User.email == body.email))
+    if user is None or user.email_verified_at is not None or not settings.smtp_host.strip() or not settings.smtp_sender.strip():
+        return generic
+    recent = await session.scalar(select(IdentityToken.id).where(
+        IdentityToken.user_id == user.id, IdentityToken.purpose == "EMAIL_VERIFICATION",
+        IdentityToken.created_at > now() - timedelta(minutes=1),
+    ).limit(1))
+    if recent:
+        return generic
+    raw = await _issue_identity_token(session, user, "EMAIL_VERIFICATION", timedelta(hours=24))
+    await session.commit()
+    try:
+        await _deliver_identity_email(user.email, "Verify your AIrchitect email address",
+            "Verify your email address within 24 hours:\n\n" + _identity_email_link(raw, "verify_token"))
+    except Exception:
+        logger.exception("identity.email_verification_delivery_failed")
+    return generic
+
+
+@app.post(f"{settings.api_prefix}/auth/forgot-password", tags=["identity"])
+async def forgot_password(body: EmailAddressRequest, session: AsyncSession = Depends(get_session)) -> dict[str, str | None]:
+    generic = {"message": "If an account exists for that address, password-reset instructions will be sent.", "debug_token": None}
+    user = await session.scalar(select(User).where(User.email == body.email))
+    if user is None or not settings.smtp_host.strip() or not settings.smtp_sender.strip():
+        return generic
+    recent = await session.scalar(select(IdentityToken.id).where(
+        IdentityToken.user_id == user.id, IdentityToken.purpose == "PASSWORD_RESET",
+        IdentityToken.created_at > now() - timedelta(minutes=1),
+    ).limit(1))
+    if recent:
+        return generic
+    raw = await _issue_identity_token(session, user, "PASSWORD_RESET", timedelta(minutes=30))
+    await session.commit()
+    try:
+        await _deliver_identity_email(user.email, "Reset your AIrchitect password",
+            "Use this link within 30 minutes to reset your password:\n\n" + _identity_email_link(raw, "reset_token"))
+    except Exception:
+        logger.exception("identity.password_reset_delivery_failed")
+    return {**generic, "debug_token": raw if settings.app_env.strip().lower() in {"local", "test"} else None}
+
+
+@app.post(f"{settings.api_prefix}/auth/reset-password", tags=["identity"])
+async def reset_password(body: PasswordResetRequest, session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
+    token = await session.scalar(
+        select(IdentityToken).where(
+            IdentityToken.token_hash == _identity_token_digest(body.token),
+            IdentityToken.purpose == "PASSWORD_RESET",
+        ).with_for_update()
+    )
+    if token is None or token.consumed_at is not None or _as_utc(token.expires_at) <= now():
+        raise HTTPException(400, "Password-reset link is invalid or expired")
+    user = await session.get(User, token.user_id)
+    if user is None:
+        raise HTTPException(400, "Password-reset link is invalid or expired")
+    token.consumed_at = now()
+    user.password_hash = hash_password(body.new_password)
+    active_tokens = await session.scalars(select(IdentityToken).where(
+        IdentityToken.user_id == user.id, IdentityToken.purpose == "PASSWORD_RESET",
+        IdentityToken.consumed_at.is_(None),
+    ).with_for_update())
+    for item in active_tokens.all():
+        item.consumed_at = now()
+    await session.execute(update(AuthSession).where(
+        AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None),
+    ).values(revoked_at=now()))
+    await session.commit()
+    return {"password_reset": True}
+
 
 @app.post(f"{settings.api_prefix}/auth/refresh", response_model=AuthOut, tags=["identity"])
 async def refresh_session(body: RefreshRequest, request: Request, response: Response,

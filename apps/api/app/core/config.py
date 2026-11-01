@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     jev_input_cost_per_million_usd: float = 0.042
     assistant_rate_limit_per_minute: int = 20
     auth_secret: str = "local-only-change-this-secret"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_sender: str = ""
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    public_app_url: str = "http://localhost:5173"
 
     geometry_engine: str = "cad_bim"
     cad_worker_python: str = ""
@@ -84,6 +92,9 @@ def validate_production_settings(config: Settings) -> None:
         raise ValueError("DATABASE_URL must use explicit non-default credentials in production")
     if config.database_pool_size < 1 or config.database_max_overflow < 0 or config.database_pool_timeout_seconds <= 0:
         raise ValueError("Production database pool settings are invalid")
+
+    if not config.smtp_host.strip() or not config.smtp_sender.strip():
+        raise ValueError("SMTP_HOST and SMTP_SENDER are required for production identity email workflows")
 
     if config.geometry_engine.lower() != "cad_bim":
         raise ValueError("GEOMETRY_ENGINE must be cad_bim in production")
