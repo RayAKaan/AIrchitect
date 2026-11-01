@@ -111,13 +111,14 @@ def _parse_project_if_match(value: str | None) -> int:
     if value is None:
         raise HTTPException(428, "If-Match is required for project updates")
     candidate = value.strip()
-    if candidate.startswith("W/"):
-        candidate = candidate[2:].strip()
-    if len(candidate) >= 2 and candidate[0] == '"' and candidate[-1] == '"':
-        candidate = candidate[1:-1]
-    if not candidate.isdecimal():
+    # If-Match uses strong entity-tag comparison. Weak tags, wildcard and tag
+    # lists are deliberately rejected: project writes require one exact revision.
+    if len(candidate) < 3 or candidate[0] != '"' or candidate[-1] != '"':
+        raise HTTPException(400, 'If-Match must be one strong quoted project ETag')
+    version = candidate[1:-1]
+    if not version.isdecimal():
         raise HTTPException(400, "If-Match must contain a valid project version")
-    return int(candidate)
+    return int(version)
 
 
 @app.post(f"{settings.api_prefix}/auth/register", response_model=AuthOut, status_code=201, tags=["identity"])
