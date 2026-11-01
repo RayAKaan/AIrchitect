@@ -4,7 +4,7 @@
 |---:|---|---|---|
 | 0 | Repository Audit | Partial | Phase report exists; master audit/traceability now added; SBOM/license gates remain. |
 | 1 | Development Foundation | Partial | Compose/runtime scaffolding exists; clean install, lockfiles, migration wiring and container validation remain. |
-| 2 | Identity and Project Core | In progress | Persisted revocable auth sessions and session-management APIs are being added; invitations/member management, password recovery/email verification, secure browser sessions, optimistic project concurrency, and expanded PostgreSQL tenant-isolation evidence remain. |
+| 2 | Identity and Project Core | In progress | Persisted revocable sessions are merged; organization invitation/member APIs are under implementation. Secure browser cookie/CSRF, password recovery/email verification/refresh, optimistic project concurrency, tenant-isolation tests, and complete UI remain. |
 | 3 | World Model | Partial | Typed schema and revision routes/models exist; persisted concurrency and downstream artifact binding remain. |
 | 4 | Requirements Intelligence | Partial | Deterministic parser and endpoint exist; document extraction and full UI loop remain. |
 | 5 | Assumptions and Clarifications | Partial | Assumption lifecycle/API exists; unified revision/stale lifecycle and UI remain. |
