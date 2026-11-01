@@ -5,7 +5,7 @@ import secrets
 import re
 from time import perf_counter
 from uuid import uuid4
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
@@ -84,7 +84,7 @@ async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
         payload = exc.detail
         payload["error"].setdefault("request_id", request_id)
     else:
-        code = {401: "UNAUTHORIZED", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT"}.get(exc.status_code, "REQUEST_ERROR")
+        code = {401: "UNAUTHORIZED", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT", 412: "PRECONDITION_FAILED", 428: "PRECONDITION_REQUIRED"}.get(exc.status_code, "REQUEST_ERROR")
         payload = {"error": {"code": code, "message": str(exc.detail), "request_id": request_id}}
     return JSONResponse(status_code=exc.status_code, content=payload)
 
@@ -105,6 +105,19 @@ async def system_info() -> dict[str, str]: return {"name": settings.app_name, "e
 
 def _is_browser_request(request: Request) -> bool:
     return bool(request.headers.get("Origin") or request.headers.get("Sec-Fetch-Site"))
+
+
+def _parse_project_if_match(value: str | None) -> int:
+    if value is None:
+        raise HTTPException(428, "If-Match is required for project updates")
+    candidate = value.strip()
+    if candidate.startswith("W/"):
+        candidate = candidate[2:].strip()
+    if len(candidate) >= 2 and candidate[0] == '"' and candidate[-1] == '"':
+        candidate = candidate[1:-1]
+    if not candidate.isdecimal():
+        raise HTTPException(400, "If-Match must contain a valid project version")
+    return int(candidate)
 
 
 @app.post(f"{settings.api_prefix}/auth/register", response_model=AuthOut, status_code=201, tags=["identity"])
@@ -141,7 +154,7 @@ async def login(body: LoginRequest, request: Request, response: Response, sessio
     access_token = issue_token(user.id, auth_session.id)
     await session.commit()
     set_auth_cookies(response, access_token, refresh_token)
-    return AuthOut(access_token=access_token, refresh_token=refresh_token, user=UserOut(id=user.id, email=user.email, name=user.name))
+    return AuthOut(access_token=access_token, refresh_token=None if _is_browser_request(request) else refresh_token, user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.post(f"{settings.api_prefix}/auth/refresh", response_model=AuthOut, tags=["identity"])
 async def refresh_session(body: RefreshRequest, request: Request, response: Response,
@@ -232,28 +245,128 @@ async def list_organizations(user: User = Depends(current_user), session: AsyncS
     set_context(actor_id=user.id); rows = await session.execute(select(Organization, Membership.role).join(Membership).where(Membership.user_id == user.id)); return [{"id": org.id, "name": org.name, "role": role} for org, role in rows]
 
 @app.post(f"{settings.api_prefix}/projects", response_model=ProjectOut, status_code=201, tags=["projects"])
-async def create_project(body: ProjectCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> Project:
-    set_context(actor_id=user.id); await require_membership(body.organization_id, user, session, {"owner", "admin", "member"}); project = Project(organization_id=body.organization_id, name=body.name.strip(), description=body.description, building_type=body.building_type, location=body.location, created_by=user.id); session.add(project); await session.flush(); set_context(project_id=project.id, revision_id=project.current_version_id); await create_initial_state(session, project, user.id); session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id, project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_CREATED", resource_type="project", resource_id=project.id)); await session.commit(); await session.refresh(project); return project
+async def create_project(body: ProjectCreate, response: Response, user: User = Depends(current_user),
+                          session: AsyncSession = Depends(get_session)) -> Project:
+    set_context(actor_id=user.id)
+    await require_membership(body.organization_id, user, session, {"owner", "admin", "member"})
+    project = Project(
+        organization_id=body.organization_id,
+        name=body.name.strip(),
+        description=body.description,
+        building_type=body.building_type,
+        location=body.location,
+        created_by=user.id,
+    )
+    session.add(project)
+    await session.flush()
+    set_context(project_id=project.id, revision_id=project.current_version_id)
+    await create_initial_state(session, project, user.id)
+    session.add(AuditEvent(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        project_version_id=project.current_version_id,
+        actor_user_id=user.id,
+        action="PROJECT_CREATED",
+        resource_type="project",
+        resource_id=project.id,
+    ))
+    await session.commit()
+    await session.refresh(project)
+    response.headers["ETag"] = '"' + str(project.version) + '"'
+    return project
+
 
 @app.get(f"{settings.api_prefix}/projects", response_model=list[ProjectOut], tags=["projects"])
-async def list_projects(organization_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> list[Project]:
-    set_context(actor_id=user.id); await require_membership(organization_id, user, session); result = await session.scalars(select(Project).where(Project.organization_id == organization_id).order_by(Project.updated_at.desc())); return list(result.all())
+async def list_projects(organization_id: str, user: User = Depends(current_user),
+                        session: AsyncSession = Depends(get_session)) -> list[Project]:
+    set_context(actor_id=user.id)
+    await require_membership(organization_id, user, session)
+    result = await session.scalars(
+        select(Project).where(Project.organization_id == organization_id).order_by(Project.updated_at.desc())
+    )
+    return list(result.all())
+
 
 @app.get(f"{settings.api_prefix}/projects/{{project_id}}", response_model=ProjectOut, tags=["projects"])
-async def get_project(project_id: str, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> Project:
-    set_context(actor_id=user.id, project_id=project_id); project = await session.get(Project, project_id)
-    if project is None: raise HTTPException(404, "Project not found")
-    await require_membership(project.organization_id, user, session); set_context(revision_id=project.current_version_id); return project
+async def get_project(project_id: str, response: Response, user: User = Depends(current_user),
+                      session: AsyncSession = Depends(get_session)) -> Project:
+    set_context(actor_id=user.id, project_id=project_id)
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(404, "Project not found")
+    await require_membership(project.organization_id, user, session)
+    set_context(revision_id=project.current_version_id)
+    response.headers["ETag"] = '"' + str(project.version) + '"'
+    return project
+
 
 @app.patch(f"{settings.api_prefix}/projects/{{project_id}}", response_model=ProjectOut, tags=["projects"])
-async def update_project(project_id: str, body: ProjectCreate, user: User = Depends(current_user), session: AsyncSession = Depends(get_session)) -> Project:
-    set_context(actor_id=user.id, project_id=project_id); project = await session.get(Project, project_id)
-    if project is None: raise HTTPException(404, "Project not found")
+async def update_project(
+    project_id: str,
+    body: ProjectCreate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Project:
+    expected_version = _parse_project_if_match(if_match)
+    set_context(actor_id=user.id, project_id=project_id)
+    project = await session.scalar(select(Project).where(Project.id == project_id).with_for_update())
+    if project is None:
+        raise HTTPException(404, "Project not found")
     membership = await require_membership(project.organization_id, user, session, {"owner", "admin", "member"})
-    if body.organization_id != project.organization_id: raise HTTPException(422, "Project organization cannot be changed")
-    if membership.role == "viewer": raise HTTPException(403, "Viewer cannot edit projects")
-    if body.building_type != project.building_type or body.location != project.location: raise HTTPException(409, {"error": {"code": "CANONICAL_VERSION_REQUIRED", "message": "Building type/location changes must create a new canonical project version."}})
-    project.name, project.description = body.name.strip(), body.description; session.add(AuditEvent(organization_id=project.organization_id, project_id=project.id, project_version_id=project.current_version_id, actor_user_id=user.id, action="PROJECT_UPDATED", resource_type="project", resource_id=project.id)); await session.commit(); await session.refresh(project); set_context(revision_id=project.current_version_id); return project
+    if body.organization_id != project.organization_id:
+        raise HTTPException(422, "Project organization cannot be changed")
+    if body.building_type != project.building_type or body.location != project.location:
+        raise HTTPException(409, {
+            "error": {
+                "code": "CANONICAL_VERSION_REQUIRED",
+                "message": "Building type/location changes must create a new canonical project version.",
+            }
+        })
+    if project.version != expected_version:
+        raise HTTPException(412, {
+            "error": {
+                "code": "PRECONDITION_FAILED",
+                "message": "The project changed since it was last read. Reload before editing.",
+                "current_version": project.version,
+            }
+        })
+    result = await session.execute(
+        update(Project)
+        .where(Project.id == project_id, Project.version == expected_version)
+        .values(
+            name=body.name.strip(),
+            description=body.description,
+            version=Project.version + 1,
+            updated_at=now(),
+        )
+        .returning(Project.id)
+    )
+    if result.scalar_one_or_none() is None:
+        await session.rollback()
+        raise HTTPException(412, {
+            "error": {
+                "code": "PRECONDITION_FAILED",
+                "message": "The project changed during this update. Reload before editing.",
+            }
+        })
+    session.add(AuditEvent(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        project_version_id=project.current_version_id,
+        actor_user_id=user.id,
+        action="PROJECT_UPDATED",
+        resource_type="project",
+        resource_id=project.id,
+        metadata_json={"previous_version": expected_version, "version": expected_version + 1},
+    ))
+    await session.commit()
+    await session.refresh(project)
+    response.headers["ETag"] = '"' + str(project.version) + '"'
+    set_context(revision_id=project.current_version_id)
+    return project
+
 
 from app.domains.world_model.routes import router as world_model_router
 app.include_router(identity_router, prefix=settings.api_prefix)
