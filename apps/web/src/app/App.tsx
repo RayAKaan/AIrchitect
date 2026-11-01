@@ -136,6 +136,7 @@ export default function App() {
         <div className="eyebrow">YOUR WORKSPACE</div><h2>{register ? 'Create your account' : 'Welcome back'}</h2>
         <p className="muted">{register ? 'Set up your organization to begin.' : 'Sign in to continue to your projects.'}</p>
         {verificationNotice && <div className="alert" role="status">{verificationNotice}</div>}
+        {recoveryMessage && <div className="alert" role="status">{recoveryMessage}</div>}
         {register && <><label>Full name<input required value={name} onChange={event => setName(event.target.value)} placeholder="Your name"/></label><label>Organization<input required value={orgName} onChange={event => setOrgName(event.target.value)} placeholder="Company name"/></label></>}
         <label>Work email<input required type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="name@company.com" autoComplete="email"/></label>
         <label>Password<input required type="password" minLength={register ? 12 : 1} value={password} onChange={event => setPassword(event.target.value)} placeholder={register ? 'At least 12 characters' : 'Enter your password'} autoComplete={register ? 'new-password' : 'current-password'}/></label>
