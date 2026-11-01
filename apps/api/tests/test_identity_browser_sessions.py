@@ -9,10 +9,11 @@ import pytest
 @pytest.mark.asyncio
 async def test_registration_issues_http_only_cookies_and_cookie_auth_requires_csrf(api: httpx.AsyncClient) -> None:
     email = "cookie-" + uuid.uuid4().hex + "@example.com"
-    registered = await api.post("/api/v1/auth/register", json={
+    registered = await api.post("/api/v1/auth/register", headers={"Origin": "http://test"}, json={
         "email": email, "name": "Cookie User", "password": "a-very-secure-password", "organization_name": "Cookie Org"
     })
     assert registered.status_code == 201, registered.text
+    assert registered.json()["refresh_token"] is None
     assert registered.cookies.get("airchitect_session")
     assert registered.cookies.get("airchitect_refresh")
     assert registered.cookies.get("airchitect_csrf")
@@ -39,12 +40,13 @@ async def test_refresh_rotates_refresh_token_and_logout_clears_cookies(api: http
         "email": email, "name": "Refresh User", "password": "a-very-secure-password", "organization_name": "Refresh Org"
     })
     assert registered.status_code == 201
-    original_refresh = registered.json()["refresh_token"]
+    original_refresh = registered.cookies.get("airchitect_refresh")
     csrf = api.cookies.get("airchitect_csrf")
     refreshed = await api.post("/api/v1/auth/refresh", headers={"X-CSRF-Token": csrf}, json={})
     assert refreshed.status_code == 200, refreshed.text
     assert refreshed.json()["access_token"] != registered.json()["access_token"]
-    assert refreshed.json()["refresh_token"] != original_refresh
+    assert api.cookies.get("airchitect_refresh") != original_refresh
+    assert refreshed.json()["refresh_token"] is None
     replay = await api.post("/api/v1/auth/refresh", json={"refresh_token": original_refresh})
     assert replay.status_code == 401
     csrf = api.cookies.get("airchitect_csrf")

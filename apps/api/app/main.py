@@ -103,8 +103,12 @@ async def readiness() -> JSONResponse:
 @app.get(f"{settings.api_prefix}/system", tags=["operations"])
 async def system_info() -> dict[str, str]: return {"name": settings.app_name, "environment": settings.app_env, "decision_provider": settings.decision_provider}
 
+def _is_browser_request(request: Request) -> bool:
+    return bool(request.headers.get("Origin") or request.headers.get("Sec-Fetch-Site"))
+
+
 @app.post(f"{settings.api_prefix}/auth/register", response_model=AuthOut, status_code=201, tags=["identity"])
-async def register(body: RegisterRequest, response: Response, session: AsyncSession = Depends(get_session)) -> AuthOut:
+async def register(body: RegisterRequest, request: Request, response: Response, session: AsyncSession = Depends(get_session)) -> AuthOut:
     email = str(body.email).lower(); user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password)); session.add(user)
     try:
         await session.flush(); org = Organization(name=body.organization_name.strip(), created_by=user.id); session.add(org); await session.flush()
@@ -121,10 +125,10 @@ async def register(body: RegisterRequest, response: Response, session: AsyncSess
         set_auth_cookies(response, access_token, refresh_token)
     except IntegrityError:
         await session.rollback(); raise HTTPException(409, "An account with this email already exists") from None
-    return AuthOut(access_token=access_token, refresh_token=refresh_token, user=UserOut(id=user.id, email=user.email, name=user.name))
+    return AuthOut(access_token=access_token, refresh_token=None if _is_browser_request(request) else refresh_token, user=UserOut(id=user.id, email=user.email, name=user.name))
 
 @app.post(f"{settings.api_prefix}/auth/login", response_model=AuthOut, tags=["identity"])
-async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)) -> AuthOut:
+async def login(body: LoginRequest, request: Request, response: Response, session: AsyncSession = Depends(get_session)) -> AuthOut:
     user = await session.scalar(select(User).where(User.email == str(body.email).lower()))
     if user is None or not verify_password(body.password, user.password_hash): raise HTTPException(401, "Invalid email or password")
     set_context(actor_id=user.id)
@@ -171,7 +175,7 @@ async def refresh_session(body: RefreshRequest, request: Request, response: Resp
     access_token = issue_token(user.id, auth_session.id)
     await session.commit()
     set_auth_cookies(response, access_token, next_refresh_token)
-    return AuthOut(access_token=access_token, refresh_token=next_refresh_token,
+    return AuthOut(access_token=access_token, refresh_token=next_refresh_token if body.refresh_token is not None else None,
                    user=UserOut(id=user.id, email=user.email, name=user.name))
 
 
