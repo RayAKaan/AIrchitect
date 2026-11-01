@@ -1094,6 +1094,18 @@ def delete_element(model: dict[str, Any], state: dict[str, Any], element_id: str
     return event
 
 
+def impacts_for_history_event(event: dict[str, Any]) -> list[str]:
+    """Resolve the derived artifacts affected by replaying or reverting a history event."""
+    explicit = event.get("impacts")
+    if isinstance(explicit, list) and explicit:
+        return sorted({str(group) for group in explicit})
+    if event.get("action") in {"CREATE", "DELETE"}:
+        element_type = event.get("element_type")
+        if isinstance(element_type, str) and element_type:
+            return impact_groups(element_type, "element_lifecycle")
+    return []
+
+
 def undo(model: dict[str, Any], state: dict[str, Any], actor_id: str) -> dict[str, Any]:
     stack = state.setdefault("undo_stack", [])
     if not stack:
@@ -1124,7 +1136,7 @@ def undo(model: dict[str, Any], state: dict[str, Any], actor_id: str) -> dict[st
     stack.pop()
     state.setdefault("redo_stack", []).append(event_id)
     undo_event = _append_event(state, action="UNDO", actor_id=actor_id, element_id=element_id,
-                               details={"target_event_id": event_id})
+                               details={"target_event_id": event_id, "impacts": impacts_for_history_event(event)})
     model["designer_state"] = state
     model["semantic_model"] = compile_semantic_model(model)
     return undo_event
@@ -1158,7 +1170,7 @@ def redo(model: dict[str, Any], state: dict[str, Any], actor_id: str) -> dict[st
     stack.pop()
     state.setdefault("undo_stack", []).append(event_id)
     redo_event = _append_event(state, action="REDO", actor_id=actor_id, element_id=element_id,
-                               details={"target_event_id": event_id})
+                               details={"target_event_id": event_id, "impacts": impacts_for_history_event(event)})
     model["designer_state"] = state
     model["semantic_model"] = compile_semantic_model(model)
     return redo_event

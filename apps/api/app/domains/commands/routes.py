@@ -303,7 +303,7 @@ async def commit(body: CommandEnvelope, user: User = Depends(current_user), sess
         event=persist_event,
         commit=False,
     )
-    groups = impact_for(body)
+    groups = result.impact
     await _invalidate_and_enqueue(
         session, project=project, version=version, source_revision_hash=world.model_hash, groups=groups
     )
