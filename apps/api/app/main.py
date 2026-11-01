@@ -1,17 +1,18 @@
 from contextlib import asynccontextmanager
+from datetime import timedelta
 import logging
 import re
 from time import perf_counter
 from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings, validate_production_settings
 from app.core.observability import clear_context, configure_logging, log_event, new_context, set_context
-from app.core.security import hash_password, verify_password, issue_token
-from app.db.models import User, Organization, Membership, Project, AuditEvent
+from app.core.security import hash_password, verify_password, issue_token, read_token_claims
+from app.db.models import User, Organization, Membership, Project, AuditEvent, AuthSession, now
 from app.domains.foundation.service import create_initial_state
 from app.db.session import get_engine, get_session, dispose_engine
 from app.dependencies import current_user, require_membership
@@ -106,7 +107,7 @@ async def register(body: RegisterRequest, session: AsyncSession = Depends(get_se
         await session.flush(); org = Organization(name=body.organization_name.strip(), created_by=user.id); session.add(org); await session.flush()
         session.add(Membership(organization_id=org.id, user_id=user.id, role="owner"))
         session.add(AuditEvent(organization_id=org.id, actor_user_id=user.id, action="organization.created", resource_type="organization", resource_id=org.id))
-        auth_session = AuthSession(user_id=user.id, expires_at=now() + timedelta(hours=24))
+        auth_session = AuthSession(id=uuid4().hex, user_id=user.id, expires_at=now() + timedelta(hours=24))
         session.add(auth_session)
         await session.flush()
         access_token = issue_token(user.id, auth_session.id)
