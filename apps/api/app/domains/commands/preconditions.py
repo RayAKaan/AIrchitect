@@ -54,4 +54,16 @@ def check_preconditions(model: dict[str, Any], state: dict[str, Any], command: C
             errors.append("SEMANTIC_BUILDING_NOT_FOUND")
         elif state.get("locks", {}).get(building.get("id"), {}).get("locked"):
             errors.append("SEMANTIC_ELEMENT_LOCKED")
+    if command.type == "ChangeSetback":
+        site = next(
+            (
+                item for item in (model.get("semantic_model") or {}).get("elements", [])
+                if _element_type(item) == "Site"
+            ),
+            None,
+        )
+        if site is None:
+            errors.append("SEMANTIC_SITE_NOT_FOUND")
+        elif state.get("locks", {}).get(site.get("id"), {}).get("locked"):
+            errors.append("SEMANTIC_ELEMENT_LOCKED")
     return errors

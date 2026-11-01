@@ -8,6 +8,7 @@ from app.domains.semantic_model.editing import edit_property
 from .schemas import CommandEnvelope
 from .semantic_adapter import supports_semantic_command
 from .program_adapter import supports_program_command
+from .planning_adapter import supports_planning_command
 
 
 GEOMETRY_COMMAND_TYPES = frozenset({"MoveBuilding", "RotateBuilding"})
@@ -23,6 +24,7 @@ def supports_command(command_type: str) -> bool:
         supports_semantic_command(command_type)
         or command_type in GEOMETRY_COMMAND_TYPES
         or supports_program_command(command_type)
+        or supports_planning_command(command_type)
     )
 
 
