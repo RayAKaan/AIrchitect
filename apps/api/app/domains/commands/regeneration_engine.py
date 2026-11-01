@@ -5,14 +5,25 @@ from dataclasses import dataclass
 from .regeneration import RegenerationPlan
 
 _ORDER = (
+    # Upstream brief and planning artifacts.
     "requirements",
     "program",
     "envelope",
+    "planning_envelope",
+    "feasibility",
+    # Design and canonical-model projections.
     "concepts",
+    "design_alternatives",
     "semantic_model",
     "parametric_geometry_intents",
+    # Downstream quantities, reviews, documentation and release checks.
+    "quantities",
+    "cost",
+    "structural_review",
+    "regulatory_review",
     "drawings",
     "analysis",
+    "validation",
 )
 
 
