@@ -3,12 +3,12 @@ from __future__ import annotations
 from .impact import impact_for
 from .schemas import CommandEnvelope, CommandPreview
 from .service import validate_command
-from .semantic_adapter import supports_semantic_command
+from .geometry_adapter import supports_command
 
 
 def preview_command(command: CommandEnvelope) -> CommandPreview:
     validation = validate_command(command)
-    supported = supports_semantic_command(command.type)
+    supported = supports_command(command.type)
     blockers = (
         []
         if supported

@@ -5,7 +5,7 @@ from app.domains.commands.intent_parser import IntentProposal
 
 
 def test_complete_but_unimplemented_intent_is_not_executable() -> None:
-    contract = contract_for(IntentProposal("MoveBuilding", {"element_id": "b1", "translation_m": {"x": 1, "y": 2, "z": 0}}, 0.95, (), False))
+    contract = contract_for(IntentProposal("SetSiteBoundary", {"site_id": "site-1", "boundary": {}}, 0.95, (), False))
     assert contract.executable is False
     assert contract.reason == "command has no canonical mutation adapter yet"
 
