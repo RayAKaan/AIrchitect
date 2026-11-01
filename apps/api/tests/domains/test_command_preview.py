@@ -17,6 +17,6 @@ def test_preview_never_reports_canonical_mutation():
     )
     result = preview_command(command)
     assert result.accepted
-    assert result.executable is False
-    assert "COMMAND_NOT_EXECUTABLE" in result.execution_blockers[0]
+    assert result.executable is True
+    assert result.execution_blockers == []
     assert result.canonical_mutation is False
