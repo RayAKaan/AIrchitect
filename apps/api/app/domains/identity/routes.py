@@ -200,7 +200,7 @@ async def accept_invitation(
     if existing is not None:
         raise HTTPException(409, "User is already a member of this organization")
     invitation.accepted_at = now()
-    membership = Membership(organization_id=invitation.organization_id, user_id=user.id, role=invitation.role)
+    membership = Membership(id=uuid4().hex, organization_id=invitation.organization_id, user_id=user.id, role=invitation.role)
     session.add(membership)
     session.add(AuditEvent(organization_id=invitation.organization_id, actor_user_id=user.id,
         action="ORGANIZATION_INVITATION_ACCEPTED", resource_type="organization_membership",
