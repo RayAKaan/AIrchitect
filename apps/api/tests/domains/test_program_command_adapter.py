@@ -147,3 +147,19 @@ def test_program_generation_rejects_explicit_targets_that_exceed_gfa():
     with pytest.raises(HTTPException) as exc_info:
         build_program(requirements, world)
     assert exc_info.value.detail["error"]["code"] == "PROGRAM_AREA_TARGETS_EXCEED_GFA"
+
+
+def test_set_program_area_respects_building_lock():
+    model = world_fixture()
+    state = model["designer_state"]
+    building = next(
+        item for item in model["semantic_model"]["elements"]
+        if item["element_type"] == "Building"
+    )
+    state["locks"][building["id"]] = {"locked": True, "reason": "reviewed"}
+    command = set_program_area_command()
+
+    with pytest.raises(ValueError, match="SEMANTIC_ELEMENT_LOCKED"):
+        execute_semantic_command(model, state, command, "architect-1", "program-revision-1")
+
+    assert "program_area_targets" not in model["properties"]
