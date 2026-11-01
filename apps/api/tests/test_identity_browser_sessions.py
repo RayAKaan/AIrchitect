@@ -65,3 +65,18 @@ async def test_refresh_token_body_supports_non_browser_clients(api: httpx.AsyncC
     refreshed = await api.post("/api/v1/auth/refresh", json={"refresh_token": token})
     assert refreshed.status_code == 200
     assert refreshed.json()["refresh_token"] != token
+
+
+@pytest.mark.asyncio
+async def test_browser_login_does_not_expose_refresh_token(api: httpx.AsyncClient) -> None:
+    email = "browser-login-" + uuid.uuid4().hex + "@example.com"
+    registered = await api.post("/api/v1/auth/register", json={
+        "email": email, "name": "Browser Login", "password": "a-very-secure-password", "organization_name": "Browser Org"
+    })
+    assert registered.status_code == 201
+    login = await api.post("/api/v1/auth/login", headers={"Origin": "http://test"}, json={
+        "email": email, "password": "a-very-secure-password"
+    })
+    assert login.status_code == 200
+    assert login.json()["refresh_token"] is None
+    assert login.cookies.get("airchitect_refresh")
