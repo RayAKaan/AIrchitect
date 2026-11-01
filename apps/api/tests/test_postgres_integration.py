@@ -128,11 +128,6 @@ async def test_postgres_password_reset_requests_are_serialized_per_user(monkeypa
         pytest.skip("PostgreSQL identity-token concurrency requires DATABASE_URL")
 
     sent: list[str] = []
-    monkeypatch.setattr(settings, "smtp_host", "smtp.example.test")
-    monkeypatch.setattr(settings, "smtp_sender", "noreply@example.test")
-    import app.main as main
-    monkeypatch.setattr(main, "send_email", lambda recipient, subject, body: sent.append(recipient))
-
     engine = create_async_engine(database_url, pool_pre_ping=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -149,6 +144,10 @@ async def test_postgres_password_reset_requests_are_serialized_per_user(monkeypa
                 "organization_name": "Postgres Reset Org",
             })
             assert registered.status_code == 201, registered.text
+            monkeypatch.setattr(settings, "smtp_host", "smtp.example.test")
+            monkeypatch.setattr(settings, "smtp_sender", "noreply@example.test")
+            import app.main as main
+            monkeypatch.setattr(main, "send_email", lambda recipient, subject, body: sent.append(recipient))
 
             first, second = await asyncio.gather(
                 client.post("/api/v1/auth/forgot-password", json={"email": email}),
