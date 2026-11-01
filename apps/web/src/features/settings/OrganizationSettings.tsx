@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import './organizationSettings.css';
 
 type Organization = { id: string; name: string; role: string };
@@ -34,7 +34,7 @@ export default function OrganizationSettings({ api, token, organization }: { api
 
   useEffect(() => { void load(); }, [organization.id, token]);
 
-  async function invite(event: React.FormEvent) {
+  async function invite(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setInviteUrl('');
     try {
       const result = await call('/organizations/' + organization.id + '/invitations', { method: 'POST', body: JSON.stringify({ email, role }) });
