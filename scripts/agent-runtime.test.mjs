@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, serverArguments, validateOrigin, runtimeDirectory, OPENCODE_PACKAGE, OPENCODE_VERSION } from './agent-runtime.mjs';
+import { parseArgs, serverArguments, validateOrigin, runtimeDirectory, isMainModule, OPENCODE_PACKAGE, OPENCODE_VERSION } from './agent-runtime.mjs';
 
 describe('AIrchitect OpenCode runtime bootstrap', () => {
   it('pins the audited OpenCode package version', () => {
@@ -26,6 +26,13 @@ describe('AIrchitect OpenCode runtime bootstrap', () => {
     assert.equal(validateOrigin('https://app.example.com'), 'https://app.example.com');
     assert.throws(() => validateOrigin('http://app.example.com'), /HTTPS/);
     assert.throws(() => validateOrigin('https://app.example.com/path'), /Origin must/);
+  });
+
+  it('recognizes direct CLI execution when invoked with a relative script path', () => {
+    const moduleUrl = new URL('./agent-runtime.mjs', import.meta.url).href;
+    assert.equal(isMainModule(moduleUrl, 'scripts/agent-runtime.mjs'), true);
+    assert.equal(isMainModule(moduleUrl, undefined), false);
+    assert.equal(isMainModule(moduleUrl, 'scripts/other-script.mjs'), false);
   });
 
   it('stores runtime metadata in the platform user configuration directory', () => {

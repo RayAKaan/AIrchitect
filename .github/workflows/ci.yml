@@ -58,7 +58,7 @@ jobs:
         with:
           node-version: '22'
       - run: cd apps/web && npm ci --no-audit --no-fund
-      - run: node --test scripts/agent-runtime.test.mjs
+      - run: node scripts/agent-runtime.mjs --help && node --test scripts/agent-runtime.test.mjs
       - run: cd apps/web && npm run lint && npm test && npm run build
       - name: Build Web Docker image
         run: docker build -t ai-architect-web ./apps/web
@@ -129,3 +129,51 @@ jobs:
       - name: Enforce S16 product release gate
         run: python scripts/s16_release_gate.py
       - run: python scripts/release_preflight.py
+
+  opencode-runtime-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AIRCHITECT_OPENCODE_PASSWORD: ci-only-opencode-runtime-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the pinned OpenCode CLI
+        run: npm install --global --no-audit --no-fund opencode-ai@1.19.4
+      - name: Start the managed OpenCode runtime
+        run: |
+          node scripts/agent-runtime.mjs start --port 4096 --origin http://localhost:5173 > "$RUNNER_TEMP/opencode-runtime.json"
+      - name: Verify OpenCode health, provider discovery and MCP registration
+        run: |
+          node --input-type=module <<'NODE'
+          const password = process.env.AIRCHITECT_OPENCODE_PASSWORD;
+          const authorization = `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`;
+          const baseUrl = 'http://127.0.0.1:4096';
+          const headers = { Authorization: authorization, 'Content-Type': 'application/json' };
+          const health = await fetch(`${baseUrl}/global/health`, { headers });
+          if (!health.ok || (await health.json()).healthy !== true) throw new Error('OpenCode health check failed');
+          const providers = await fetch(`${baseUrl}/provider`, { headers });
+          const catalog = await providers.json();
+          if (!providers.ok || !Array.isArray(catalog.all) || !Array.isArray(catalog.connected)) throw new Error('OpenCode provider discovery contract failed');
+          const mcp = await fetch(`${baseUrl}/mcp`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              name: 'airchitect',
+              config: {
+                type: 'remote',
+                url: 'http://127.0.0.1:1/mcp',
+                oauth: false,
+                enabled: false,
+                headers: { Authorization: 'Bearer ci-invalid-token' },
+              },
+            }),
+          });
+          if (!mcp.ok) throw new Error(`OpenCode MCP registration failed (${mcp.status})`);
+          process.stdout.write('OpenCode runtime, provider discovery and MCP registration passed.\\n');
+          NODE
+      - name: Stop the managed OpenCode runtime
+        if: always()
+        run: node scripts/agent-runtime.mjs stop

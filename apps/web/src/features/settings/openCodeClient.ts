@@ -11,6 +11,13 @@ function normalizedBaseUrl(baseUrl: string): string {
   return url.toString().replace(/\/+$/, '');
 }
 
+function assertLoopbackOpenCodeServer(baseUrl: string): void {
+  const server = new URL(normalizedBaseUrl(baseUrl));
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(server.hostname)) {
+    throw new Error('Sensitive credentials may only be sent to a loopback OpenCode server.');
+  }
+}
+
 function authHeaders(username: string, password: string): HeadersInit {
   if (!password) return {};
   return { Authorization: `Basic ${btoa(`${username || 'opencode'}:${password}`)}` };
@@ -49,10 +56,7 @@ export function registerOpenCodeMcpServer(
   username: string,
   password: string,
 ): Promise<unknown> {
-  const server = new URL(normalizedBaseUrl(baseUrl));
-  if (!['localhost', '127.0.0.1', '[::1]'].includes(server.hostname)) {
-    throw new Error('AIrchitect session tokens may only be registered with a loopback OpenCode server.');
-  }
+  assertLoopbackOpenCodeServer(baseUrl);
   if (!sessionToken.trim()) throw new Error('An active AIrchitect session is required to connect architectural tools.');
   const endpoint = new URL(mcpUrl);
   if (!['http:', 'https:'].includes(endpoint.protocol)) throw new Error('AIrchitect MCP endpoint must use HTTP or HTTPS.');
@@ -85,6 +89,7 @@ export function listOpenCodeProviders(baseUrl: string, username: string, passwor
 /** Sends the API key directly to the user's OpenCode server; AIrchitect never persists it. */
 export function setOpenCodeProviderKey(baseUrl: string, providerId: string, apiKey: string, username: string, password: string): Promise<boolean> {
   if (!providerId.trim() || !apiKey.trim()) throw new Error('A provider and API key are required.');
+  assertLoopbackOpenCodeServer(baseUrl);
   return request<boolean>(baseUrl, `/auth/${encodeURIComponent(providerId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -100,10 +105,37 @@ export function createOpenCodeSession(baseUrl: string, title: string, username: 
   }, username, password);
 }
 
-export function sendOpenCodePrompt(baseUrl: string, sessionId: string, text: string, username: string, password: string, model?: OpenCodeModelSelection, system?: string, tools?: Record<string, boolean>): Promise<unknown> {
+export function abortOpenCodeSession(baseUrl: string, sessionId: string, username: string, password: string): Promise<boolean> {
+  return request<boolean>(baseUrl, `/session/${encodeURIComponent(sessionId)}/abort`, { method: 'POST' }, username, password);
+}
+
+export function extractOpenCodeResponseText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value !== 'object' || value === null) return String(value ?? '');
+  const parts = 'parts' in value && Array.isArray(value.parts) ? value.parts : [];
+  const textParts = parts
+    .filter((part): part is { type: string; text: string } =>
+      typeof part === 'object' && part !== null && 'type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string')
+    .map(part => part.text.trim())
+    .filter(Boolean);
+  if (textParts.length) return textParts.join('\\n\\n');
+  const toolParts = parts.filter((part): part is Record<string, unknown> =>
+    typeof part === 'object' && part !== null && 'type' in part && part.type === 'tool');
+  const toolSummaries = toolParts.map(part => {
+    const state = typeof part.state === 'object' && part.state !== null ? part.state as Record<string, unknown> : {};
+    const title = typeof state.title === 'string' ? state.title : typeof part.tool === 'string' ? part.tool : 'Architectural tool';
+    const output = typeof state.output === 'string' ? state.output : typeof state.status === 'string' ? state.status : 'completed';
+    return `${title}: ${output}`;
+  });
+  if (toolSummaries.length) return toolSummaries.join('\\n');
+  return JSON.stringify(value, null, 2);
+}
+
+export function sendOpenCodePrompt(baseUrl: string, sessionId: string, text: string, username: string, password: string, model?: OpenCodeModelSelection, system?: string, tools?: Record<string, boolean>, signal?: AbortSignal): Promise<unknown> {
   return request(baseUrl, `/session/${encodeURIComponent(sessionId)}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...(model ? { model } : {}), ...(system ? { system } : {}), ...(tools ? { tools } : {}), parts: [{ type: 'text', text }] }),
+    signal: signal ?? AbortSignal.timeout(300000),
   }, username, password);
 }
