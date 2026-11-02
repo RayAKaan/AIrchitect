@@ -55,9 +55,9 @@ async def generate_concepts(project_id: str, version_ref: str, user: User = Depe
     valid=[a for a in alternatives if a.status == "VALID"]
     return {"generation_id":run.id,"status":run.status,"world_model_hash":world.model_hash,
         "program_hash":program.output_hash,"envelope_hash":envelope.output_hash,
-        "alternatives":[{"id":a.id,"name":a.name,"strategy_id":a.strategy_id,"status":a.status,"metrics":a.key_metrics_json,
+        "alternatives":[{"id":a.id,"name":a.name,"strategy_id":a.strategy_id,"status":a.status,"parameters":a.design_parameters_json,"metrics":a.key_metrics_json,
             "constraint_results":a.constraint_results_json,"assumptions":a.assumptions_json,"unknowns":a.unknowns_json,
-            "tradeoffs":a.tradeoffs_json,"reasoning":a.reasoning_json,"design_hash":a.design_hash} for a in alternatives],
+            "tradeoffs":a.tradeoffs_json,"reasoning":a.reasoning_json,"provenance":a.provenance_json,"design_hash":a.design_hash} for a in alternatives],
         "valid_alternative_count":len(valid),"selection_notice":"Alternatives are preliminary design directions; no automatic optimum or regulatory approval is claimed."}
 
 @router.get("/projects/{project_id}/versions/{version_ref}/concepts")
