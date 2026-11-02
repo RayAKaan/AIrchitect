@@ -17,6 +17,7 @@ from app.domains.lifecycle.service import new_artifact
 
 from .service import SpatialLayoutError, build_spatial_layout
 from .topology import SpatialTopologyError, build_spatial_topology
+from .architectural_elements import ArchitecturalElementError, compile_architectural_elements
 
 
 router = APIRouter(tags=["spatial-layout"])
@@ -425,4 +426,181 @@ async def get_spatial_topology(
         "topology_hash": artifact.output_hash,
         "status": "STALE" if stale else artifact.payload_json.get("status", "REVIEW_REQUIRED"),
         "topology": artifact.payload_json,
+    }
+
+
+@router.post("/projects/{project_id}/versions/{version_ref}/architectural-elements/generate", status_code=201)
+async def generate_architectural_elements(
+    project_id: str,
+    version_ref: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Create a reviewable element proposal artifact from current layout and topology."""
+    project, version = await resolve_project_version(session, project_id, version_ref, user.id, write=True)
+    if version.status != "COMMITTED":
+        raise error(
+            409,
+            "WORLD_MODEL_INVALID",
+            "Commit the canonical project version before architectural element proposal generation",
+            version_status=version.status,
+        )
+    world = await resolve_world_model(session, version.id)
+    layout_artifact = await _current_artifact(session, version.id, "spatial_layout")
+    if not await _layout_is_current(session, version.id, world.model_hash or "", layout_artifact):
+        raise error(
+            409,
+            "STALE_SPATIAL_LAYOUT",
+            "Regenerate the spatial layout from the current World Model, programme, envelope, site and selected concept",
+        )
+    topology_artifact = await _current_artifact(session, version.id, "spatial_topology")
+    topology_source = topology_artifact.payload_json.get("source_lineage") or {}
+    if (
+        topology_source.get("world_model_hash") != world.model_hash
+        or topology_source.get("layout_hash") != layout_artifact.output_hash
+    ):
+        raise error(
+            409,
+            "STALE_SPATIAL_TOPOLOGY",
+            "Regenerate spatial topology from the current spatial layout before deriving architectural elements",
+        )
+    try:
+        payload = compile_architectural_elements(
+            layout_artifact.payload_json,
+            topology_artifact.payload_json,
+        )
+    except ArchitecturalElementError as exc:
+        raise error(409, exc.code, str(exc), **exc.context) from exc
+
+    digest = payload["elements_hash"]
+    existing = await session.scalar(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "architectural_elements",
+            ArtifactVersion.output_hash == digest,
+            ArtifactVersion.status == "current",
+        )
+    )
+    if existing is not None:
+        return {
+            "artifact_id": existing.id,
+            "artifact_version": existing.version,
+            "elements_hash": digest,
+            "elements": existing.payload_json,
+            "idempotent": True,
+        }
+
+    previous = list(
+        (
+            await session.scalars(
+                select(ArtifactVersion).where(
+                    ArtifactVersion.project_version_id == version.id,
+                    ArtifactVersion.artifact_type == "architectural_elements",
+                    ArtifactVersion.status == "current",
+                )
+            )
+        ).all()
+    )
+    for row in previous:
+        row.status = "stale"
+
+    artifact = await new_artifact(
+        session,
+        project=project,
+        version=version,
+        world=world,
+        actor=user.id,
+        artifact_type="architectural_elements",
+        payload=payload,
+        dependencies=[layout_artifact, topology_artifact],
+        alternative_id=layout_artifact.alternative_id,
+        status="current",
+    )
+    artifact.output_hash = digest
+    await audit(
+        session,
+        project=project,
+        version=version,
+        actor=user.id,
+        action="ARCHITECTURAL_ELEMENTS_PROPOSED",
+        entity="artifact_version",
+        entity_id=artifact.id,
+        metadata={
+            "elements_hash": digest,
+            "layout_hash": layout_artifact.output_hash,
+            "topology_hash": topology_artifact.output_hash,
+            "world_model_hash": world.model_hash,
+            "candidate_count": len(payload["candidates"]),
+            "status": payload["status"],
+        },
+    )
+    await session.commit()
+    return {
+        "artifact_id": artifact.id,
+        "artifact_version": artifact.version,
+        "elements_hash": digest,
+        "elements": payload,
+        "idempotent": False,
+    }
+
+
+@router.get("/projects/{project_id}/versions/{version_ref}/architectural-elements")
+async def get_architectural_elements(
+    project_id: str,
+    version_ref: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    _, version = await resolve_project_version(session, project_id, version_ref, user.id)
+    world = await resolve_world_model(session, version.id)
+    artifact = await session.scalar(
+        select(ArtifactVersion)
+        .where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "architectural_elements",
+        )
+        .order_by(ArtifactVersion.version.desc())
+        .limit(1)
+    )
+    if artifact is None:
+        raise error(
+            404,
+            "ARCHITECTURAL_ELEMENTS_NOT_FOUND",
+            "No architectural element proposal has been generated for this project version",
+        )
+    layout_artifact = await session.scalar(
+        select(ArtifactVersion)
+        .where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "spatial_layout",
+            ArtifactVersion.status == "current",
+        )
+        .order_by(ArtifactVersion.version.desc())
+        .limit(1)
+    )
+    topology_artifact = await session.scalar(
+        select(ArtifactVersion)
+        .where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "spatial_topology",
+            ArtifactVersion.status == "current",
+        )
+        .order_by(ArtifactVersion.version.desc())
+        .limit(1)
+    )
+    source = artifact.payload_json.get("source_lineage") or {}
+    stale = (
+        artifact.status != "current"
+        or layout_artifact is None
+        or topology_artifact is None
+        or source.get("world_model_hash") != world.model_hash
+        or source.get("layout_hash") != (layout_artifact.output_hash if layout_artifact else None)
+        or source.get("topology_hash") != (topology_artifact.output_hash if topology_artifact else None)
+    )
+    return {
+        "artifact_id": artifact.id,
+        "artifact_version": artifact.version,
+        "elements_hash": artifact.output_hash,
+        "status": "STALE" if stale else artifact.payload_json.get("status", "REVIEW_REQUIRED"),
+        "elements": artifact.payload_json,
     }
