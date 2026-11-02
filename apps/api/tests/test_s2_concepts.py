@@ -121,3 +121,24 @@ def test_candidate_is_invalid_when_coverage_footprint_limit_is_exceeded():
     candidate = apply_s2_design_inputs(sample_candidate(footprint=500.0), inputs)
     assert candidate.valid is False
     assert "MAX_FOOTPRINT_EXCEEDED" in candidate.invalid_reasons
+
+
+
+def test_concept_generation_rejects_programme_from_stale_world_model():
+    program = sample_program()
+    program["provenance"] = {"world_model_hash": "world-old"}
+    envelope = sample_envelope()
+    envelope["source_lineage"] = {"world_model_hash": "world-current"}
+    with pytest.raises(S2DesignInputError) as exc_info:
+        resolve_s2_design_inputs(program, envelope, world_hash="world-current")
+    assert exc_info.value.code == "STALE_PROGRAM"
+
+
+def test_concept_generation_rejects_envelope_from_stale_world_model():
+    program = sample_program()
+    program["provenance"] = {"world_model_hash": "world-current"}
+    envelope = sample_envelope()
+    envelope["source_lineage"] = {"world_model_hash": "world-old"}
+    with pytest.raises(S2DesignInputError) as exc_info:
+        resolve_s2_design_inputs(program, envelope, world_hash="world-current")
+    assert exc_info.value.code == "STALE_ENVELOPE"
