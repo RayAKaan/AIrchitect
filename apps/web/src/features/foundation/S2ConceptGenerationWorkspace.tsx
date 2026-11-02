@@ -8,7 +8,7 @@ export default function S2ConceptGenerationWorkspace({ api, token, projectId, ve
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  async function request(path: string, init: RequestInit = {}) {
+  const request = useCallback(async (path: string, init: RequestInit = {}) => {
     const response = await fetch(api + path, {
       ...init,
       headers: {
@@ -22,12 +22,12 @@ export default function S2ConceptGenerationWorkspace({ api, token, projectId, ve
       throw Error(data.detail?.message || data.detail || data.error?.message || ('Request failed (' + response.status + ')'));
     }
     return data;
-  }
+  }, [api, token]);
 
   const load = useCallback(async () => {
     const data = await request('/projects/' + projectId + '/versions/' + version.id + '/design/alternatives');
     setAlternatives(data.alternatives || []);
-  }, [api, projectId, token, version.id]);
+  }, [projectId, request, version.id]);
 
   async function generate() {
     setBusy(true);
