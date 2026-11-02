@@ -15,14 +15,50 @@ CATALOG = {
     "residential": [("Living", "public", .25), ("Bedrooms", "private", .30), ("Kitchen", "private", .10), ("Bathrooms", "service", .10), ("Circulation", "circulation", .10), ("Core", "service", .15)],
 }
 
+ADJACENCIES = {
+    "office": [
+        ("Reception", "Open Work", "direct"),
+        ("Open Work", "Meeting", "direct"),
+        ("Open Work", "Focus", "direct"),
+        ("Pantry", "Open Work", "service"),
+        ("Toilets", "Core", "service"),
+    ],
+    "retail": [
+        ("Entry", "Sales Floor", "direct"),
+        ("Sales Floor", "Stock", "service"),
+        ("Staff", "Stock", "service"),
+        ("Toilets", "Sales Floor", "visitor_access"),
+    ],
+    "restaurant": [
+        ("Entry", "Dining", "direct"),
+        ("Dining", "Kitchen", "service"),
+        ("Kitchen", "Storage", "service"),
+        ("Toilets", "Dining", "visitor_access"),
+    ],
+    "residential": [
+        ("Living", "Kitchen", "direct"),
+        ("Living", "Bedrooms", "direct"),
+        ("Bedrooms", "Bathrooms", "direct"),
+        ("Kitchen", "Circulation", "direct"),
+    ],
+}
 
-def _use(requirements: list[RequirementRecord]) -> str:
+USE_ALIASES = {
+    "commercial_retail": "retail",
+    "commercial retail": "retail",
+    "retail": "retail",
+    "office": "office",
+    "restaurant": "restaurant",
+    "residential": "residential",
+}
+
+
+def _use(requirements: list[RequirementRecord]) -> str | None:
     for row in reversed(requirements):
         if row.parameter == "building_use" and row.status in {"CONFIRMED", "ASSUMED"}:
-            value = str(row.normalized_value_json).lower()
-            for key in CATALOG:
-                if key in value: return key
-    return "office"
+            value = str(row.normalized_value_json).strip().lower().replace("-", "_")
+            return USE_ALIASES.get(value, value)
+    return None
 
 
 def _world_value(value):
@@ -34,27 +70,44 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
     gfa_row = next((r for r in reversed(confirmed) if r.parameter == "target_gfa"), None)
     floors_row = next((r for r in reversed(confirmed) if r.parameter == "floor_count"), None)
     building = world.model_json.get("building") or {}
+    site = world.model_json.get("site") or {}
     canonical_gfa = _world_value(building.get("target_gfa"))
     canonical_floors = _world_value(building.get("floor_count"))
     gfa = float(canonical_gfa) if canonical_gfa is not None else (float(gfa_row.normalized_value_json) if gfa_row else None)
     floors = int(canonical_floors) if canonical_floors is not None else (int(floors_row.normalized_value_json) if floors_row else None)
     canonical_use = building.get("use")
     use = str(canonical_use).strip().lower() if isinstance(canonical_use, str) and canonical_use.strip() else _use(requirements)
+    if use is not None:
+        use = USE_ALIASES.get(use.replace("-", "_"), use.replace("-", "_"))
+    if use is None:
+        use = "office"
     if use not in CATALOG:
         raise error(409, "UNKNOWN_BUILDING_USE", "Canonical building use is not supported by the program catalog", building_use=use)
+
     assumptions = []
     unknowns = []
+    has_confirmed_use = isinstance(canonical_use, str) and bool(canonical_use.strip()) or _use(requirements) is not None
+    if not has_confirmed_use:
+        assumptions.append({
+            "parameter": "building_use",
+            "value": use,
+            "unit": None,
+            "reason": "Building use was not confirmed. An office template is shown as a provisional starting point and must be reviewed before design decisions.",
+        })
     if gfa is None:
-        site_area = world.model_json.get("site", {}).get("area")
-        site_area = site_area.get("value") if isinstance(site_area, dict) else site_area
+        site_area = _world_value(site.get("area"))
         if site_area and floors:
             gfa = float(site_area) * .65 * floors
             assumptions.append({"parameter": "target_gfa", "value": gfa, "unit": "m2", "reason": "Preliminary program target derived from canonical site area, 65% coverage and confirmed floor count."})
         else:
             unknowns.append("target_gfa")
-    if floors is None: unknowns.append("floor_count")
+    if floors is None:
+        unknowns.append("floor_count")
     if gfa is None:
         raise error(409, "PROGRAM_INPUT_INCOMPLETE", "A target GFA or enough confirmed site/floor information is required to build a bounded program", unknowns=unknowns)
+    if not math.isfinite(gfa) or gfa <= 0:
+        raise error(409, "PROGRAM_GFA_INVALID", "Target GFA must be a positive finite value", target_gfa_m2=gfa)
+
     catalog = CATALOG[use]
     raw_targets = (world.model_json.get("properties") or {}).get("program_area_targets", {})
     if not isinstance(raw_targets, dict):
@@ -136,18 +189,62 @@ def build_program(requirements: list[RequirementRecord], world: WorldModelRevisi
             "source": "human_review_program_target" if explicit else "program_template_v1",
             "assumption": False,
         })
-    adj=[]
-    ids={s["name"]:s["id"] for s in spaces}
-    for a,b,kind in [("Entry","Sales Floor","direct"),("Entry","Dining","direct"),("Sales Floor","Stock","service"),("Dining","Kitchen","service"),("Reception","Open Work","direct"),("Open Work","Meeting","direct"),("Kitchen","Storage","service")]:
-        if a in ids and b in ids: adj.append({"from":ids[a],"to":ids[b],"relationship":kind,"required":True})
-    return {"schema_version":"s2-program-v1","use":use,"target_gfa_m2":round(gfa,2),"floor_count":floors,
-        "spaces":spaces,"adjacencies":adj,"assumptions":assumptions,"unknowns":sorted(set(unknowns)),
-        "provenance":{
-            "requirement_ids":[r.id for r in confirmed],
-            "world_model_hash":world.model_hash,
+    ids = {space["name"]: space["id"] for space in spaces}
+    adjacencies = [
+        {"from": ids[source], "to": ids[target], "relationship": relationship, "required": True}
+        for source, target, relationship in ADJACENCIES[use]
+        if source in ids and target in ids
+    ]
+    total_area = round(sum(space["target_area_m2"] for space in spaces), 2)
+    area_residual = round(gfa - total_area, 2)
+    if abs(area_residual) > 0.01:
+        raise error(
+            409,
+            "PROGRAM_AREA_RECONCILIATION_FAILED",
+            "Generated space targets do not reconcile to the target GFA",
+            target_gfa_m2=round(gfa, 2),
+            allocated_area_m2=total_area,
+            residual_m2=area_residual,
+        )
+    site_area = _world_value(site.get("area"))
+    site_width = _world_value(site.get("width"))
+    site_depth = _world_value(site.get("depth"))
+    site_context = {
+        "site_area_m2": site_area,
+        "site_width_m": site_width,
+        "site_depth_m": site_depth,
+        "boundary_available": bool(site.get("boundary")),
+        "orientation_degrees": _world_value(site.get("orientation_degrees")),
+        "orientation_status": "KNOWN" if site.get("orientation_degrees") is not None else "UNKNOWN",
+        "access_frontage_status": "UNKNOWN",
+    }
+    if site_context["orientation_status"] == "UNKNOWN":
+        unknowns.append("site_orientation")
+    unknowns.append("site_access_frontage")
+    return {
+        "schema_version": "s2-program-v2",
+        "use": use,
+        "target_gfa_m2": round(gfa, 2),
+        "floor_count": floors,
+        "spaces": spaces,
+        "adjacencies": adjacencies,
+        "site_context": site_context,
+        "area_reconciliation": {
+            "target_gfa_m2": round(gfa, 2),
+            "allocated_space_area_m2": total_area,
+            "residual_m2": area_residual,
+            "reconciled": abs(area_residual) <= 0.01,
+        },
+        "assumptions": assumptions,
+        "unknowns": sorted(set(unknowns)),
+        "provenance": {
+            "requirement_ids": [r.id for r in confirmed],
+            "world_model_hash": world.model_hash,
             "program_area_targets": explicit_targets,
-            "engine":"program_template_v1",
-        }}
+            "engine": "program_template_v2",
+        },
+    }
+
 
 async def generate(session: AsyncSession, project_id: str, version_ref: str, user: User) -> dict:
     project, version = await resolve_project_version(session, project_id, version_ref, user.id, write=True)
