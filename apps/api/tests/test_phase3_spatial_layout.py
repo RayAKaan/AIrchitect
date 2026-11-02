@@ -115,6 +115,8 @@ def test_footprint_must_fit_inside_the_buildable_envelope():
 def test_programme_area_must_reconcile_to_target_gfa():
     program, envelope, parameters, metrics = _inputs()
     program["spaces"][0]["target_area_m2"] = 100.0
+    program["spaces"][0]["min_area_m2"] = 90.0
+    program["spaces"][0]["max_area_m2"] = 110.0
     try:
         build_spatial_layout(
             project_id="project-1",
