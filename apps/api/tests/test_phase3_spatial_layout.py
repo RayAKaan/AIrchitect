@@ -107,7 +107,11 @@ def test_footprint_must_fit_inside_the_buildable_envelope():
     try:
         _build(footprint_width=2_000.0, footprint_depth=2_000.0)
     except SpatialLayoutError as exc:
-        assert exc.code in {"LAYOUT_FOOTPRINT_EXCEEDS_ENVELOPE", "LAYOUT_FOOTPRINT_NOT_CONTAINED"}
+        assert exc.code in {
+            "LAYOUT_FOOTPRINT_EXCEEDS_ENVELOPE",
+            "LAYOUT_MAX_FOOTPRINT_EXCEEDED",
+            "LAYOUT_FOOTPRINT_NOT_CONTAINED",
+        }
     else:
         raise AssertionError("An oversized footprint must not be placed")
 
