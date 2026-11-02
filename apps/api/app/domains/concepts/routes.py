@@ -1,8 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from app.db.models import ArtifactVersion, DesignAlternative, DesignGenerationRun, User
-from app.db.site_models import SiteRevision
+from app.db.models import ArtifactVersion, DesignAlternative, User
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.engine import ENGINE, DesignGenerationError
@@ -23,6 +22,8 @@ async def _inputs(session, version_id: str):
 @router.post("/projects/{project_id}/versions/{version_ref}/concepts/generate")
 async def generate_concepts(project_id: str, version_ref: str, user: User = Depends(current_user), session=Depends(get_session)):
     project, version = await resolve_project_version(session, project_id, version_ref, user.id, write=True)
+    if version.status != "COMMITTED":
+        raise error(409, "WORLD_MODEL_INVALID", "Commit the canonical project version before concept generation", version_status=version.status)
     world = await resolve_world_model(session, version.id)
     program, envelope = await _inputs(session, version.id)
     try:
