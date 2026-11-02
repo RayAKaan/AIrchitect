@@ -1,7 +1,7 @@
 # S2 — Brief → Requirements → Program → Envelope → Concepts
 
 **Stage:** S2  
-**Status:** Backend computational contract implemented; UI workflow remains  
+**Status:** Backend and authenticated browser workflow implemented; final integration CI and merge verification in progress  
 **Scope:** Turn a natural-language architectural brief plus the canonical Site World Model into a traceable, validated program, deterministic buildable envelope, and materially different concept alternatives.
 
 ## Product contract
@@ -107,3 +107,16 @@ Every derived artifact records its source project version, World Model hash, eng
 - Full structural, daylight, energy, accessibility, or code certification (S5+).
 - IFC/CAD round-trip (S6).
 - Collaboration and AI Copilot (S7).
+
+
+## Current Phase 2 hardening
+
+The original S2 backend and browser workflow are present. The following hardening PRs close gaps found during end-to-end review:
+
+- [#350](https://github.com/RayAKaan/AIrchitect/pull/350): preserve extraction confidence and provenance through persistence.
+- [#351](https://github.com/RayAKaan/AIrchitect/pull/351): expose programme assumptions, site context, adjacency contracts and area reconciliation.
+- [#352](https://github.com/RayAKaan/AIrchitect/pull/352): distinguish footprint coverage from FAR/GFA, validate evidence and expose geometric orientation plus environmental unknowns.
+- [#353](https://github.com/RayAKaan/AIrchitect/pull/353): bind concept generation to actual programme/envelope payloads and reject stale inputs.
+- [#354](https://github.com/RayAKaan/AIrchitect/pull/354): add transparent multi-criteria evaluation and role-gated design-direction approval.
+
+The stage is not considered complete until every hardening PR is merged and its complete CI workflow is green.
