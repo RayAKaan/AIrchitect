@@ -48,7 +48,9 @@ def test_coverage_and_far_limit_max_gfa_deterministically():
         max_height_m=rule(20, "m"),
     )
     result = build_envelope(boundary(), request)
-    assert result["max_gfa_m2"] == result["max_footprint_m2"]
+    assert result["max_footprint_m2"] == pytest.approx(result["site_area_m2"] * 0.5, abs=0.01)
+    assert result["max_gfa_m2"] == pytest.approx(result["site_area_m2"] * 1.0, abs=0.01)
+    assert result["max_gfa_m2"] > result["max_footprint_m2"]
     assert len(result["envelope_hash"]) == 64
     assert result["schema_version"] == "s2-envelope-v2"
 
