@@ -13,7 +13,7 @@ from app.dependencies import current_user
 from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
 from app.domains.design.s2_inputs import S2DesignInputError, resolve_s2_design_inputs
 from app.domains.foundation.service import audit, error, resolve_project_version, resolve_world_model
-from app.domains.lifecycle.service import canonical_hash, new_artifact
+from app.domains.lifecycle.service import new_artifact
 
 from .service import SpatialLayoutError, build_spatial_layout
 
