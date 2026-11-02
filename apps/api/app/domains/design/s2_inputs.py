@@ -126,9 +126,22 @@ def resolve_s2_design_inputs(program: dict[str, Any], envelope: dict[str, Any]) 
     ):
         raise S2DesignInputError("S2_PROGRAM_INVALID", "Programme floor count must be a positive integer when supplied")
 
-    orientation = (envelope.get("site_orientation") or {}).get("long_axis_degrees_from_north")
-    orientation = _finite_number(orientation, field="envelope.site_orientation.long_axis_degrees_from_north", allow_none=True)
+    orientation_data = envelope.get("site_orientation") or {}
+    if not isinstance(orientation_data, dict):
+        raise S2DesignInputError("S2_ENVELOPE_INVALID", "Site orientation must be an object when supplied")
+    orientation = _finite_number(
+        orientation_data.get("long_axis_degrees_from_north"),
+        field="envelope.site_orientation.long_axis_degrees_from_north",
+        allow_none=True,
+    )
+    if orientation is not None and not 0 <= orientation < 180:
+        raise S2DesignInputError("S2_ENVELOPE_INVALID", "Site orientation must be between 0 and 180 degrees")
+    setback = _finite_number(envelope.get("setback_m"), field="envelope.setback_m", allow_none=True)
+    if setback is not None and setback < 0:
+        raise S2DesignInputError("S2_ENVELOPE_INVALID", "Envelope setback cannot be negative")
     environmental = envelope.get("environmental_context") or {}
+    if not isinstance(environmental, dict):
+        raise S2DesignInputError("S2_ENVELOPE_INVALID", "Environmental context must be an object")
     environmental_unknowns = environmental.get("unknowns", [])
     if not isinstance(environmental_unknowns, list):
         environmental_unknowns = []
@@ -148,7 +161,7 @@ def resolve_s2_design_inputs(program: dict[str, Any], envelope: dict[str, Any]) 
         "max_gfa_m2": max_gfa,
         "max_footprint_m2": max_footprint,
         "max_height_m": max_height,
-        "setback_m": _finite_number(envelope.get("setback_m"), field="envelope.setback_m", allow_none=True),
+        "setback_m": setback,
         "orientation_degrees": orientation,
         "environmental_unknowns": environmental_unknowns,
         "envelope_unknowns": envelope_unknowns,
