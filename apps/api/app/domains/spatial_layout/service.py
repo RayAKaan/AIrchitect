@@ -120,26 +120,29 @@ def _fit_footprint(
 
 
 def _space_order(spaces: list[dict[str, Any]], adjacencies: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_id = {str(space["id"]): space for space in spaces}
     neighbours: dict[str, set[str]] = defaultdict(set)
     for edge in adjacencies:
         first, second = str(edge["from"]), str(edge["to"])
-        if first in by_id and second in by_id:
-            neighbours[first].add(second)
-            neighbours[second].add(first)
+        neighbours[first].add(second)
+        neighbours[second].add(first)
 
-    remaining = set(by_id)
+    remaining = {str(space["instance_id"]): space for space in spaces}
     ordered: list[dict[str, Any]] = []
-    current: str | None = None
+    current_program_id: str | None = None
     while remaining:
-        if current in remaining and neighbours[current] & remaining:
-            candidates = neighbours[current] & remaining
-        else:
-            candidates = remaining
-        selected = min(candidates, key=lambda item: (-len(neighbours[item] & remaining), item))
-        ordered.append(by_id[selected])
-        remaining.remove(selected)
-        current = selected
+        available = list(remaining.values())
+        adjacent = [space for space in available if current_program_id is not None
+                    and space["id"] in neighbours[current_program_id]]
+        candidates = adjacent or available
+        selected = min(candidates, key=lambda space: (
+            -len(neighbours[str(space["id"])]),
+            str(space["id"]),
+            int(space["instance_number"]),
+            str(space["instance_id"]),
+        ))
+        ordered.append(selected)
+        remaining.pop(str(selected["instance_id"]))
+        current_program_id = str(selected["id"])
     return ordered
 
 
@@ -206,6 +209,16 @@ def build_spatial_layout(
     )
     footprint_area = width * depth
     floor_area = actual_gfa / floors
+    maximum_footprint = envelope.get("max_footprint_m2")
+    maximum_gfa = envelope.get("max_gfa_m2")
+    maximum_height = envelope.get("max_height_m")
+    building_height = _finite(design_metrics.get("building_height_m"), "alternative.building_height_m", positive=True)
+    if maximum_footprint is not None and footprint_area > _finite(maximum_footprint, "envelope.max_footprint_m2") + _TOLERANCE_M:
+        raise SpatialLayoutError("LAYOUT_MAX_FOOTPRINT_EXCEEDED", "Selected concept exceeds the current maximum footprint")
+    if maximum_gfa is not None and actual_gfa > _finite(maximum_gfa, "envelope.max_gfa_m2") + _TOLERANCE_M:
+        raise SpatialLayoutError("LAYOUT_MAX_GFA_EXCEEDED", "Selected concept exceeds the current maximum GFA")
+    if maximum_height is not None and building_height > _finite(maximum_height, "envelope.max_height_m") + _TOLERANCE_M:
+        raise SpatialLayoutError("LAYOUT_MAX_HEIGHT_EXCEEDED", "Selected concept exceeds the current maximum height")
     if abs(footprint_area - floor_area) > max(0.02, floor_area * 1e-4):
         raise SpatialLayoutError(
             "LAYOUT_FOOTPRINT_AREA_MISMATCH",
@@ -273,8 +286,9 @@ def build_spatial_layout(
 
     rotation_raw = design_parameters.get("orientation_degrees")
     if rotation_raw is None:
-        rotation_raw = design_parameters.get("rotation_deg", 0.0)
-    rotation_degrees = _finite(rotation_raw, "alternative.orientation_degrees")
+        rotation_raw = design_parameters.get("rotation_deg")
+    orientation_was_explicit = rotation_raw is not None
+    rotation_degrees = _finite(0.0 if rotation_raw is None else rotation_raw, "alternative.orientation_degrees")
     translation = design_parameters.get("translation_m") or {}
     if not isinstance(translation, dict):
         raise SpatialLayoutError("LAYOUT_INPUT_INVALID", "Building translation must be a vector object")
@@ -365,8 +379,8 @@ def build_spatial_layout(
                 "area_m2": round(polygon.area, 6),
                 "target_area_m2": round(item["target_area_m2"] / floors, 6),
                 "allowed_area_m2": {
-                    "minimum": round(item["min_area_m2"] / floors, 6),
-                    "maximum": round(item["max_area_m2"] / floors, 6),
+                    "minimum": round(item["minimum_area_per_floor_m2"], 6),
+                    "maximum": round(item["maximum_area_per_floor_m2"], 6),
                 },
                 "boundary": world_ring,
                 "centroid": [round(polygon.centroid.x, 6), round(polygon.centroid.y, 6)],
@@ -424,7 +438,7 @@ def build_spatial_layout(
         "The selected concept footprint is placed at the nearest deterministic fit within the current buildable polygon.",
         "This layout is preliminary and requires architectural review before downstream use.",
     ]
-    if rotation_raw is None:
+    if not orientation_was_explicit:
         assumptions.append("No explicit building orientation was supplied; the local Cartesian X axis is used.")
     if unmet_required or deferred_required:
         unknowns.append("required_program_adjacencies")
