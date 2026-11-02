@@ -213,8 +213,11 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
     vertical_candidates: list[dict[str, Any]] = []
     by_program_space: dict[str, dict[int, list[str]]] = defaultdict(lambda: defaultdict(list))
     for space_id, row in spaces.items():
+        space_type = str(row.get("space_type") or "").casefold()
+        category = str(row.get("category") or "").casefold()
+        is_vertical_element = space_type in {"core", "vertical_core", "stair", "lift"} or category == "vertical_circulation"
         program_space_id = row.get("program_space_id")
-        if isinstance(program_space_id, str) and program_space_id:
+        if is_vertical_element and isinstance(program_space_id, str) and program_space_id:
             by_program_space[program_space_id][int(row["level_number"])].append(space_id)
     for program_space_id, levels in sorted(by_program_space.items()):
         ordered_levels = sorted(levels)
@@ -290,7 +293,7 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
             for space_id, row in sorted(spaces.items())
         ],
         "edges": sorted(edges, key=lambda item: (item["level_number"], item["source_space_id"], item["target_space_id"])),
-        "connected_components": components_by_level,
+        "boundary_adjacency_components": components_by_level,
         "circulation_network": {
             "status": "CANDIDATE_ONLY" if circulation_ids else "UNKNOWN",
             "node_ids": sorted(circulation_ids),
