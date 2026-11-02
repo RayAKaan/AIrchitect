@@ -14,7 +14,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.core.security import read_token
-from app.db.models import AssumptionRecord, BuildingBriefRecord, RequirementRecord
+from app.db.models import (
+    ArtifactDependency,
+    ArtifactVersion,
+    AssumptionRecord,
+    BuildingBriefRecord,
+    DesignAlternative,
+    GeometryArtifact,
+    RequirementRecord,
+)
+from app.db.site_models import (
+    SiteConstraint,
+    SiteEvidence,
+    SiteLayerSnapshot,
+    SiteObservation,
+    SiteRevision,
+    SiteSource,
+)
 from app.db.session import get_engine
 from app.domains.commands.preview import preview_command
 from app.domains.commands.schemas import CommandEnvelope
@@ -187,6 +203,205 @@ async def preview_change(
         reason=reason,
     )
     return preview_command(envelope).model_dump(mode="json")
+
+
+
+@mcp.tool()
+async def get_site_context(project_id: str, version_id: str, ctx: Context) -> dict[str, Any]:
+    """Read the latest canonical site revision and its evidence-backed analysis projections."""
+    user_id = _caller(ctx)
+    async with _session() as session:
+        project, version, _world = await _version_context(session, project_id, version_id, user_id)
+        revision = await session.scalar(
+            select(SiteRevision)
+            .where(SiteRevision.project_id == project.id, SiteRevision.project_version_id == version.id)
+            .order_by(SiteRevision.revision.desc())
+            .limit(1)
+        )
+        if revision is None:
+            return {"available": False, "reason": "No validated site boundary exists for this project version."}
+        layers = (
+            await session.scalars(
+                select(SiteLayerSnapshot)
+                .where(SiteLayerSnapshot.site_revision_id == revision.id)
+                .order_by(SiteLayerSnapshot.layer_type, SiteLayerSnapshot.created_at.desc())
+            )
+        ).all()
+        constraints = (
+            await session.scalars(
+                select(SiteConstraint)
+                .where(SiteConstraint.site_revision_id == revision.id)
+                .order_by(SiteConstraint.constraint_type, SiteConstraint.id)
+                .limit(100)
+            )
+        ).all()
+        observations = (
+            await session.scalars(
+                select(SiteObservation)
+                .where(SiteObservation.site_revision_id == revision.id)
+                .order_by(SiteObservation.observation_type, SiteObservation.id)
+                .limit(100)
+            )
+        ).all()
+        evidence = (
+            await session.scalars(
+                select(SiteEvidence)
+                .where(SiteEvidence.site_revision_id == revision.id)
+                .order_by(SiteEvidence.claim_type, SiteEvidence.id)
+                .limit(100)
+            )
+        ).all()
+        sources = (
+            await session.scalars(
+                select(SiteSource)
+                .where(SiteSource.site_revision_id == revision.id)
+                .order_by(SiteSource.provider, SiteSource.dataset)
+                .limit(100)
+            )
+        ).all()
+        return {
+            "available": True,
+            "project_id": project.id,
+            "project_version_id": version.id,
+            "revision": revision.revision,
+            "revision_id": revision.id,
+            "content_hash": revision.content_hash,
+            "boundary": revision.boundary_geojson,
+            "boundary_crs": revision.boundary_crs,
+            "calculation_crs": revision.calculation_crs,
+            "area_m2": revision.area_m2,
+            "perimeter_m": revision.perimeter_m,
+            "validation": revision.validation_json,
+            "layers": [
+                {"type": row.layer_type, "status": row.status, "provider": row.provider,
+                 "dataset_version": row.dataset_version, "payload": row.payload_json}
+                for row in layers
+            ],
+            "constraints": [
+                {"type": row.constraint_type, "status": row.status, "value": row.value_json,
+                 "geometry": row.geometry_geojson, "evidence_id": row.evidence_id}
+                for row in constraints
+            ],
+            "observations": [
+                {"type": row.observation_type, "status": row.status, "value": row.value_json,
+                 "geometry": row.geometry_geojson, "evidence_id": row.evidence_id}
+                for row in observations
+            ],
+            "evidence": [
+                {"id": row.id, "claim_type": row.claim_type, "status": row.status,
+                 "value": row.value_json, "confidence": row.confidence, "method": row.method,
+                 "source_id": row.source_id}
+                for row in evidence
+            ],
+            "sources": [
+                {"provider": row.provider, "dataset": row.dataset, "dataset_version": row.dataset_version,
+                 "source_url": row.source_url, "retrieved_at": row.retrieval_time.isoformat(),
+                 "license": row.license, "attribution": row.attribution, "geographic_scope": row.geographic_scope}
+                for row in sources
+            ],
+            "canonical_state_mutated": False,
+        }
+
+
+@mcp.tool()
+async def list_design_alternatives(project_id: str, version_id: str, ctx: Context) -> dict[str, Any]:
+    """List design alternatives and their geometry availability without selecting or changing them."""
+    user_id = _caller(ctx)
+    async with _session() as session:
+        project, version, world = await _version_context(session, project_id, version_id, user_id)
+        alternatives = (
+            await session.scalars(
+                select(DesignAlternative)
+                .where(DesignAlternative.project_id == project.id, DesignAlternative.project_version_id == version.id)
+                .order_by(DesignAlternative.created_at, DesignAlternative.id)
+                .limit(100)
+            )
+        ).all()
+        geometries = (
+            await session.scalars(
+                select(GeometryArtifact)
+                .where(GeometryArtifact.project_id == project.id,
+                       GeometryArtifact.project_version_id == version.id,
+                       GeometryArtifact.source == "CAD_BREP")
+                .order_by(GeometryArtifact.created_at.desc())
+            )
+        ).all()
+        geometry_by_alternative = {}
+        for geometry in geometries:
+            geometry_by_alternative.setdefault(geometry.alternative_id, geometry)
+        return {
+            "project_id": project.id,
+            "project_version_id": version.id,
+            "world_model_hash": world.model_hash,
+            "alternatives": [
+                {
+                    "id": row.id,
+                    "name": row.name,
+                    "description": row.description,
+                    "status": row.status,
+                    "strategy_id": row.strategy_id,
+                    "metrics": row.key_metrics_json,
+                    "constraints": row.constraint_results_json,
+                    "assumptions": row.assumptions_json,
+                    "unknowns": row.unknowns_json,
+                    "tradeoffs": row.tradeoffs_json,
+                    "design_hash": row.design_hash,
+                    "input_world_model_hash": row.input_world_model_hash,
+                    "geometry_available": row.id in geometry_by_alternative,
+                    "geometry_status": geometry_by_alternative[row.id].status if row.id in geometry_by_alternative else None,
+                }
+                for row in alternatives
+            ],
+            "canonical_state_mutated": False,
+            "notice": "Alternatives are proposals. Human selection and downstream validation remain separate actions.",
+        }
+
+
+@mcp.tool()
+async def list_project_artifacts(project_id: str, version_id: str, ctx: Context) -> dict[str, Any]:
+    """List versioned project deliverables, freshness status and dependency lineage."""
+    user_id = _caller(ctx)
+    async with _session() as session:
+        project, version, world = await _version_context(session, project_id, version_id, user_id)
+        artifacts = (
+            await session.scalars(
+                select(ArtifactVersion)
+                .where(ArtifactVersion.project_id == project.id, ArtifactVersion.project_version_id == version.id)
+                .order_by(ArtifactVersion.created_at.desc(), ArtifactVersion.id)
+                .limit(200)
+            )
+        ).all()
+        artifact_ids = [row.id for row in artifacts]
+        dependencies = []
+        if artifact_ids:
+            dependencies = (
+                await session.scalars(
+                    select(ArtifactDependency).where(ArtifactDependency.artifact_version_id.in_(artifact_ids))
+                )
+            ).all()
+        dependency_map: dict[str, list[str]] = {}
+        for dependency in dependencies:
+            dependency_map.setdefault(dependency.artifact_version_id, []).append(dependency.depends_on_artifact_version_id)
+        return {
+            "project_id": project.id,
+            "project_version_id": version.id,
+            "world_model_hash": world.model_hash,
+            "artifacts": [
+                {
+                    "id": row.id,
+                    "type": row.artifact_type,
+                    "version": row.version,
+                    "status": row.status,
+                    "output_hash": row.output_hash,
+                    "provenance": row.provenance_json,
+                    "input_references": row.input_references_json,
+                    "depends_on": sorted(dependency_map.get(row.id, [])),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in artifacts
+            ],
+            "canonical_state_mutated": False,
+        }
 
 
 mcp_app = mcp.streamable_http_app(
