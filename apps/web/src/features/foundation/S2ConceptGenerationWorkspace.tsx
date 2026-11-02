@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type Props = { api: string; token: string; projectId: string; version: any };
 
@@ -24,10 +24,10 @@ export default function S2ConceptGenerationWorkspace({ api, token, projectId, ve
     return data;
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     const data = await request('/projects/' + projectId + '/versions/' + version.id + '/design/alternatives');
     setAlternatives(data.alternatives || []);
-  }
+  }, [api, projectId, token, version.id]);
 
   async function generate() {
     setBusy(true);
@@ -47,7 +47,7 @@ export default function S2ConceptGenerationWorkspace({ api, token, projectId, ve
 
   useEffect(() => {
     void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load alternatives'));
-  }, [projectId, version.id]);
+  }, [load]);
 
   const blocked = version.status !== 'COMMITTED';
   const currentCount = alternatives.filter((alternative) => ['VALID', 'SELECTED'].includes(alternative.status)).length;
