@@ -72,6 +72,7 @@ class ComputationalDesignEngine:
                 s2_inputs = resolve_s2_design_inputs(
                     input_artifacts["program"].payload_json,
                     input_artifacts["envelope"].payload_json,
+                    world_hash=world.model_hash or "",
                 )
             except S2DesignInputError as exc:
                 raise DesignGenerationError(exc.code, str(exc), exc.context) from exc
