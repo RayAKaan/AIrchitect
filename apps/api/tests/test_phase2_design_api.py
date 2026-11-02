@@ -88,3 +88,150 @@ async def test_v2_has_no_v1_geometry_then_generates_new_hashes(api,cad):
     v1_again=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v1['id']}/design/alternatives",headers=h)).json()["alternatives"]
     assert {a["geometry_hash"] for a in v1_again}==v1_hashes
     assert all(a["status"] in {"VALID","SELECTED"} for a in v1_again)
+
+
+
+async def test_s2_concept_endpoint_is_registered_and_requires_program_artifact(api):
+    headers, _, project, version = await setup_committed(api, "s2-prerequisites")
+    response = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/concepts/generate",
+        headers=headers,
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PROGRAM_REQUIRED"
+
+
+
+async def test_s2_pipeline_generates_alternatives_from_current_program_and_envelope(api):
+    email = f"s2-e2e-{uuid.uuid4().hex}@example.com"
+    auth = await api.post("/api/v1/auth/register", json={
+        "email": email,
+        "name": "S2 Designer",
+        "password": "phase-two-secure-password",
+        "organization_name": "S2 E2E",
+    })
+    assert auth.status_code == 201, auth.text
+    headers = {"Authorization": "Bearer " + auth.json()["access_token"]}
+    organization = (await api.get("/api/v1/organizations", headers=headers)).json()[0]
+    project = (await api.post("/api/v1/projects", headers=headers, json={
+        "organization_id": organization["id"],
+        "name": "S2 Retail Concept",
+        "description": "End-to-end Phase 2 acceptance",
+        "building_type": "commercial_retail",
+        "location": "Riyadh",
+    })).json()
+    version = (await api.get(
+        f"/api/v1/projects/{project['id']}/versions",
+        headers=headers,
+    )).json()["versions"][0]
+
+    brief = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/brief",
+        headers=headers,
+        json={
+            "text": "Six-floor commercial retail building in Riyadh with 8,000 m2 gross floor area on a 2,000 m2 site and 40 parking spaces in basement parking.",
+            "expected_revision": 1,
+        },
+    )
+    assert brief.status_code == 201, brief.text
+    revision = brief.json()["version_revision"]
+
+    extracted = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/requirements/extract",
+        headers=headers,
+    )
+    assert extracted.status_code == 200, extracted.text
+    assert extracted.json()["requirements"]
+    for requirement in extracted.json()["requirements"]:
+        confirmed = await api.post(
+            f"/api/v1/projects/{project['id']}/versions/{version['id']}/requirements/{requirement['id']}/confirm",
+            headers=headers,
+            json={"decision": "CONFIRMED", "expected_revision": revision},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        revision = confirmed.json()["version_revision"]
+
+    longitude = 46.6753
+    latitude = 24.7136
+    delta_longitude = 50 / (111320 * 0.908)
+    delta_latitude = 40 / 111320
+    boundary = {
+        "type": "Polygon",
+        "coordinates": [[
+            [longitude, latitude],
+            [longitude + delta_longitude, latitude],
+            [longitude + delta_longitude, latitude + delta_latitude],
+            [longitude, latitude + delta_latitude],
+            [longitude, latitude],
+        ]],
+    }
+    site = await api.post(
+        f"/api/v1/projects/{project['id']}/sites",
+        headers=headers,
+        json={
+            "command_id": str(uuid.uuid4()),
+            "idempotency_key": str(uuid.uuid4()),
+            "boundary": boundary,
+            "name": "S2 Test Site",
+            "mode": "commit",
+            "reason": "Create the canonical rectangular test site.",
+        },
+    )
+    assert site.status_code == 201, site.text
+    assert 1800 <= site.json()["area_m2"] <= 2200
+
+    committed = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/world-model",
+        headers=headers,
+        json={"expected_revision": revision, "commit": True},
+    )
+    assert committed.status_code == 200, committed.text
+
+    program = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/program/generate",
+        headers=headers,
+    )
+    assert program.status_code == 200, program.text
+    assert program.json()["program"]["target_gfa_m2"] == 8000
+    assert program.json()["program"]["area_reconciliation"]["reconciled"] is True
+
+    envelope = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/envelope/generate",
+        headers=headers,
+        json={
+            "setback_m": {"value": 2, "unit": "m", "source": "USER_DESIGN_PARAMETER", "status": "DESIGN_PARAMETER"},
+            "max_coverage": {"value": 0.8, "unit": "ratio", "source": "USER_DESIGN_PARAMETER", "status": "DESIGN_PARAMETER"},
+            "far": {"value": 5.0, "unit": "ratio", "source": "USER_DESIGN_PARAMETER", "status": "DESIGN_PARAMETER"},
+            "max_height_m": {"value": 30, "unit": "m", "source": "USER_DESIGN_PARAMETER", "status": "DESIGN_PARAMETER"},
+        },
+    )
+    assert envelope.status_code == 200, envelope.text
+    assert envelope.json()["envelope"]["max_gfa_m2"] > 8000
+    assert envelope.json()["envelope"]["max_footprint_m2"] < envelope.json()["envelope"]["max_gfa_m2"]
+
+    generated = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/concepts/generate",
+        headers=headers,
+    )
+    assert generated.status_code == 200, generated.text
+    assert generated.json()["valid_alternative_count"] >= 2
+    assert generated.json()["program_hash"] == program.json()["program_hash"]
+    assert generated.json()["envelope_hash"] == envelope.json()["envelope_hash"]
+
+    current = [
+        alternative for alternative in generated.json()["alternatives"]
+        if alternative["status"] == "VALID"
+    ]
+    assert len(current) >= 2
+    for alternative in current:
+        assert alternative["metrics"]["program_target_gfa_m2"] == 8000
+        assert alternative["parameters"]["program_space_schedule"]
+        assert alternative["parameters"]["program_adjacencies"]
+        assert alternative["provenance"]["input_lineage"] == {
+            "program": program.json()["program_hash"],
+            "envelope": envelope.json()["envelope_hash"],
+        }
+        assert all(
+            check["status"] != "FAIL"
+            for check in alternative["constraint_results"]
+        )

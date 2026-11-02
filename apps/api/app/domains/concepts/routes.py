@@ -1,8 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
-from app.db.models import ArtifactVersion, DesignAlternative, DesignGenerationRun, User
-from app.db.site_models import SiteRevision
+from app.db.models import ArtifactVersion, DesignAlternative, User
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.engine import ENGINE, DesignGenerationError
@@ -23,6 +22,8 @@ async def _inputs(session, version_id: str):
 @router.post("/projects/{project_id}/versions/{version_ref}/concepts/generate")
 async def generate_concepts(project_id: str, version_ref: str, user: User = Depends(current_user), session=Depends(get_session)):
     project, version = await resolve_project_version(session, project_id, version_ref, user.id, write=True)
+    if version.status != "COMMITTED":
+        raise error(409, "WORLD_MODEL_INVALID", "Commit the canonical project version before concept generation", version_status=version.status)
     world = await resolve_world_model(session, version.id)
     program, envelope = await _inputs(session, version.id)
     try:
@@ -54,9 +55,9 @@ async def generate_concepts(project_id: str, version_ref: str, user: User = Depe
     valid=[a for a in alternatives if a.status == "VALID"]
     return {"generation_id":run.id,"status":run.status,"world_model_hash":world.model_hash,
         "program_hash":program.output_hash,"envelope_hash":envelope.output_hash,
-        "alternatives":[{"id":a.id,"name":a.name,"strategy_id":a.strategy_id,"status":a.status,"metrics":a.key_metrics_json,
+        "alternatives":[{"id":a.id,"name":a.name,"strategy_id":a.strategy_id,"status":a.status,"parameters":a.design_parameters_json,"metrics":a.key_metrics_json,
             "constraint_results":a.constraint_results_json,"assumptions":a.assumptions_json,"unknowns":a.unknowns_json,
-            "tradeoffs":a.tradeoffs_json,"reasoning":a.reasoning_json,"design_hash":a.design_hash} for a in alternatives],
+            "tradeoffs":a.tradeoffs_json,"reasoning":a.reasoning_json,"provenance":a.provenance_json,"design_hash":a.design_hash} for a in alternatives],
         "valid_alternative_count":len(valid),"selection_notice":"Alternatives are preliminary design directions; no automatic optimum or regulatory approval is claimed."}
 
 @router.get("/projects/{project_id}/versions/{version_ref}/concepts")
