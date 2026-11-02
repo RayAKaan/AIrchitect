@@ -149,3 +149,14 @@ def test_concept_and_program_floor_counts_must_match():
         assert exc.code == "LAYOUT_FLOOR_COUNT_MISMATCH"
     else:
         raise AssertionError("A floor-count mismatch must fail closed")
+
+
+def test_programme_and_spatial_layout_routes_are_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/program/generate" in paths
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/envelope/generate" in paths
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/concepts/generate" in paths
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/spatial-layout/generate" in paths
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/spatial-layout" in paths
