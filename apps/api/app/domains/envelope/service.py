@@ -127,9 +127,9 @@ def build_envelope(boundary: dict, request) -> dict:
     site_area = local.area
     footprint_limit = site_area * max_coverage if max_coverage is not None else None
     far_limit = site_area * far if far is not None else None
-    max_gfa = min(x for x in (footprint_limit, far_limit) if x is not None) if any(
-        x is not None for x in (footprint_limit, far_limit)
-    ) else None
+    # Coverage limits the building footprint; FAR/FSI limits total gross floor area.
+    # They are different quantities and must never be collapsed into one cap.
+    max_gfa = far_limit
     violations = []
     unknowns = []
     for name, value in (
@@ -139,11 +139,11 @@ def build_envelope(boundary: dict, request) -> dict:
     ):
         if value is None:
             unknowns.append(name)
-    if max_gfa is not None and max_gfa > buildable.area:
+    if footprint_limit is not None and footprint_limit > buildable.area:
         violations.append({
-            "code": "FAR_OR_COVERAGE_EXCEEDS_BUILDABLE_AREA",
+            "code": "COVERAGE_EXCEEDS_BUILDABLE_AREA",
             "severity": "INFO",
-            "message": "Area limit exceeds the setback-derived footprint; buildable polygon remains the controlling footprint.",
+            "message": "The coverage-derived footprint limit exceeds the setback-derived buildable area; the buildable polygon remains the controlling footprint.",
         })
 
     orientation = _orientation_degrees(local)
