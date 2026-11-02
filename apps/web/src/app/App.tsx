@@ -90,9 +90,16 @@ export default function App() {
     finally { setBusy(false); }
   }
   async function createProject(intentOrName: string, intent?: string) {
-    if (!orgs[0]) throw new Error('Create an organization before starting a project.');
+    let organization = orgs[0];
+    if (!organization) {
+      const availableOrganizations = await request('/organizations');
+      organization = availableOrganizations[0];
+      setOrgs(availableOrganizations);
+      setSelectedOrganizationId(organization?.id || '');
+    }
+    if (!organization) throw new Error('Create an organization before starting a project.');
     const draft = intent ? normalizeProjectIntent(intent) : { name: intentOrName, buildingType: 'commercial', location: 'Saudi Arabia', brief: '' };
-    const data = await request('/projects', { method: 'POST', body: JSON.stringify({ organization_id: orgs[0].id, name: draft.name, building_type: draft.buildingType, location: draft.location }) });
+    const data = await request('/projects', { method: 'POST', body: JSON.stringify({ organization_id: organization.id, name: draft.name, building_type: draft.buildingType, location: draft.location }) });
     const created = (data.project || data) as Project;
     if (intent && created.id) savePendingOnboarding(created.id, draft.brief);
     const nextProjects = await loadWorkspace();
