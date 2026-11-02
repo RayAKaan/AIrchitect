@@ -73,15 +73,21 @@ def _local_polygon(buildable_geojson: dict[str, Any]) -> tuple[Polygon, Transfor
 def _candidate_centres(polygon: Polygon, translation_x: float, translation_y: float) -> list[tuple[float, float]]:
     target = polygon.centroid
     target_x, target_y = target.x + translation_x, target.y + translation_y
-    points: list[tuple[float, float]] = [(target_x, target_y)]
+    preferred = (target_x, target_y)
+    if abs(translation_x) > _TOLERANCE_M or abs(translation_y) > _TOLERANCE_M:
+        # A canonical MoveBuilding command is an exact placement delta. Never
+        # silently relocate a user-moved building to a different feasible point.
+        return [preferred]
+
+    points: list[tuple[float, float]] = [preferred]
     representative = polygon.representative_point()
-    points.append((representative.x + translation_x, representative.y + translation_y))
+    points.append((representative.x, representative.y))
 
     min_x, min_y, max_x, max_y = polygon.bounds
     eroded = polygon.buffer(-0.5)
     if not eroded.is_empty:
         safe_point = eroded.representative_point()
-        points.append((safe_point.x + translation_x, safe_point.y + translation_y))
+        points.append((safe_point.x, safe_point.y))
 
     # A bounded deterministic grid handles concave sites whose centroid and
     # representative point are not suitable centres for the selected footprint.
@@ -91,7 +97,7 @@ def _candidate_centres(polygon: Polygon, translation_x: float, translation_y: fl
             y = min_y + (max_y - min_y) * y_index / 14
             point = (x, y)
             if polygon.covers(shape({"type": "Point", "coordinates": point})):
-                points.append((x + translation_x, y + translation_y))
+                points.append(point)
 
     unique = set(points)
     return sorted(unique, key=lambda point: (
@@ -514,7 +520,7 @@ def build_spatial_layout(
         "engine_version": ENGINE_VERSION,
         "coordinate_system": _COORDINATE_SYSTEM,
         "units": "m",
-        "status": "REVIEW_REQUIRED" if unmet_required or deferred_required else "PRELIMINARY",
+        "status": "REVIEW_REQUIRED" if unknowns or unmet_required or deferred_required else "PRELIMINARY",
         "project_id": project_id,
         "project_version_id": project_version_id,
         "world_model_hash": world_model_hash,
