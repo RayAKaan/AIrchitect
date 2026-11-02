@@ -515,6 +515,11 @@ def build_spatial_layout(
         assumptions.append("No explicit building orientation was supplied; the local Cartesian X axis is used.")
     if unmet_required or deferred_required:
         unknowns.append("required_program_adjacencies")
+    program_hash = _canonical_hash(program)
+    envelope_hash = envelope.get("envelope_hash")
+    if not isinstance(envelope_hash, str) or not envelope_hash:
+        envelope_hash = _canonical_hash(envelope)
+
     payload = {
         "schema_version": "phase3-spatial-layout-v1",
         "engine_version": ENGINE_VERSION,
@@ -525,8 +530,8 @@ def build_spatial_layout(
         "project_version_id": project_version_id,
         "world_model_hash": world_model_hash,
         "selected_alternative_id": alternative_id,
-        "program_hash": _canonical_hash(program),
-        "envelope_hash": _canonical_hash(envelope),
+        "program_hash": program_hash,
+        "envelope_hash": envelope_hash,
         "footprint": {
             "width_m": width,
             "depth_m": depth,
@@ -552,8 +557,8 @@ def build_spatial_layout(
         "unknowns": sorted(set(unknowns)),
         "source_lineage": {
             "world_model_hash": world_model_hash,
-            "program_hash": _canonical_hash(program),
-            "envelope_hash": _canonical_hash(envelope),
+            "program_hash": program_hash,
+            "envelope_hash": envelope_hash,
             "envelope_source_lineage": envelope.get("source_lineage") or {},
             "design_hash": design_metrics.get("design_hash"),
             "alternative_id": alternative_id,
