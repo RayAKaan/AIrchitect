@@ -16,6 +16,7 @@ from app.domains.foundation.service import audit, error, resolve_project_version
 from app.domains.lifecycle.service import new_artifact
 
 from .service import SpatialLayoutError, build_spatial_layout
+from .topology import SpatialTopologyError, build_spatial_topology
 
 
 router = APIRouter(tags=["spatial-layout"])
@@ -39,6 +40,41 @@ async def _current_artifact(session: AsyncSession, version_id: str, artifact_typ
             f"A current {artifact_type.replace('_', ' ')} artifact is required before spatial layout generation",
         )
     return row
+
+
+async def _layout_is_current(
+    session: AsyncSession,
+    version_id: str,
+    world_hash: str,
+    artifact: ArtifactVersion,
+) -> bool:
+    source = artifact.payload_json.get("source_lineage") or {}
+    envelope_lineage = source.get("envelope_source_lineage") or {}
+    current_lineage = await current_design_input_lineage(session, version_id)
+    site_revision = await session.scalar(
+        select(SiteRevision)
+        .where(SiteRevision.project_version_id == version_id)
+        .order_by(SiteRevision.revision.desc())
+        .limit(1)
+    )
+    selected_alternative = await session.scalar(
+        select(DesignAlternative).where(
+            DesignAlternative.project_version_id == version_id,
+            DesignAlternative.status == "SELECTED",
+        )
+    )
+    return (
+        artifact.status == "current"
+        and source.get("world_model_hash") == world_hash
+        and source.get("program_hash") == current_lineage.get("program")
+        and source.get("envelope_hash") == current_lineage.get("envelope")
+        and site_revision is not None
+        and envelope_lineage.get("site_revision_id") == site_revision.id
+        and envelope_lineage.get("site_revision_hash") == site_revision.content_hash
+        and selected_alternative is not None
+        and selected_alternative.id == source.get("alternative_id")
+        and not alternative_is_stale(selected_alternative, world_hash, current_lineage)
+    )
 
 
 @router.post("/projects/{project_id}/versions/{version_ref}/spatial-layout/generate", status_code=201)
@@ -225,38 +261,163 @@ async def get_spatial_layout(
     )
     if artifact is None:
         raise error(404, "SPATIAL_LAYOUT_NOT_FOUND", "No spatial layout has been generated for this project version")
-    current_lineage = await current_design_input_lineage(session, version.id)
-    site_revision = await session.scalar(
-        select(SiteRevision)
-        .where(SiteRevision.project_version_id == version.id)
-        .order_by(SiteRevision.revision.desc())
-        .limit(1)
-    )
-    selected_alternative = await session.scalar(
-        select(DesignAlternative).where(
-            DesignAlternative.project_id == project_id,
-            DesignAlternative.project_version_id == version.id,
-            DesignAlternative.status == "SELECTED",
-        )
-    )
-    source = artifact.payload_json.get("source_lineage") or {}
-    envelope_lineage = source.get("envelope_source_lineage") or {}
-    stale = (
-        artifact.status != "current"
-        or source.get("world_model_hash") != world.model_hash
-        or source.get("program_hash") != current_lineage.get("program")
-        or source.get("envelope_hash") != current_lineage.get("envelope")
-        or site_revision is None
-        or envelope_lineage.get("site_revision_id") != site_revision.id
-        or envelope_lineage.get("site_revision_hash") != site_revision.content_hash
-        or selected_alternative is None
-        or selected_alternative.id != source.get("alternative_id")
-        or alternative_is_stale(selected_alternative, world.model_hash or "", current_lineage)
-    )
+    stale = not await _layout_is_current(session, version.id, world.model_hash or "", artifact)
     return {
         "artifact_id": artifact.id,
         "artifact_version": artifact.version,
         "layout_hash": artifact.output_hash,
         "status": "STALE" if stale else artifact.payload_json.get("status", "PRELIMINARY"),
         "layout": artifact.payload_json,
+    }
+
+
+@router.post("/projects/{project_id}/versions/{version_ref}/spatial-topology/generate", status_code=201)
+async def generate_spatial_topology(
+    project_id: str,
+    version_ref: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    project, version = await resolve_project_version(session, project_id, version_ref, user.id, write=True)
+    if version.status != "COMMITTED":
+        raise error(
+            409,
+            "WORLD_MODEL_INVALID",
+            "Commit the canonical project version before spatial topology generation",
+            version_status=version.status,
+        )
+    world = await resolve_world_model(session, version.id)
+    layout_artifact = await _current_artifact(session, version.id, "spatial_layout")
+    if not await _layout_is_current(session, version.id, world.model_hash or "", layout_artifact):
+        raise error(
+            409,
+            "STALE_SPATIAL_LAYOUT",
+            "Regenerate the spatial layout from the current World Model, programme, envelope, site and selected concept",
+        )
+    try:
+        payload = build_spatial_topology(layout_artifact.payload_json)
+    except SpatialTopologyError as exc:
+        raise error(409, exc.code, str(exc), **exc.context) from exc
+
+    digest = payload["topology_hash"]
+    existing = await session.scalar(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "spatial_topology",
+            ArtifactVersion.output_hash == digest,
+            ArtifactVersion.status == "current",
+        )
+    )
+    if existing is not None:
+        return {
+            "artifact_id": existing.id,
+            "artifact_version": existing.version,
+            "topology_hash": digest,
+            "topology": existing.payload_json,
+            "idempotent": True,
+        }
+
+    previous = list(
+        (
+            await session.scalars(
+                select(ArtifactVersion).where(
+                    ArtifactVersion.project_version_id == version.id,
+                    ArtifactVersion.artifact_type == "spatial_topology",
+                    ArtifactVersion.status == "current",
+                )
+            )
+        ).all()
+    )
+    for row in previous:
+        row.status = "stale"
+
+    artifact = await new_artifact(
+        session,
+        project=project,
+        version=version,
+        world=world,
+        actor=user.id,
+        artifact_type="spatial_topology",
+        payload=payload,
+        dependencies=[layout_artifact],
+        alternative_id=layout_artifact.alternative_id,
+        status="current",
+    )
+    artifact.output_hash = digest
+    await audit(
+        session,
+        project=project,
+        version=version,
+        actor=user.id,
+        action="SPATIAL_TOPOLOGY_GENERATED",
+        entity="artifact_version",
+        entity_id=artifact.id,
+        metadata={
+            "topology_hash": digest,
+            "layout_artifact_id": layout_artifact.id,
+            "layout_hash": layout_artifact.output_hash,
+            "world_model_hash": world.model_hash,
+            "node_count": len(payload["nodes"]),
+            "edge_count": len(payload["edges"]),
+            "status": payload["status"],
+        },
+    )
+    await session.commit()
+    return {
+        "artifact_id": artifact.id,
+        "artifact_version": artifact.version,
+        "topology_hash": digest,
+        "topology": payload,
+        "idempotent": False,
+    }
+
+
+@router.get("/projects/{project_id}/versions/{version_ref}/spatial-topology")
+async def get_spatial_topology(
+    project_id: str,
+    version_ref: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    _, version = await resolve_project_version(session, project_id, version_ref, user.id)
+    world = await resolve_world_model(session, version.id)
+    artifact = await session.scalar(
+        select(ArtifactVersion)
+        .where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "spatial_topology",
+        )
+        .order_by(ArtifactVersion.version.desc())
+        .limit(1)
+    )
+    if artifact is None:
+        raise error(404, "SPATIAL_TOPOLOGY_NOT_FOUND", "No spatial topology has been generated for this project version")
+    current_layout = await session.scalar(
+        select(ArtifactVersion)
+        .where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "spatial_layout",
+            ArtifactVersion.status == "current",
+        )
+        .order_by(ArtifactVersion.version.desc())
+        .limit(1)
+    )
+    layout_current = (
+        current_layout is not None
+        and await _layout_is_current(session, version.id, world.model_hash or "", current_layout)
+    )
+    source = artifact.payload_json.get("source_lineage") or {}
+    stale = (
+        artifact.status != "current"
+        or not layout_current
+        or current_layout is None
+        or source.get("world_model_hash") != world.model_hash
+        or source.get("layout_hash") != current_layout.payload_json.get("layout_hash")
+    )
+    return {
+        "artifact_id": artifact.id,
+        "artifact_version": artifact.version,
+        "topology_hash": artifact.output_hash,
+        "status": "STALE" if stale else artifact.payload_json.get("status", "REVIEW_REQUIRED"),
+        "topology": artifact.payload_json,
     }
