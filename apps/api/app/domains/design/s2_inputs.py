@@ -105,9 +105,12 @@ def resolve_s2_design_inputs(program: dict[str, Any], envelope: dict[str, Any]) 
     if buildable_area is None or buildable_area <= 0:
         raise S2DesignInputError("S2_ENVELOPE_INVALID", "The buildable envelope must have positive area")
     max_gfa = _finite_number(envelope.get("max_gfa_m2"), field="envelope.max_gfa_m2", allow_none=True)
+    max_footprint = _finite_number(envelope.get("max_footprint_m2"), field="envelope.max_footprint_m2", allow_none=True)
     max_height = _finite_number(envelope.get("max_height_m"), field="envelope.max_height_m", allow_none=True)
     if max_gfa is not None and max_gfa <= 0:
         raise S2DesignInputError("S2_ENVELOPE_INVALID", "Maximum GFA must be positive when supplied")
+    if max_footprint is not None and max_footprint <= 0:
+        raise S2DesignInputError("S2_ENVELOPE_INVALID", "Maximum footprint must be positive when supplied")
     if max_height is not None and max_height <= 0:
         raise S2DesignInputError("S2_ENVELOPE_INVALID", "Maximum height must be positive when supplied")
     if max_gfa is not None and target_gfa > max_gfa + 1e-6:
@@ -129,6 +132,9 @@ def resolve_s2_design_inputs(program: dict[str, Any], envelope: dict[str, Any]) 
     environmental_unknowns = environmental.get("unknowns", [])
     if not isinstance(environmental_unknowns, list):
         environmental_unknowns = []
+    envelope_unknowns = envelope.get("unknowns", [])
+    if not isinstance(envelope_unknowns, list):
+        envelope_unknowns = []
 
     return {
         "target_gfa_m2": target_gfa,
@@ -140,10 +146,12 @@ def resolve_s2_design_inputs(program: dict[str, Any], envelope: dict[str, Any]) 
         "program_unknowns": program.get("unknowns", []) if isinstance(program.get("unknowns", []), list) else [],
         "buildable_area_m2": buildable_area,
         "max_gfa_m2": max_gfa,
+        "max_footprint_m2": max_footprint,
         "max_height_m": max_height,
         "setback_m": _finite_number(envelope.get("setback_m"), field="envelope.setback_m", allow_none=True),
         "orientation_degrees": orientation,
         "environmental_unknowns": environmental_unknowns,
+        "envelope_unknowns": envelope_unknowns,
         "site_orientation": envelope.get("site_orientation"),
     }
 
@@ -167,6 +175,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
             failures.append(failure_code)
 
     check("envelope_max_gfa", actual_gfa, inputs["max_gfa_m2"], "MAX_GFA_EXCEEDED", "m2")
+    check("envelope_max_footprint", footprint, inputs["max_footprint_m2"], "MAX_FOOTPRINT_EXCEEDED", "m2")
     check("envelope_buildable_area", footprint, inputs["buildable_area_m2"], "BUILDABLE_AREA_EXCEEDED", "m2")
     check("envelope_max_height", height, inputs["max_height_m"], "MAX_HEIGHT_EXCEEDED", "m")
 
@@ -183,6 +192,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
         "program_area_deviation_m2": round(actual_gfa - inputs["target_gfa_m2"], 6),
         "envelope_buildable_area_m2": inputs["buildable_area_m2"],
         "envelope_max_gfa_m2": inputs["max_gfa_m2"],
+        "envelope_max_footprint_m2": inputs["max_footprint_m2"],
         "envelope_max_height_m": inputs["max_height_m"],
         "program_space_count": len(inputs["program_spaces"]),
         "program_adjacency_count": len(inputs["program_adjacencies"]),
@@ -203,6 +213,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
     unknowns = set(candidate.unknowns)
     unknowns.update(inputs["program_unknowns"])
     unknowns.update(inputs["environmental_unknowns"])
+    unknowns.update(inputs["envelope_unknowns"])
     unknowns.add("exact_buildable_polygon_placement")
     reasoning = {
         **candidate.reasoning,
