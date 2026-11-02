@@ -303,8 +303,8 @@ def build_spatial_layout(
     scale = actual_gfa / target_gfa
     for item in normalized_spaces:
         item["allocated_area_per_floor_m2"] = item["target_area_m2"] * scale / floors
-        item["minimum_area_per_floor_m2"] = item["min_area_m2"] * scale / floors
-        item["maximum_area_per_floor_m2"] = item["max_area_m2"] * scale / floors
+        item["minimum_area_per_floor_m2"] = item["min_area_m2"] / floors
+        item["maximum_area_per_floor_m2"] = item["max_area_m2"] / floors
         if not (
             item["minimum_area_per_floor_m2"] - 1e-6
             <= item["allocated_area_per_floor_m2"]
