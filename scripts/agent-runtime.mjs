@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const OPENCODE_PACKAGE = 'opencode-ai';
@@ -55,7 +55,7 @@ export function serverArguments({ host = DEFAULT_HOST, port = DEFAULT_PORT, orig
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { encoding: 'utf8', stdio: 'inherit', ...options });
+  const result = spawnSync(command, args, { encoding: 'utf8', stdio: 'inherit', shell: process.platform === 'win32', ...options });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command} exited with status ${result.status ?? 'unknown'}.`);
   return result.stdout?.trim() || '';
@@ -79,7 +79,7 @@ function writeState(state, env = process.env) {
 }
 
 function opencodeExecutable(env = process.env) {
-  const prefix = run(env.npm_execpath ? process.execPath : (process.platform === 'win32' ? 'npm.cmd' : 'npm'), ['prefix', '-g'], { env, stdio: ['ignore', 'pipe', 'inherit'] });
+  const prefix = run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['prefix', '-g'], { env, stdio: ['ignore', 'pipe', 'inherit'], shell: process.platform === 'win32' });
   return join(prefix, process.platform === 'win32' ? 'opencode.cmd' : 'bin/opencode');
 }
 
@@ -140,7 +140,7 @@ async function main(argv = process.argv.slice(2)) {
   const child = spawn(executable, args, {
     detached: true,
     stdio: 'ignore',
-    shell: false,
+    shell: process.platform === 'win32',
     env: { ...env, OPENCODE_SERVER_PASSWORD: password, OPENCODE_SERVER_USERNAME: 'opencode' },
   });
   child.unref();
