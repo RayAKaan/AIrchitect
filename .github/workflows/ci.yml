@@ -58,6 +58,7 @@ jobs:
         with:
           node-version: '22'
       - run: cd apps/web && npm ci --no-audit --no-fund
+      - run: node --test scripts/agent-runtime.test.mjs
       - run: cd apps/web && npm run lint && npm test && npm run build
       - name: Build Web Docker image
         run: docker build -t ai-architect-web ./apps/web
