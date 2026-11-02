@@ -41,6 +41,7 @@ def sample_envelope(max_gfa=1200.0, buildable_area=700.0, max_height=20.0):
         "schema_version": "s2-envelope-v1",
         "buildable_area_m2": buildable_area,
         "max_gfa_m2": max_gfa,
+        "max_footprint_m2": 600.0,
         "max_height_m": max_height,
         "setback_m": 5.0,
         "site_orientation": {"long_axis_degrees_from_north": 30.0},
@@ -80,6 +81,7 @@ def test_concept_candidate_consumes_programme_and_envelope_content():
     assert len(candidate.parameters["program_adjacencies"]) == 1
     assert candidate.parameters["setback_m"] == 5.0
     assert candidate.metrics["program_target_gfa_m2"] == 1000.0
+    assert candidate.metrics["envelope_max_footprint_m2"] == 600.0
     assert candidate.reasoning["program_space_count"] == 2
     assert "solar_exposure" in candidate.unknowns
     assert "exact_buildable_polygon_placement" in candidate.unknowns
@@ -108,3 +110,13 @@ def test_candidate_is_invalid_when_envelope_area_or_height_is_exceeded():
     assert candidate.valid is False
     assert "BUILDABLE_AREA_EXCEEDED" in candidate.invalid_reasons
     assert "MAX_HEIGHT_EXCEEDED" in candidate.invalid_reasons
+
+
+
+def test_candidate_is_invalid_when_coverage_footprint_limit_is_exceeded():
+    envelope = sample_envelope()
+    envelope["max_footprint_m2"] = 450.0
+    inputs = resolve_s2_design_inputs(sample_program(), envelope)
+    candidate = apply_s2_design_inputs(sample_candidate(footprint=500.0), inputs)
+    assert candidate.valid is False
+    assert "MAX_FOOTPRINT_EXCEEDED" in candidate.invalid_reasons
