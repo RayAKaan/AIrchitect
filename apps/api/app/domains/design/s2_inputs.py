@@ -25,9 +25,29 @@ def _finite_number(value: Any, *, field: str, allow_none: bool = False) -> float
     return float(value)
 
 
-def resolve_s2_design_inputs(program: dict[str, Any], envelope: dict[str, Any]) -> dict[str, Any]:
+def resolve_s2_design_inputs(
+    program: dict[str, Any],
+    envelope: dict[str, Any],
+    *,
+    world_hash: str | None = None,
+) -> dict[str, Any]:
     if not isinstance(program, dict) or not isinstance(envelope, dict):
         raise S2DesignInputError("S2_INPUT_INVALID", "Current programme and envelope payloads are required")
+    if world_hash is not None:
+        program_world_hash = (program.get("provenance") or {}).get("world_model_hash")
+        envelope_world_hash = (envelope.get("source_lineage") or {}).get("world_model_hash")
+        if program_world_hash != world_hash:
+            raise S2DesignInputError(
+                "STALE_PROGRAM",
+                "The architectural programme was generated from a different World Model revision",
+                {"expected_world_model_hash": world_hash, "program_world_model_hash": program_world_hash},
+            )
+        if envelope_world_hash != world_hash:
+            raise S2DesignInputError(
+                "STALE_ENVELOPE",
+                "The planning envelope was generated from a different World Model revision",
+                {"expected_world_model_hash": world_hash, "envelope_world_model_hash": envelope_world_hash},
+            )
 
     target_gfa = _finite_number(program.get("target_gfa_m2"), field="program.target_gfa_m2")
     if target_gfa is None or target_gfa <= 0:
