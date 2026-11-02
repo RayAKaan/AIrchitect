@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import DesignAlternative, DesignGenerationRun, GeometryArtifact, User
+from app.db.models import DesignAlternative, DesignGenerationRun, GeometryArtifact, Membership, ReviewRecord, User
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.engine import ENGINE, DesignGenerationError
+from app.domains.design.evaluation import evaluate_alternatives
 from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
 from app.domains.foundation.service import audit, error, resolve_project_version, resolve_world_model
-from .schemas import AlternativeSelection
+from .schemas import AlternativeApproval, AlternativeSelection
 
 router=APIRouter(tags=["computational-design"])
 
@@ -36,6 +37,7 @@ def alternative_out(
         "provenance":row.provenance_json,"geometry_available":geometry is not None,
         "geometry_hash":geometry.geometry_hash if geometry else None,"geometry_status":geometry.status if geometry else None,
         "selected_by":row.selected_by,"selected_at":row.selected_at,"selection_reason":row.selection_reason,
+        "design_direction_approval":(row.provenance_json or {}).get("design_direction_approval"),
         "created_at":row.created_at,"updated_at":row.updated_at}
 
 
@@ -127,9 +129,10 @@ async def design_comparison(project_id:str,version_ref:str,user:User=Depends(cur
             "strategy_id", "gross_floor_area_m2", "building_footprint_m2", "site_coverage_ratio",
             "floor_count", "building_height_m", "open_site_area_m2", "parking_count",
         ],
-        "alternatives": payload["alternatives"],
+        "alternatives": evaluate_alternatives(payload["alternatives"]),
         "comparable": len(current_alternatives) > 1,
-        "notice": "Only alternatives with current matching source lineage are comparable. No single optimal design is claimed.",
+        "evaluation_method": "transparent_multi_criteria_pareto_v1",
+        "notice": "Only alternatives with current matching source lineage are comparable. No weighted overall score or automatic optimal design is claimed.",
     }
 
 
@@ -180,4 +183,140 @@ async def select_alternative(project_id:str,version_ref:str,alternative_id:str,b
         "world_model_hash": world.model_hash,
         "input_lineage": current_lineage,
         "notice": "Selection records a human design direction; it is not approval or certification.",
+    }
+
+
+
+@router.post("/projects/{project_id}/versions/{version_ref}/design/alternatives/{alternative_id}/approve")
+async def approve_alternative(
+    project_id: str,
+    version_ref: str,
+    alternative_id: str,
+    body: AlternativeApproval,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    project, version, world, alt = await load_alt(
+        session, project_id, version_ref, alternative_id, user, write=True
+    )
+    if version.status != "COMMITTED":
+        raise error(409, "WORLD_MODEL_INVALID", "Commit the canonical project version before approving a design direction")
+    membership = await session.scalar(
+        select(Membership).where(
+            Membership.organization_id == project.organization_id,
+            Membership.user_id == user.id,
+        )
+    )
+    if membership is None or membership.role not in {"owner", "admin"}:
+        raise error(403, "APPROVAL_ROLE_REQUIRED", "Only project owners or organization admins can approve a design direction")
+    if alt.status != "SELECTED":
+        raise error(409, "ALTERNATIVE_NOT_SELECTED", "Select the design direction before approving it", alternative_status=alt.status)
+
+    current_lineage = await current_design_input_lineage(session, version.id)
+    if alternative_is_stale(alt, world.model_hash or "", current_lineage):
+        raise error(
+            409,
+            "STALE_ARTIFACT",
+            "A stale design direction cannot be approved; regenerate and select an alternative from current inputs",
+            current_world_model_hash=world.model_hash,
+            current_input_lineage=current_lineage,
+            alternative_input_lineage=(alt.provenance_json or {}).get("input_lineage", {}),
+        )
+    failures = [
+        check for check in (alt.constraint_results_json or [])
+        if isinstance(check, dict) and str(check.get("status", "")).upper() == "FAIL"
+    ]
+    if failures:
+        raise error(
+            409,
+            "ALTERNATIVE_CONSTRAINTS_FAILED",
+            "A design direction with failed constraints cannot be approved",
+            failed_constraints=failures,
+        )
+    if not alt.design_hash:
+        raise error(409, "DESIGN_HASH_REQUIRED", "A persisted design hash is required for approval")
+
+    existing = await session.scalar(
+        select(ReviewRecord)
+        .where(
+            ReviewRecord.artifact_id == alt.id,
+            ReviewRecord.source_hash == alt.design_hash,
+            ReviewRecord.decision == "APPROVED_FOR_DEVELOPMENT",
+        )
+        .order_by(ReviewRecord.reviewed_at.desc())
+        .limit(1)
+    )
+    if existing is not None:
+        return {
+            "review_id": existing.id,
+            "alternative_id": alt.id,
+            "status": existing.decision,
+            "reviewer_role": existing.reviewer_role,
+            "reason": existing.rationale,
+            "idempotent": True,
+            "notice": "This records approval to continue design development only; it is not regulatory, code, engineering or construction approval.",
+        }
+
+    review = ReviewRecord(
+        organization_id=project.organization_id,
+        project_id=project.id,
+        project_version_id=version.id,
+        artifact_versions_json=[{
+            "artifact_version_id": alt.artifact_version_id,
+            "design_hash": alt.design_hash,
+            "world_model_hash": world.model_hash,
+            "input_lineage": current_lineage,
+        }],
+        world_model_version=world.model_hash or "",
+        status="REVIEWED",
+        artifact_id=alt.id,
+        artifact_version=str(alt.artifact_version_id or alt.design_engine_version),
+        source_hash=alt.design_hash,
+        reviewer_user_id=user.id,
+        reviewer_role=membership.role,
+        decision="APPROVED_FOR_DEVELOPMENT",
+        rationale=body.reason,
+        comments=body.comments,
+    )
+    session.add(review)
+    await session.flush()
+    approved_at = review.reviewed_at or datetime.now(timezone.utc)
+    alt.provenance_json = {
+        **(alt.provenance_json or {}),
+        "design_direction_approval": {
+            "review_id": review.id,
+            "status": "APPROVED_FOR_DEVELOPMENT",
+            "approved_by": user.id,
+            "approved_at": approved_at.isoformat(),
+            "reason": body.reason,
+            "world_model_hash": world.model_hash,
+            "input_lineage": current_lineage,
+        },
+    }
+    await audit(
+        session,
+        project=project,
+        version=version,
+        actor=user.id,
+        action="ALTERNATIVE_APPROVED_FOR_DEVELOPMENT",
+        entity="design_alternative",
+        entity_id=alt.id,
+        metadata={
+            "review_id": review.id,
+            "design_hash": alt.design_hash,
+            "world_model_hash": world.model_hash,
+            "input_lineage": current_lineage,
+            "reviewer_role": membership.role,
+        },
+    )
+    await session.commit()
+    return {
+        "review_id": review.id,
+        "alternative_id": alt.id,
+        "status": "APPROVED_FOR_DEVELOPMENT",
+        "reviewer_role": membership.role,
+        "reason": body.reason,
+        "approved_at": approved_at,
+        "idempotent": False,
+        "notice": "This records approval to continue design development only; it is not regulatory, code, engineering or construction approval.",
     }
