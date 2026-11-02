@@ -141,3 +141,14 @@ def test_element_compiler_rejects_topology_from_another_layout():
     with pytest.raises(ArchitecturalElementError) as exc:
         compile_architectural_elements(layout, _topology(other_layout))
     assert exc.value.code == "ELEMENT_TOPOLOGY_STALE"
+
+
+def test_architectural_element_proposal_routes_are_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert (
+        "/api/v1/projects/{project_id}/versions/{version_ref}/architectural-elements/generate"
+        in paths
+    )
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/architectural-elements" in paths
