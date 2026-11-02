@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ArtifactVersion, DesignAlternative, User
+from app.db.site_models import SiteRevision
 from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
@@ -58,6 +59,25 @@ async def generate_spatial_layout(
     world = await resolve_world_model(session, version.id)
     program = await _current_artifact(session, version.id, "architectural_program")
     envelope = await _current_artifact(session, version.id, "planning_envelope")
+    site_revision = await session.scalar(
+        select(SiteRevision)
+        .where(SiteRevision.project_version_id == version.id)
+        .order_by(SiteRevision.revision.desc())
+        .limit(1)
+    )
+    envelope_lineage = envelope.payload_json.get("source_lineage") or {}
+    if (
+        site_revision is None
+        or envelope_lineage.get("site_revision_id") != site_revision.id
+        or envelope_lineage.get("site_revision_hash") != site_revision.content_hash
+    ):
+        raise error(
+            409,
+            "STALE_ENVELOPE",
+            "The planning envelope does not match the latest canonical site boundary; regenerate the envelope first",
+            current_site_revision_id=site_revision.id if site_revision else None,
+            envelope_site_revision_id=envelope_lineage.get("site_revision_id"),
+        )
 
     try:
         resolve_s2_design_inputs(
@@ -206,12 +226,22 @@ async def get_spatial_layout(
     if artifact is None:
         raise error(404, "SPATIAL_LAYOUT_NOT_FOUND", "No spatial layout has been generated for this project version")
     current_lineage = await current_design_input_lineage(session, version.id)
+    site_revision = await session.scalar(
+        select(SiteRevision)
+        .where(SiteRevision.project_version_id == version.id)
+        .order_by(SiteRevision.revision.desc())
+        .limit(1)
+    )
     source = artifact.payload_json.get("source_lineage") or {}
+    envelope_lineage = source.get("envelope_source_lineage") or {}
     stale = (
         artifact.status != "current"
         or source.get("world_model_hash") != world.model_hash
         or source.get("program_hash") != current_lineage.get("program")
         or source.get("envelope_hash") != current_lineage.get("envelope")
+        or site_revision is None
+        or envelope_lineage.get("site_revision_id") != site_revision.id
+        or envelope_lineage.get("site_revision_hash") != site_revision.content_hash
     )
     return {
         "artifact_id": artifact.id,
