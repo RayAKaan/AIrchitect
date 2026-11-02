@@ -177,3 +177,35 @@ jobs:
       - name: Stop the managed OpenCode runtime
         if: always()
         run: node scripts/agent-runtime.mjs stop
+
+  opencode-runtime-windows-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      AIRCHITECT_OPENCODE_PASSWORD: ci-only-opencode-runtime-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the pinned OpenCode CLI
+        run: npm install --global --no-audit --no-fund opencode-ai@1.19.4
+      - name: Start the managed OpenCode runtime
+        run: node scripts/agent-runtime.mjs start --port 4097 --origin http://localhost:5173 > "$env:RUNNER_TEMP\\opencode-runtime.json"
+      - name: Verify Windows runtime health and provider discovery
+        run: |
+          @'
+          const password = process.env.AIRCHITECT_OPENCODE_PASSWORD;
+          const authorization = `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`;
+          const baseUrl = 'http://127.0.0.1:4097';
+          const headers = { Authorization: authorization };
+          const health = await fetch(`${baseUrl}/global/health`, { headers });
+          if (!health.ok || (await health.json()).healthy !== true) throw new Error('OpenCode health check failed on Windows');
+          const providers = await fetch(`${baseUrl}/provider`, { headers });
+          const catalog = await providers.json();
+          if (!providers.ok || !Array.isArray(catalog.all) || !Array.isArray(catalog.connected)) throw new Error('Provider discovery failed on Windows');
+          process.stdout.write('Windows OpenCode runtime and provider discovery passed.\\n');
+          '@ | node --input-type=module
+      - name: Stop the managed OpenCode runtime
+        if: always()
+        run: node scripts/agent-runtime.mjs stop
