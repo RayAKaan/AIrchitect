@@ -138,3 +138,11 @@ def test_topology_reports_interior_overlaps_as_errors():
 
     assert any(issue["code"] == "SPACE_INTERIOR_OVERLAP" for issue in topology["issues"])
     assert topology["status"] == "REVIEW_REQUIRED"
+
+
+def test_spatial_topology_api_routes_are_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/spatial-topology/generate" in paths
+    assert "/api/v1/projects/{project_id}/versions/{version_ref}/spatial-topology" in paths
