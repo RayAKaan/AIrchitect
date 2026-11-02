@@ -478,6 +478,7 @@ def build_spatial_layout(
             "world_model_hash": world_model_hash,
             "program_hash": _canonical_hash(program),
             "envelope_hash": _canonical_hash(envelope),
+            "envelope_source_lineage": envelope.get("source_lineage") or {},
             "design_hash": design_metrics.get("design_hash"),
             "alternative_id": alternative_id,
         },
