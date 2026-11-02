@@ -103,9 +103,8 @@ def compile_architectural_elements(
 
     spaces: dict[str, dict[str, Any]] = {}
     polygons: dict[str, Polygon] = {}
-    segments_by_level: dict[int, dict[tuple[tuple[float, float, float], tuple[float, float, float]], set[str]]] = defaultdict(
-        lambda: defaultdict(set)
-    )
+    Segment = tuple[tuple[float, float, float], tuple[float, float, float]]
+    segments_by_level: dict[int, dict[Segment, set[str]]] = defaultdict(lambda: defaultdict(set))
     for row in rows:
         if not isinstance(row, dict):
             raise ArchitecturalElementError("ELEMENT_SPACE_INVALID", "Every layout space must be an object")
