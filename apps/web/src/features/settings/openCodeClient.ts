@@ -42,6 +42,42 @@ export function checkOpenCodeHealth(baseUrl: string, username: string, password:
   return request<OpenCodeHealth>(baseUrl, '/global/health', {}, username, password);
 }
 
+export function registerOpenCodeMcpServer(
+  baseUrl: string,
+  mcpUrl: string,
+  sessionToken: string,
+  username: string,
+  password: string,
+): Promise<unknown> {
+  const server = new URL(normalizedBaseUrl(baseUrl));
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(server.hostname)) {
+    throw new Error('AIrchitect session tokens may only be registered with a loopback OpenCode server.');
+  }
+  if (!sessionToken.trim()) throw new Error('An active AIrchitect session is required to connect architectural tools.');
+  const endpoint = new URL(mcpUrl);
+  if (!['http:', 'https:'].includes(endpoint.protocol)) throw new Error('AIrchitect MCP endpoint must use HTTP or HTTPS.');
+  return request(baseUrl, '/mcp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'airchitect',
+      config: {
+        type: 'remote',
+        url: endpoint.toString(),
+        oauth: false,
+        enabled: true,
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      },
+    }),
+  }, username, password);
+}
+
+export function resolveMcpEndpoint(apiBaseUrl: string, origin = window.location.origin): string {
+  const base = apiBaseUrl.trim().replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(base)) return new URL(`${base}/mcp`).toString();
+  return new URL(`${base.startsWith('/') ? base : `/${base}`}/mcp`, origin).toString();
+}
+
 export function listOpenCodeProviders(baseUrl: string, username: string, password: string): Promise<OpenCodeProviderCatalog> {
   return request<OpenCodeProviderCatalog>(baseUrl, '/provider', {}, username, password);
 }
@@ -64,10 +100,10 @@ export function createOpenCodeSession(baseUrl: string, title: string, username: 
   }, username, password);
 }
 
-export function sendOpenCodePrompt(baseUrl: string, sessionId: string, text: string, username: string, password: string, model?: OpenCodeModelSelection): Promise<unknown> {
+export function sendOpenCodePrompt(baseUrl: string, sessionId: string, text: string, username: string, password: string, model?: OpenCodeModelSelection, system?: string, tools?: Record<string, boolean>): Promise<unknown> {
   return request(baseUrl, `/session/${encodeURIComponent(sessionId)}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...(model ? { model } : {}), parts: [{ type: 'text', text }] }),
+    body: JSON.stringify({ ...(model ? { model } : {}), ...(system ? { system } : {}), ...(tools ? { tools } : {}), parts: [{ type: 'text', text }] }),
   }, username, password);
 }

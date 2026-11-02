@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  checkOpenCodeHealth, DEFAULT_OPENCODE_URL, listOpenCodeProviders, setOpenCodeProviderKey,
+  checkOpenCodeHealth, DEFAULT_OPENCODE_URL, listOpenCodeProviders, registerOpenCodeMcpServer, resolveMcpEndpoint, setOpenCodeProviderKey,
   type OpenCodeProvider, type OpenCodeProviderCatalog,
 } from './openCodeClient';
 import './agentSettings.css';
@@ -25,7 +25,7 @@ function providerModels(provider?: OpenCodeProvider) {
   return Object.values(provider?.models ?? {}).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
 }
 
-export default function AgentSettings() {
+export default function AgentSettings({ apiBaseUrl, token }: { apiBaseUrl: string; token: string }) {
   const [settings, setSettings] = useState<AgentSettingsState>(readSettings);
   const [catalog, setCatalog] = useState<OpenCodeProviderCatalog | null>(null);
   const [apiKey, setApiKey] = useState('');
@@ -52,6 +52,7 @@ export default function AgentSettings() {
     try {
       const health = await checkOpenCodeHealth(settings.baseUrl, settings.username, settings.password);
       const providers = await listOpenCodeProviders(settings.baseUrl, settings.username, settings.password);
+      await registerOpenCodeMcpServer(settings.baseUrl, resolveMcpEndpoint(apiBaseUrl), token, settings.username, settings.password);
       setCatalog(providers); setStatus('connected');
       setMessage(`OpenCode ${health.version} is connected. ${providers.connected.length} provider(s) configured.`);
       if (!settings.providerId && providers.connected[0]) {
@@ -83,7 +84,7 @@ export default function AgentSettings() {
     setSaved(true);
   }
 
-  const mcpUrl = useMemo(() => `${window.location.origin}/api/v1/mcp`, []);
+  const mcpUrl = useMemo(() => resolveMcpEndpoint(apiBaseUrl), [apiBaseUrl]);
   const setupCommand = `node scripts/agent-runtime.mjs setup --origin ${window.location.origin}`;
   const selectedProvider = catalog?.all.find(provider => provider.id === settings.providerId);
   const models = providerModels(selectedProvider);
@@ -114,6 +115,6 @@ export default function AgentSettings() {
       <div className="settings-actions"><button className="btn outline" onClick={() => void saveProviderKey()} disabled={!settings.providerId || !apiKey.trim() || keyBusy}>{keyBusy ? 'Saving credential…' : 'Save provider credential'}</button><span className="settings-saved">{isConnected ? 'Provider credential available' : 'Provider not yet connected'}</span></div>
       <p className="muted">Selected model: {settings.providerId && settings.modelId ? `${settings.providerId}/${settings.modelId}` : 'OpenCode default'}. Save settings to use it for new agent requests.</p>
     </div>}
-    <div className="settings-card settings-note"><h3>Install the local agent</h3><p>A browser cannot install native software without your approval. Run this one-time setup command from the AIrchitect repository on your computer. It installs the pinned OpenCode CLI and starts a loopback-only server.</p><code>{setupCommand}</code><p><strong>Protected MCP endpoint</strong></p><code>{mcpUrl}</code><p>AIrchitect MCP tools expose project context and deterministic previews. Canonical project changes remain behind AIrchitect's approval and command-validation boundary.</p></div>
+    <div className="settings-card settings-note"><h3>Install the local agent</h3><p>A browser cannot install native software without your approval. Run this one-time setup command from the AIrchitect repository on your computer. It installs the pinned OpenCode CLI and starts a loopback-only server.</p><code>{setupCommand}</code><p><strong>Protected MCP endpoint</strong></p><code>{mcpUrl}</code><p>Connecting registers the authenticated AIrchitect MCP server with your loopback OpenCode runtime. Session credentials are refreshed on every agent request and are never stored in browser localStorage. MCP tools expose project, site, design and artifact context plus deterministic previews; canonical changes remain behind AIrchitect's approval and command-validation boundary.</p></div>
   </section>;
 }
