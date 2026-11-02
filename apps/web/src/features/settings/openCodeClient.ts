@@ -1,7 +1,14 @@
 export const DEFAULT_OPENCODE_URL = 'http://127.0.0.1:4096';
 
 function normalizedBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
+  const url = new URL(baseUrl.trim());
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('OpenCode URL must be an http(s) URL without embedded credentials, query or fragment.');
+  }
+  if (url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+    throw new Error('Remote OpenCode servers must use HTTPS.');
+  }
+  return url.toString().replace(/\/+$/, '');
 }
 
 function authHeaders(username: string, password: string): HeadersInit {
@@ -13,19 +20,43 @@ async function request<T>(baseUrl: string, path: string, init: RequestInit = {},
   const response = await fetch(`${normalizedBaseUrl(baseUrl)}${path}`, {
     ...init,
     headers: { Accept: 'application/json', ...authHeaders(username, password), ...init.headers },
+    signal: init.signal ?? AbortSignal.timeout(15000),
   });
-  if (!response.ok) throw new Error(`OpenCode request failed (${response.status}).`);
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('OpenCode authentication failed. Check the local server password.');
+    if (response.status === 403) throw new Error('OpenCode rejected this browser origin or request.');
+    throw new Error(`OpenCode request failed (${response.status}).`);
+  }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
 export type OpenCodeHealth = { healthy: boolean; version: string };
 export type OpenCodeSession = { id: string; title?: string };
+export type OpenCodeModel = { id: string; name?: string; [key: string]: unknown };
+export type OpenCodeProvider = { id: string; name: string; models: Record<string, OpenCodeModel>; [key: string]: unknown };
+export type OpenCodeProviderCatalog = { all: OpenCodeProvider[]; default: Record<string, string>; connected: string[] };
+export type OpenCodeModelSelection = { providerID: string; modelID: string };
 
 export function checkOpenCodeHealth(baseUrl: string, username: string, password: string): Promise<OpenCodeHealth> {
   return request<OpenCodeHealth>(baseUrl, '/global/health', {}, username, password);
 }
 
-export async function createOpenCodeSession(baseUrl: string, title: string, username: string, password: string): Promise<OpenCodeSession> {
+export function listOpenCodeProviders(baseUrl: string, username: string, password: string): Promise<OpenCodeProviderCatalog> {
+  return request<OpenCodeProviderCatalog>(baseUrl, '/provider', {}, username, password);
+}
+
+/** Sends the API key directly to the user's OpenCode server; AIrchitect never persists it. */
+export function setOpenCodeProviderKey(baseUrl: string, providerId: string, apiKey: string, username: string, password: string): Promise<boolean> {
+  if (!providerId.trim() || !apiKey.trim()) throw new Error('A provider and API key are required.');
+  return request<boolean>(baseUrl, `/auth/${encodeURIComponent(providerId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'api', key: apiKey }),
+  }, username, password);
+}
+
+export function createOpenCodeSession(baseUrl: string, title: string, username: string, password: string): Promise<OpenCodeSession> {
   return request<OpenCodeSession>(baseUrl, '/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -33,16 +64,10 @@ export async function createOpenCodeSession(baseUrl: string, title: string, user
   }, username, password);
 }
 
-export async function sendOpenCodePrompt(
-  baseUrl: string,
-  sessionId: string,
-  text: string,
-  username: string,
-  password: string,
-): Promise<unknown> {
+export function sendOpenCodePrompt(baseUrl: string, sessionId: string, text: string, username: string, password: string, model?: OpenCodeModelSelection): Promise<unknown> {
   return request(baseUrl, `/session/${encodeURIComponent(sessionId)}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ parts: [{ type: 'text', text }] }),
+    body: JSON.stringify({ ...(model ? { model } : {}), parts: [{ type: 'text', text }] }),
   }, username, password);
 }
