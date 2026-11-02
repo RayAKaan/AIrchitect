@@ -232,6 +232,13 @@ async def get_spatial_layout(
         .order_by(SiteRevision.revision.desc())
         .limit(1)
     )
+    selected_alternative = await session.scalar(
+        select(DesignAlternative).where(
+            DesignAlternative.project_id == project_id,
+            DesignAlternative.project_version_id == version.id,
+            DesignAlternative.status == "SELECTED",
+        )
+    )
     source = artifact.payload_json.get("source_lineage") or {}
     envelope_lineage = source.get("envelope_source_lineage") or {}
     stale = (
@@ -242,6 +249,9 @@ async def get_spatial_layout(
         or site_revision is None
         or envelope_lineage.get("site_revision_id") != site_revision.id
         or envelope_lineage.get("site_revision_hash") != site_revision.content_hash
+        or selected_alternative is None
+        or selected_alternative.id != source.get("alternative_id")
+        or alternative_is_stale(selected_alternative, world.model_hash or "", current_lineage)
     )
     return {
         "artifact_id": artifact.id,
