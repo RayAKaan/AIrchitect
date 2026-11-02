@@ -90,9 +90,16 @@ export default function App() {
     finally { setBusy(false); }
   }
   async function createProject(intentOrName: string, intent?: string) {
-    if (!orgs[0]) throw new Error('Create an organization before starting a project.');
+    let organization = orgs[0];
+    if (!organization) {
+      const availableOrganizations = await request('/organizations');
+      organization = availableOrganizations[0];
+      setOrgs(availableOrganizations);
+      setSelectedOrganizationId(organization?.id || '');
+    }
+    if (!organization) throw new Error('Create an organization before starting a project.');
     const draft = intent ? normalizeProjectIntent(intent) : { name: intentOrName, buildingType: 'commercial', location: 'Saudi Arabia', brief: '' };
-    const data = await request('/projects', { method: 'POST', body: JSON.stringify({ organization_id: orgs[0].id, name: draft.name, building_type: draft.buildingType, location: draft.location }) });
+    const data = await request('/projects', { method: 'POST', body: JSON.stringify({ organization_id: organization.id, name: draft.name, building_type: draft.buildingType, location: draft.location }) });
     const created = (data.project || data) as Project;
     if (intent && created.id) savePendingOnboarding(created.id, draft.brief);
     const nextProjects = await loadWorkspace();
@@ -150,6 +157,6 @@ export default function App() {
     return <div className="auth-page"><div className="auth-aside"><div className="brand"><span className="brand-mark">N</span> NAZMAK</div><div className="auth-pitch"><div className="eyebrow">BUILDING FEASIBILITY PLATFORM</div><h1>Make the<br/>first decision<br/><em>count.</em></h1><p>A considered workspace for early-stage commercial development in Saudi Arabia.</p><div className="auth-foot">DESIGN WITH EVIDENCE&nbsp; / &nbsp;BUILD WITH CONFIDENCE</div></div></div><div className="auth-main">{authCard}</div></div>;
   }
   if (activeProject) return <ArchitectWorkspace api={API} token={token} project={activeProject} onClose={closeProject} />;
-  if (settings) return <div className="app-shell"><main className="main-area"><div className="content"><button className="btn outline" onClick={() => setSettings(false)}>← Back</button>{orgs[0] && <OrganizationSettings api={API} token={token} organization={orgs[0]} />}<AgentSettings/></div></main></div>;
+  if (settings) return <div className="app-shell"><main className="main-area"><div className="content"><button className="btn outline" onClick={() => setSettings(false)}>← Back</button>{orgs[0] && <OrganizationSettings api={API} token={token} organization={orgs[0]} />}<AgentSettings apiBaseUrl={API} token={token}/></div></main></div>;
   return <>{inviteNotice && <div className="alert" role="status">{inviteNotice}</div>}<AIHomeWorkspace projects={projects} organizationName={orgs[0]?.name} onOpenProject={project => setActiveProject(project)} onCreateProject={createProject} onSettings={() => setSettings(true)} onSignOut={signOut} /></>;
 }
