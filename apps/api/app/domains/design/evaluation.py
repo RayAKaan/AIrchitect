@@ -100,6 +100,7 @@ def evaluate_alternatives(alternatives: list[dict[str, Any]]) -> list[dict[str, 
             ),
             "dominated_by": dominated_by,
             "objectives": objectives.get(alternative.get("id"), {}),
+            "criteria": list(CRITERIA),
             "method": "transparent_multi_criteria_pareto_v1",
             "note": "No weighted overall score is used; criteria and trade-offs remain visible for human judgement.",
         }
