@@ -158,6 +158,7 @@ class ComputationalDesignEngine:
                     "program_space_count": len(s2_inputs["program_spaces"]),
                     "program_adjacency_count": len(s2_inputs["program_adjacencies"]),
                     "buildable_area_m2": s2_inputs["buildable_area_m2"],
+                    "max_footprint_m2": s2_inputs["max_footprint_m2"],
                     "max_gfa_m2": s2_inputs["max_gfa_m2"],
                     "max_height_m": s2_inputs["max_height_m"],
                     "site_orientation_degrees": s2_inputs["orientation_degrees"],
