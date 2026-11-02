@@ -89,6 +89,7 @@ def test_layout_is_deterministic_and_reconciles_each_floor_and_total_gfa():
     assert len(first["spaces"]) == 4
     assert first["area_reconciliation"]["reconciled"] is True
     assert first["area_reconciliation"]["allocated_space_area_m2"] == 800.0
+    assert first["status"] == "REVIEW_REQUIRED"
     assert all(item["status"] == "SATISFIED" for item in first["adjacencies"])
     assert all(item["geometry_status"] == "DERIVED_PRELIMINARY" for item in first["spaces"])
     assert "egress_routes" in first["unknowns"]
@@ -160,3 +161,23 @@ def test_programme_and_spatial_layout_routes_are_registered():
     assert "/api/v1/projects/{project_id}/versions/{version_ref}/concepts/generate" in paths
     assert "/api/v1/projects/{project_id}/versions/{version_ref}/spatial-layout/generate" in paths
     assert "/api/v1/projects/{project_id}/versions/{version_ref}/spatial-layout" in paths
+
+
+def test_canonical_building_translation_is_not_silently_relocated():
+    program, envelope, parameters, metrics = _inputs()
+    parameters["translation_m"] = {"x": 2_000.0, "y": 0.0, "z": 0.0}
+    try:
+        build_spatial_layout(
+            project_id="project-1",
+            project_version_id="version-1",
+            world_model_hash="a" * 64,
+            program=program,
+            envelope=envelope,
+            alternative_id="alternative-1",
+            design_parameters=parameters,
+            design_metrics=metrics,
+        )
+    except SpatialLayoutError as exc:
+        assert exc.code == "LAYOUT_FOOTPRINT_NOT_CONTAINED"
+    else:
+        raise AssertionError("An out-of-envelope canonical translation must not be relocated")
