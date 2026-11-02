@@ -248,6 +248,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
     unknowns.update(inputs["environmental_unknowns"])
     unknowns.update(inputs["envelope_unknowns"])
     unknowns.add("exact_buildable_polygon_placement")
+    unknowns.add("room_level_space_layout_geometry")
     reasoning = {
         **candidate.reasoning,
         "program_use": inputs["program_use"],
