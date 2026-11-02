@@ -80,6 +80,7 @@ def test_concept_candidate_consumes_programme_and_envelope_content():
     assert len(candidate.parameters["program_space_schedule"]) == 2
     assert len(candidate.parameters["program_adjacencies"]) == 1
     assert candidate.parameters["setback_m"] == 5.0
+    assert candidate.parameters["site_orientation_degrees_from_north"] == 30.0
     assert candidate.metrics["program_target_gfa_m2"] == 1000.0
     assert candidate.metrics["envelope_max_footprint_m2"] == 600.0
     assert candidate.reasoning["program_space_count"] == 2
