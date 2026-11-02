@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkOpenCodeHealth, createOpenCodeSession, listOpenCodeProviders, registerOpenCodeMcpServer, resolveMcpEndpoint, sendOpenCodePrompt, setOpenCodeProviderKey } from './openCodeClient';
+import { abortOpenCodeSession, checkOpenCodeHealth, createOpenCodeSession, extractOpenCodeResponseText, listOpenCodeProviders, registerOpenCodeMcpServer, resolveMcpEndpoint, sendOpenCodePrompt, setOpenCodeProviderKey } from './openCodeClient';
 
 describe('openCodeClient', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -21,6 +21,9 @@ describe('openCodeClient', () => {
     expect(url).toBe('http://127.0.0.1:4096/auth/anthropic');
     expect(init?.method).toBe('PUT');
     expect(init?.body).toBe(JSON.stringify({ type: 'api', key: 'secret-key' }));
+    expect(() => setOpenCodeProviderKey('https://remote.example.com', 'openai', 'secret-key', 'opencode', 'pw'))
+      .toThrow('Sensitive credentials may only be sent to a loopback OpenCode server.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('creates sessions and sends a model-specific prompt', async () => {
@@ -58,9 +61,20 @@ describe('openCodeClient', () => {
       },
     });
     expect(() => registerOpenCodeMcpServer('https://agent.example.com', 'https://app.example.com/api/v1/mcp', 'session-token', 'opencode', 'pw'))
-      .toThrow('loopback OpenCode server');
+      .toThrow('Sensitive credentials may only be sent to a loopback OpenCode server.');
     expect(resolveMcpEndpoint('/api/v1', 'https://app.example.com')).toBe('https://app.example.com/api/v1/mcp');
     expect(resolveMcpEndpoint('https://api.example.com/api/v1', 'https://app.example.com')).toBe('https://api.example.com/api/v1/mcp');
+  });
+
+  it('extracts assistant text instead of displaying raw OpenCode response JSON', () => {
+    expect(extractOpenCodeResponseText({ parts: [{ type: 'text', text: 'Generated design summary.' }] })).toBe('Generated design summary.');
+    expect(extractOpenCodeResponseText({ parts: [{ type: 'tool', tool: 'get_site_context', state: { title: 'Read site', output: 'Site revision 3' } }] })).toBe('Read site: Site revision 3');
+  });
+
+  it('aborts a running OpenCode session through the server API', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('true', { status: 200 }));
+    await expect(abortOpenCodeSession('http://127.0.0.1:4096', 'session/1', 'opencode', 'pw')).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4096/session/session%2F1/abort', expect.objectContaining({ method: 'POST' }));
   });
 
   it('surfaces provider server errors', async () => {

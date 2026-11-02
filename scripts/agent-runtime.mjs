@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const OPENCODE_PACKAGE = 'opencode-ai';
@@ -155,5 +155,9 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+export function isMainModule(moduleUrl, invokedPath) {
+  return Boolean(invokedPath) && fileURLToPath(moduleUrl) === resolve(invokedPath);
+}
+
+const isMain = isMainModule(import.meta.url, process.argv[1]);
 if (isMain) main().catch(error => { process.stderr.write(`AIrchitect agent runtime: ${error.message}\n`); process.exitCode = 1; });
