@@ -15,9 +15,9 @@ from app.domains.design.s2_inputs import S2DesignInputError, resolve_s2_design_i
 from app.domains.foundation.service import audit, error, resolve_project_version, resolve_world_model
 from app.domains.lifecycle.service import new_artifact
 
+from .architectural_elements import ArchitecturalElementError, compile_architectural_elements
 from .service import SpatialLayoutError, build_spatial_layout
 from .topology import SpatialTopologyError, build_spatial_topology
-from .architectural_elements import ArchitecturalElementError, compile_architectural_elements
 
 
 router = APIRouter(tags=["spatial-layout"])
@@ -451,7 +451,8 @@ async def generate_architectural_elements(
         raise error(
             409,
             "STALE_SPATIAL_LAYOUT",
-            "Regenerate the spatial layout from the current World Model, programme, envelope, site and selected concept",
+            "Regenerate the spatial layout from the current World Model, programme, envelope, "
+            "site and selected concept",
         )
     topology_artifact = await _current_artifact(session, version.id, "spatial_topology")
     topology_source = topology_artifact.payload_json.get("source_lineage") or {}
