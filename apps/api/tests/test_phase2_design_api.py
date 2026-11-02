@@ -1,8 +1,9 @@
 import uuid
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker,create_async_engine
-from app.db.models import Base
+from app.db.models import Base, Membership
 from app.db.session import get_session
 from app.main import app
 
@@ -11,11 +12,15 @@ async def api():
     engine=create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:await conn.run_sync(Base.metadata.create_all)
     factory=async_sessionmaker(engine,expire_on_commit=False)
+    app.state.test_session_factory = factory
     async def override():
         async with factory() as session:yield session
     app.dependency_overrides[get_session]=override
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url="http://test") as client:yield client
-    app.dependency_overrides.clear();await engine.dispose()
+    app.dependency_overrides.clear()
+    if hasattr(app.state, "test_session_factory"):
+        delattr(app.state, "test_session_factory")
+    await engine.dispose()
 
 async def setup_committed(api,suffix="a"):
     email=f"p2-{suffix}-{uuid.uuid4().hex}@example.com"
@@ -56,7 +61,7 @@ async def test_design_api_generation_geometry_comparison_selection_and_tenant_is
     geometry=await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alt['id']}/geometry",headers=h)
     assert geometry.status_code==200 and geometry.json()["geometry_hash"] and "geometry_ir" not in geometry.json()
     comparison=(await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/comparison",headers=h)).json()
-    assert len(comparison["alternatives"])==3 and "No single optimal" in comparison["notice"]
+    assert len(comparison["alternatives"])==3 and "No weighted overall score" in comparison["notice"]
     selected=await api.post(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alt['id']}/select",headers=h,json={"reason":"Preferred open-site trade-off"})
     assert selected.status_code==200 and selected.json()["status"]=="SELECTED"
     other_h,_,_,_=await setup_committed(api,"b")
@@ -91,6 +96,79 @@ async def test_v2_has_no_v1_geometry_then_generates_new_hashes(api,cad):
 
 
 
+async def test_design_direction_approval_requires_owner_and_is_idempotent(api):
+    headers, org, project, version = await setup_committed(api, "approval")
+    generated = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/generate",
+        headers=headers,
+    )
+    assert generated.status_code == 201, generated.text
+    alternatives = (await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives",
+        headers=headers,
+    )).json()["alternatives"]
+    alternative = alternatives[0]
+
+    selected = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alternative['id']}/select",
+        headers=headers,
+        json={"reason": "Preferred balance of massing and open site."},
+    )
+    assert selected.status_code == 200, selected.text
+
+    async with app.state.test_session_factory() as session:
+        membership = await session.scalar(
+            select(Membership).where(Membership.organization_id == org["id"])
+        )
+        membership.role = "member"
+        await session.commit()
+
+    denied = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alternative['id']}/approve",
+        headers=headers,
+        json={"reason": "Approve this direction for further development."},
+    )
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "APPROVAL_ROLE_REQUIRED"
+
+    async with app.state.test_session_factory() as session:
+        membership = await session.scalar(
+            select(Membership).where(Membership.organization_id == org["id"])
+        )
+        membership.role = "owner"
+        await session.commit()
+
+    approved = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alternative['id']}/approve",
+        headers=headers,
+        json={"reason": "Approve this direction for further development."},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "APPROVED_FOR_DEVELOPMENT"
+    assert approved.json()["idempotent"] is False
+
+    repeated = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alternative['id']}/approve",
+        headers=headers,
+        json={"reason": "Approve this direction for further development."},
+    )
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["idempotent"] is True
+    assert repeated.json()["review_id"] == approved.json()["review_id"]
+
+    comparison = await api.get(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/comparison",
+        headers=headers,
+    )
+    assert comparison.status_code == 200, comparison.text
+    approved_alternative = next(
+        item for item in comparison.json()["alternatives"] if item["id"] == alternative["id"]
+    )
+    assert approved_alternative["evaluation"]["constraint_summary"]["pass"] >= 0
+    assert approved_alternative["provenance"]["design_direction_approval"]["status"] == "APPROVED_FOR_DEVELOPMENT"
+
+
+
 async def test_s2_concept_endpoint_is_registered_and_requires_program_artifact(api):
     headers, _, project, version = await setup_committed(api, "s2-prerequisites")
     response = await api.post(
@@ -99,7 +177,6 @@ async def test_s2_concept_endpoint_is_registered_and_requires_program_artifact(a
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "PROGRAM_REQUIRED"
-
 
 
 async def test_s2_pipeline_generates_alternatives_from_current_program_and_envelope(api):
