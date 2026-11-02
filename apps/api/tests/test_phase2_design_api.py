@@ -61,7 +61,7 @@ async def test_design_api_generation_geometry_comparison_selection_and_tenant_is
     geometry=await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alt['id']}/geometry",headers=h)
     assert geometry.status_code==200 and geometry.json()["geometry_hash"] and "geometry_ir" not in geometry.json()
     comparison=(await api.get(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/comparison",headers=h)).json()
-    assert len(comparison["alternatives"])==3 and "No single optimal" in comparison["notice"]
+    assert len(comparison["alternatives"])==3 and "No weighted overall score" in comparison["notice"]
     selected=await api.post(f"/api/v1/projects/{project['id']}/versions/{version['id']}/design/alternatives/{alt['id']}/select",headers=h,json={"reason":"Preferred open-site trade-off"})
     assert selected.status_code==200 and selected.json()["status"]=="SELECTED"
     other_h,_,_,_=await setup_committed(api,"b")
