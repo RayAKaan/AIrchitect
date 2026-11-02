@@ -176,7 +176,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
         "program_space_schedule": inputs["program_spaces"],
         "program_adjacencies": inputs["program_adjacencies"],
         "setback_m": inputs["setback_m"] if inputs["setback_m"] is not None else parameters.get("setback_m", 0.0),
-        "orientation_degrees": inputs["orientation_degrees"] if inputs["orientation_degrees"] is not None else parameters.get("orientation_degrees"),
+        "site_orientation_degrees_from_north": inputs["orientation_degrees"],
     })
     metrics.update({
         "program_target_gfa_m2": inputs["target_gfa_m2"],
@@ -186,6 +186,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
         "envelope_max_height_m": inputs["max_height_m"],
         "program_space_count": len(inputs["program_spaces"]),
         "program_adjacency_count": len(inputs["program_adjacencies"]),
+        "site_orientation_degrees_from_north": inputs["orientation_degrees"],
     })
     constraint_results = [
         *candidate.constraint_results,
@@ -209,7 +210,7 @@ def apply_s2_design_inputs(candidate: DesignCandidate, inputs: dict[str, Any]) -
         "program_target_gfa_m2": inputs["target_gfa_m2"],
         "program_space_count": len(inputs["program_spaces"]),
         "program_adjacency_count": len(inputs["program_adjacencies"]),
-        "envelope_orientation_degrees": inputs["orientation_degrees"],
+        "site_orientation_degrees_from_north": inputs["orientation_degrees"],
         "envelope_validation": checks,
         "human_review_required": True,
     }
