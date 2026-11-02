@@ -176,7 +176,7 @@ export default function S2ConceptExplorer({ api, token, projectId, version }: Pr
                 {(alternative.unknowns?.length ?? 0) > 0 && (
                   <small>Outstanding unknowns: {alternative.unknowns?.join(', ')}</small>
                 )}
-                {approval?.status && alternative.provenance?.design_direction_approval?.status && (
+                {alternative.provenance?.design_direction_approval?.status && (
                   <div className="requirement-state confirmed">DESIGN DIRECTION APPROVED</div>
                 )}
                 <button
