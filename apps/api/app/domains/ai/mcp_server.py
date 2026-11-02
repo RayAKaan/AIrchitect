@@ -14,7 +14,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.core.security import read_token
-from app.db.models import (\n    ArtifactDependency, ArtifactVersion, AssumptionRecord, BuildingBriefRecord,\n    DesignAlternative, GeometryArtifact, RequirementRecord,\n)\nfrom app.db.site_models import (\n    SiteConstraint, SiteEvidence, SiteLayerSnapshot, SiteObservation, SiteRevision, SiteSource,\n)
+from app.db.models import (
+    ArtifactDependency,
+    ArtifactVersion,
+    AssumptionRecord,
+    BuildingBriefRecord,
+    DesignAlternative,
+    GeometryArtifact,
+    RequirementRecord,
+)
+from app.db.site_models import (
+    SiteConstraint,
+    SiteEvidence,
+    SiteLayerSnapshot,
+    SiteObservation,
+    SiteRevision,
+    SiteSource,
+)
 from app.db.session import get_engine
 from app.domains.commands.preview import preview_command
 from app.domains.commands.schemas import CommandEnvelope
