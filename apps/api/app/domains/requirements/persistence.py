@@ -45,8 +45,14 @@ async def extract(session: AsyncSession, project_id: str, version_ref: str, user
             source_text=candidate.source_text, parameter=candidate.parameter, category=candidate.category.value,
             raw_value_json=candidate.value, extracted_value_json=candidate.value, normalized_value_json=candidate.value,
             value_type=type(candidate.value).__name__, unit=candidate.unit, source_type="USER_BRIEF",
-            source_reference=brief.content_hash, extraction_method="deterministic_pattern_v2", confidence=0.95,
-            provenance_json={"brief_revision": brief.revision, "brief_hash": brief.content_hash, "source_text": candidate.source_text},
+            source_reference=brief.content_hash, extraction_method=candidate.extraction_method, confidence=candidate.confidence,
+            provenance_json={
+                "brief_revision": brief.revision,
+                "brief_hash": brief.content_hash,
+                "source_text": candidate.source_text,
+                "extraction_method": candidate.extraction_method,
+                "confidence": candidate.confidence,
+            },
             status="EXTRACTED", contradiction_group=(group if any(i.related_parameters and candidate.parameter in i.related_parameters for i in issues) else None),
             created_by=user.id,
         )
