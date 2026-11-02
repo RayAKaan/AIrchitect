@@ -117,7 +117,7 @@ def _fit_footprint(
 ) -> tuple[Polygon, tuple[float, float]]:
     base = box(-width / 2, -depth / 2, width / 2, depth / 2)
     centres = _candidate_centres(polygon, translation_x, translation_y)
-    for angle in (orientation_degrees, orientation_degrees + 90.0):
+    for angle in (orientation_degrees,):
         rotated = rotate(base, angle, origin=(0, 0), use_radians=False)
         for centre_x, centre_y in centres:
             candidate = translate(rotated, xoff=centre_x, yoff=centre_y)
