@@ -88,3 +88,14 @@ async def test_v2_has_no_v1_geometry_then_generates_new_hashes(api,cad):
     v1_again=(await api.get(f"/api/v1/projects/{project['id']}/versions/{v1['id']}/design/alternatives",headers=h)).json()["alternatives"]
     assert {a["geometry_hash"] for a in v1_again}==v1_hashes
     assert all(a["status"] in {"VALID","SELECTED"} for a in v1_again)
+
+
+
+async def test_s2_concept_endpoint_is_registered_and_requires_program_artifact(api):
+    headers, _, project, version = await setup_committed(api, "s2-prerequisites")
+    response = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/concepts/generate",
+        headers=headers,
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PROGRAM_REQUIRED"
