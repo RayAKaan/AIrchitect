@@ -1,6 +1,7 @@
 from enum import StrEnum
 from pydantic import BaseModel, Field
 
+
 class RequirementCategory(StrEnum):
     SITE = "site"
     AREA = "area"
@@ -11,6 +12,7 @@ class RequirementCategory(StrEnum):
     BUILDING_TYPE = "building_program"
     TIMELINE = "timeline"
 
+
 class Requirement(BaseModel):
     category: RequirementCategory
     parameter: str
@@ -18,7 +20,10 @@ class Requirement(BaseModel):
     unit: str | None = None
     source_text: str
     source_type: str = "user_brief"
+    extraction_method: str = "deterministic_pattern_v3"
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     confirmation_status: str = "unconfirmed"
+
 
 class RequirementIssue(BaseModel):
     code: str
@@ -26,12 +31,14 @@ class RequirementIssue(BaseModel):
     message: str
     related_parameters: list[str] = Field(default_factory=list)
 
+
 class RequirementAnalysisRequest(BaseModel):
     brief: str = Field(min_length=10, max_length=20000)
+
 
 class RequirementAnalysisResponse(BaseModel):
     requirements: list[Requirement]
     missing_information: list[str]
     issues: list[RequirementIssue]
-    extraction_method: str = "deterministic_pattern_v1"
+    extraction_method: str = "deterministic_pattern_v3"
     requires_user_confirmation: bool = True
