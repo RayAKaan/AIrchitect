@@ -17,6 +17,11 @@ from app.domains.design.config import DEFAULT_CONFIG, DesignEngineConfig
 from app.domains.design.constraints import DesignConstraintResolver, ResolvedDesignContext
 from app.domains.design.geometry_ir import GeometryValidator, MassingGeometryEngine
 from app.domains.design.strategies import STRATEGIES, DesignCandidate
+from app.domains.design.s2_inputs import (
+    S2DesignInputError,
+    apply_s2_design_inputs,
+    resolve_s2_design_inputs,
+)
 from app.domains.foundation.service import audit
 from app.domains.lifecycle.service import canonical_hash, new_artifact
 
@@ -55,6 +60,21 @@ class ComputationalDesignEngine:
                 "Every supplied design input artifact must have a persisted output hash",
                 {"input_names": sorted(name for name, digest in input_lineage.items() if not digest)},
             )
+        s2_inputs = None
+        if input_artifacts:
+            if not {"program", "envelope"}.issubset(input_artifacts):
+                raise DesignGenerationError(
+                    "S2_INPUTS_INCOMPLETE",
+                    "S2 concept generation requires both the current programme and planning envelope",
+                    {"supplied_inputs": sorted(input_artifacts)},
+                )
+            try:
+                s2_inputs = resolve_s2_design_inputs(
+                    input_artifacts["program"].payload_json,
+                    input_artifacts["envelope"].payload_json,
+                )
+            except S2DesignInputError as exc:
+                raise DesignGenerationError(exc.code, str(exc), exc.context) from exc
         key = self.generation_key(world.model_hash or "", input_lineage)
         existing = await session.scalar(select(DesignGenerationRun).where(
             DesignGenerationRun.project_version_id==version.id, DesignGenerationRun.generation_key==key))
@@ -104,14 +124,44 @@ class ComputationalDesignEngine:
                     severity=item.severity,rationale=item.rationale,provenance_json=item.provenance))
             if context.conflicts:
                 raise DesignGenerationError("DESIGN_CONSTRAINT_CONFLICT","Design constraints cannot produce bounded valid geometry",{"conflicts":context.conflicts})
-            target=float(next((c.value for c in context.constraints if c.parameter=="target_gfa" and c.value is not None),
-                context.search_space.site_width_m*context.search_space.site_depth_m*self.config.default_target_coverage*self.config.default_floor_count))
-            floors=int(next(v.preferred_value for v in context.search_space.variables if v.name=="floor_count"))
+            target = float(
+                s2_inputs["target_gfa_m2"]
+                if s2_inputs is not None
+                else next(
+                    (constraint.value for constraint in context.constraints
+                     if constraint.parameter == "target_gfa" and constraint.value is not None),
+                    context.search_space.site_width_m * context.search_space.site_depth_m
+                    * self.config.default_target_coverage * self.config.default_floor_count,
+                )
+            )
+            floor_variable = next(variable for variable in context.search_space.variables if variable.name == "floor_count")
+            floors = int(
+                s2_inputs["floor_count"]
+                if s2_inputs is not None and s2_inputs["floor_count"] is not None
+                else floor_variable.preferred_value
+            )
+            if floors < floor_variable.min_value or floors > floor_variable.max_value:
+                raise DesignGenerationError(
+                    "PROGRAM_FLOOR_COUNT_OUT_OF_RANGE",
+                    "The programme floor count is outside the supported design search range",
+                    {"program_floor_count": floors, "minimum": floor_variable.min_value, "maximum": floor_variable.max_value},
+                )
             floor_height=float(next(v.preferred_value for v in context.search_space.variables if v.name=="floor_to_floor_height"))
             parking=next((int(c.value) for c in context.constraints if c.parameter=="parking_spaces" and c.value is not None),None)
             generated=[]
             for strategy in STRATEGIES:
                 generated.extend(strategy.generate_candidates(context,self.config,target,floors,floor_height,parking))
+            if s2_inputs is not None:
+                generated = [apply_s2_design_inputs(candidate, s2_inputs) for candidate in generated]
+                self._stage(run, "resolve_program_and_envelope", {
+                    "program_target_gfa_m2": s2_inputs["target_gfa_m2"],
+                    "program_space_count": len(s2_inputs["program_spaces"]),
+                    "program_adjacency_count": len(s2_inputs["program_adjacencies"]),
+                    "buildable_area_m2": s2_inputs["buildable_area_m2"],
+                    "max_gfa_m2": s2_inputs["max_gfa_m2"],
+                    "max_height_m": s2_inputs["max_height_m"],
+                    "site_orientation_degrees": s2_inputs["orientation_degrees"],
+                })
             model_properties = world.model_json.get("properties") or {}
             placement = model_properties.get(
                 "building_translation_m", {"x": 0.0, "y": 0.0, "z": 0.0}
