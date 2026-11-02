@@ -151,7 +151,7 @@ export default function S2ConceptExplorer({ api, token, projectId, version }: Pr
                 <p>{alternative.description}</p>
                 <dl>
                   {Object.entries(alternative.metrics ?? {}).map(([key, value]) => (
-                    <div className="prov-row" key={key}><b>{key.replaceAll('_', ' ')}</b><span>{String(value ?? '—')}</span></div>
+                    <div className="prov-row" key={key}><b>{key.replace(/_/g, ' ')}</b><span>{String(value ?? '—')}</span></div>
                   ))}
                 </dl>
                 {(alternative.constraint_results?.length ?? 0) > 0 && (
@@ -159,7 +159,7 @@ export default function S2ConceptExplorer({ api, token, projectId, version }: Pr
                     <p><strong>Constraint results</strong></p>
                     {alternative.constraint_results?.map((check, index) => (
                       <div className="prov-row" key={String(check.parameter || index)}>
-                        <b>{String(check.parameter || 'Constraint').replaceAll('_', ' ')}</b>
+                        <b>{String(check.parameter || 'Constraint').replace(/_/g, ' ')}</b>
                         <span>{String(check.status || 'UNKNOWN')}</span>
                       </div>
                     ))}
