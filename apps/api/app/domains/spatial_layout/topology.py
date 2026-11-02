@@ -43,7 +43,11 @@ def _validated_spaces(layout: dict[str, Any]) -> tuple[dict[str, dict[str, Any]]
     polygons: dict[str, Polygon] = {}
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
-            raise SpatialTopologyError("TOPOLOGY_LAYOUT_INVALID", "Every layout space must be an object", {"index": index})
+            raise SpatialTopologyError(
+                "TOPOLOGY_LAYOUT_INVALID",
+                "Every layout space must be an object",
+                {"index": index},
+            )
         space_id = row.get("id")
         if not isinstance(space_id, str) or not space_id or space_id in spaces:
             raise SpatialTopologyError(
@@ -53,10 +57,18 @@ def _validated_spaces(layout: dict[str, Any]) -> tuple[dict[str, dict[str, Any]]
             )
         level = row.get("level_number")
         if isinstance(level, bool) or not isinstance(level, int) or level < 1:
-            raise SpatialTopologyError("TOPOLOGY_LEVEL_INVALID", "Every layout space requires a positive level number", {"space_id": space_id})
+            raise SpatialTopologyError(
+                "TOPOLOGY_LEVEL_INVALID",
+                "Every layout space requires a positive level number",
+                {"space_id": space_id},
+            )
         boundary = row.get("boundary")
         if not isinstance(boundary, list) or len(boundary) < 4:
-            raise SpatialTopologyError("TOPOLOGY_BOUNDARY_INVALID", "Every layout space requires a closed polygon boundary", {"space_id": space_id})
+            raise SpatialTopologyError(
+                "TOPOLOGY_BOUNDARY_INVALID",
+                "Every layout space requires a closed polygon boundary",
+                {"space_id": space_id},
+            )
         coordinates: list[tuple[float, float]] = []
         for point in boundary:
             if (
@@ -69,21 +81,41 @@ def _validated_spaces(layout: dict[str, Any]) -> tuple[dict[str, dict[str, Any]]
                 or not math.isfinite(float(point[0]))
                 or not math.isfinite(float(point[1]))
             ):
-                raise SpatialTopologyError("TOPOLOGY_BOUNDARY_INVALID", "Space boundary coordinates must be finite metric values", {"space_id": space_id})
+                raise SpatialTopologyError(
+                    "TOPOLOGY_BOUNDARY_INVALID",
+                    "Space boundary coordinates must be finite metric values",
+                    {"space_id": space_id},
+                )
             coordinates.append((float(point[0]), float(point[1])))
         if coordinates[0] != coordinates[-1]:
             coordinates.append(coordinates[0])
         polygon = Polygon(coordinates)
         if polygon.is_empty or not polygon.is_valid or polygon.area <= _AREA_TOLERANCE_M2:
-            raise SpatialTopologyError("TOPOLOGY_BOUNDARY_INVALID", "Space boundary must form a valid positive-area polygon", {"space_id": space_id})
+            raise SpatialTopologyError(
+                "TOPOLOGY_BOUNDARY_INVALID",
+                "Space boundary must form a valid positive-area polygon",
+                {"space_id": space_id},
+            )
         declared_area = row.get("area_m2")
-        if isinstance(declared_area, bool) or not isinstance(declared_area, (int, float)) or not math.isfinite(float(declared_area)):
-            raise SpatialTopologyError("TOPOLOGY_AREA_INVALID", "Space area must be a finite metric quantity", {"space_id": space_id})
+        if (
+            isinstance(declared_area, bool)
+            or not isinstance(declared_area, (int, float))
+            or not math.isfinite(float(declared_area))
+        ):
+            raise SpatialTopologyError(
+                "TOPOLOGY_AREA_INVALID",
+                "Space area must be a finite metric quantity",
+                {"space_id": space_id},
+            )
         if abs(polygon.area - float(declared_area)) > max(_AREA_TOLERANCE_M2, polygon.area * 1e-4):
             raise SpatialTopologyError(
                 "TOPOLOGY_AREA_MISMATCH",
                 "Declared space area does not match its polygon geometry",
-                {"space_id": space_id, "declared_area_m2": float(declared_area), "polygon_area_m2": round(polygon.area, 6)},
+                {
+                    "space_id": space_id,
+                    "declared_area_m2": float(declared_area),
+                    "polygon_area_m2": round(polygon.area, 6),
+                },
             )
         spaces[space_id] = row
         polygons[space_id] = polygon
@@ -120,7 +152,10 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
     hash_input = dict(layout)
     hash_input.pop("layout_hash", None)
     if _canonical_hash(hash_input) != supplied_hash:
-        raise SpatialTopologyError("TOPOLOGY_LAYOUT_HASH_INVALID", "Spatial layout content does not match its persisted hash")
+        raise SpatialTopologyError(
+            "TOPOLOGY_LAYOUT_HASH_INVALID",
+            "Spatial layout content does not match its persisted hash",
+        )
 
     spaces, polygons = _validated_spaces(layout)
     by_level: dict[int, list[str]] = defaultdict(list)
@@ -155,7 +190,12 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
                 if shared_length <= _GEOMETRY_TOLERANCE_M:
                     continue
                 first_id, second_id = sorted([space_id, other_id])
-                edge_id = str(uuid5(NAMESPACE_URL, f"airchitect:topology-edge:{layout['project_version_id']}:{first_id}:{second_id}"))
+                edge_id = str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        f"airchitect:topology-edge:{layout['project_version_id']}:{first_id}:{second_id}",
+                    )
+                )
                 edges.append({
                     "id": edge_id,
                     "source_space_id": first_id,
@@ -206,7 +246,11 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
             "space_id": space_id,
             "level_number": row["level_number"],
             "adjacent_circulation_space_ids": adjacent_zones,
-            "status": "BOUNDARY_CONTACT_REQUIRES_OPENING_REVIEW" if adjacent_zones else "NO_DIRECT_CIRCULATION_BOUNDARY",
+            "status": (
+                "BOUNDARY_CONTACT_REQUIRES_OPENING_REVIEW"
+                if adjacent_zones
+                else "NO_DIRECT_CIRCULATION_BOUNDARY"
+            ),
             "traversable": False,
         })
 
@@ -215,7 +259,10 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
     for space_id, row in spaces.items():
         space_type = str(row.get("space_type") or "").casefold()
         category = str(row.get("category") or "").casefold()
-        is_vertical_element = space_type in {"core", "vertical_core", "stair", "lift"} or category == "vertical_circulation"
+        is_vertical_element = (
+            space_type in {"core", "vertical_core", "stair", "lift"}
+            or category == "vertical_circulation"
+        )
         program_space_id = row.get("program_space_id")
         if is_vertical_element and isinstance(program_space_id, str) and program_space_id:
             by_program_space[program_space_id][int(row["level_number"])].append(space_id)
@@ -292,7 +339,10 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
             }
             for space_id, row in sorted(spaces.items())
         ],
-        "edges": sorted(edges, key=lambda item: (item["level_number"], item["source_space_id"], item["target_space_id"])),
+        "edges": sorted(
+            edges,
+            key=lambda item: (item["level_number"], item["source_space_id"], item["target_space_id"]),
+        ),
         "boundary_adjacency_components": components_by_level,
         "circulation_network": {
             "status": "CANDIDATE_ONLY" if circulation_ids else "UNKNOWN",
@@ -307,7 +357,8 @@ def build_spatial_topology(layout: dict[str, Any]) -> dict[str, Any]:
         "unknowns": sorted(set(unknowns)),
         "assumptions": [
             "A shared polygon boundary is a potential connection, not evidence of a door or traversable opening.",
-            "Circulation zones are identified only from explicit programme categories; no corridor geometry is invented.",
+            "Circulation zones are identified only from explicit programme categories; "
+            "no corridor geometry is invented.",
             "Vertical correspondence is a candidate relationship only; stairs, ramps and lifts are not inferred.",
         ],
         "source_lineage": {
