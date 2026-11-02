@@ -166,3 +166,14 @@ async def test_design_direction_approval_requires_owner_and_is_idempotent(api):
     )
     assert approved_alternative["evaluation"]["constraint_summary"]["pass"] >= 0
     assert approved_alternative["provenance"]["design_direction_approval"]["status"] == "APPROVED_FOR_DEVELOPMENT"
+
+
+
+async def test_s2_concept_endpoint_is_registered_and_requires_program_artifact(api):
+    headers, _, project, version = await setup_committed(api, "s2-prerequisites")
+    response = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{version['id']}/concepts/generate",
+        headers=headers,
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PROGRAM_REQUIRED"
