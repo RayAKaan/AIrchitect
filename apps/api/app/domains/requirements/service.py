@@ -11,21 +11,43 @@ CATEGORY_MAP = {
 def analyze_brief(brief: str, extractor: RequirementExtractor | None = None):
     provider = extractor or DeterministicRequirementExtractor()
     candidates = provider.extract(brief)
-    requirements = [Requirement(category=CATEGORY_MAP.get(c.category, C.BUILDING_TYPE), parameter=c.parameter,
-        value=c.normalized_value, unit=c.unit, source_text=c.source_text,
-        source_type="user_brief", confirmation_status="unconfirmed") for c in candidates]
+    requirements = [
+        Requirement(
+            category=CATEGORY_MAP.get(candidate.category, C.BUILDING_TYPE),
+            parameter=candidate.parameter,
+            value=candidate.normalized_value,
+            unit=candidate.unit,
+            source_text=candidate.source_text,
+            source_type="user_brief",
+            extraction_method=candidate.extraction_method,
+            confidence=candidate.confidence,
+            confirmation_status="unconfirmed",
+        )
+        for candidate in candidates
+    ]
     values: dict[str, set[str]] = {}
     for candidate in candidates:
         values.setdefault(candidate.parameter, set()).add(str(candidate.normalized_value))
-    issues = [RequirementIssue(code="CONFLICTING_VALUES", severity="warning",
-        message=f"Multiple values detected for {parameter}; confirm the intended value.",
-        related_parameters=[parameter]) for parameter, found in values.items() if len(found) > 1]
+    issues = [
+        RequirementIssue(
+            code="CONFLICTING_VALUES",
+            severity="warning",
+            message=f"Multiple values detected for {parameter}; confirm the intended value.",
+            related_parameters=[parameter],
+        )
+        for parameter, found in values.items()
+        if len(found) > 1
+    ]
     present = {candidate.parameter for candidate in candidates}
-    missing = [label for label, key_set in [
-        ("site dimensions or boundary", {"site_area", "site_width", "site_depth"}),
-        ("target gross floor area", {"target_gfa"}),
-        ("floor count or height", {"floor_count", "building_height"}),
-        ("budget or cost constraint", {"budget"}),
-        ("parking requirement", {"parking_spaces", "parking_arrangement"}),
-    ] if not present.intersection(key_set)]
+    missing = [
+        label
+        for label, key_set in [
+            ("site dimensions or boundary", {"site_area", "site_width", "site_depth"}),
+            ("target gross floor area", {"target_gfa"}),
+            ("floor count or height", {"floor_count", "building_height"}),
+            ("budget or cost constraint", {"budget"}),
+            ("parking requirement", {"parking_spaces", "parking_arrangement"}),
+        ]
+        if not present.intersection(key_set)
+    ]
     return requirements, missing, issues
