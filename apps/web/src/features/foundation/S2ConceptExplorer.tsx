@@ -154,6 +154,17 @@ export default function S2ConceptExplorer({ api, token, projectId, version }: Pr
                     <div className="prov-row" key={key}><b>{key.replaceAll('_', ' ')}</b><span>{String(value ?? '—')}</span></div>
                   ))}
                 </dl>
+                {(alternative.constraint_results?.length ?? 0) > 0 && (
+                  <section aria-label="Individual constraint results">
+                    <p><strong>Constraint results</strong></p>
+                    {alternative.constraint_results?.map((check, index) => (
+                      <div className="prov-row" key={String(check.parameter || index)}>
+                        <b>{String(check.parameter || 'Constraint').replaceAll('_', ' ')}</b>
+                        <span>{String(check.status || 'UNKNOWN')}</span>
+                      </div>
+                    ))}
+                  </section>
+                )}
                 {summary && (
                   <section aria-label="Constraint evaluation">
                     <p><strong>Constraint checks</strong></p>
