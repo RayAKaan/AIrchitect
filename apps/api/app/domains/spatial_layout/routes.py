@@ -292,7 +292,8 @@ async def generate_spatial_topology(
         raise error(
             409,
             "STALE_SPATIAL_LAYOUT",
-            "Regenerate the spatial layout from the current World Model, programme, envelope, site and selected concept",
+            "Regenerate the spatial layout from the current World Model, programme, "
+            "envelope, site and selected concept",
         )
     try:
         payload = build_spatial_topology(layout_artifact.payload_json)
@@ -391,7 +392,11 @@ async def get_spatial_topology(
         .limit(1)
     )
     if artifact is None:
-        raise error(404, "SPATIAL_TOPOLOGY_NOT_FOUND", "No spatial topology has been generated for this project version")
+        raise error(
+            404,
+            "SPATIAL_TOPOLOGY_NOT_FOUND",
+            "No spatial topology has been generated for this project version",
+        )
     current_layout = await session.scalar(
         select(ArtifactVersion)
         .where(
