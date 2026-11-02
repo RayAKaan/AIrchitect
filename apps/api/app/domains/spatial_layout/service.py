@@ -35,7 +35,11 @@ def _finite(value: Any, field: str, *, positive: bool = False) -> float:
         raise SpatialLayoutError("LAYOUT_INPUT_INVALID", f"{field} must be a finite number", {"field": field})
     result = float(value)
     if positive and result <= 0:
-        raise SpatialLayoutError("LAYOUT_INPUT_INVALID", f"{field} must be positive", {"field": field, "value": result})
+        raise SpatialLayoutError(
+            "LAYOUT_INPUT_INVALID",
+            f"{field} must be positive",
+            {"field": field, "value": result},
+        )
     return result
 
 
@@ -48,7 +52,8 @@ def _local_polygon(buildable_geojson: dict[str, Any]) -> tuple[Polygon, Transfor
         if len(geographic.geoms) != 1:
             raise SpatialLayoutError(
                 "LAYOUT_DISCONNECTED_ENVELOPE",
-                "The buildable envelope contains disconnected components; select a connected building footprint before layout generation",
+                "The buildable envelope contains disconnected components; "
+                "select a connected building footprint before layout generation",
                 {"component_count": len(geographic.geoms)},
             )
         geographic = geographic.geoms[0]
@@ -188,7 +193,10 @@ def build_spatial_layout(
         raise SpatialLayoutError("LAYOUT_PROGRAM_INVALID", "The current programme has no spaces")
     floors_raw = program.get("floor_count")
     if isinstance(floors_raw, bool) or not isinstance(floors_raw, int) or floors_raw < 1:
-        raise SpatialLayoutError("LAYOUT_FLOOR_COUNT_UNKNOWN", "A confirmed positive programme floor count is required")
+        raise SpatialLayoutError(
+            "LAYOUT_FLOOR_COUNT_UNKNOWN",
+            "A confirmed positive programme floor count is required",
+        )
     floors = floors_raw
 
     target_gfa = _finite(program.get("target_gfa_m2"), "program.target_gfa_m2", positive=True)
@@ -213,11 +221,20 @@ def build_spatial_layout(
     maximum_gfa = envelope.get("max_gfa_m2")
     maximum_height = envelope.get("max_height_m")
     building_height = _finite(design_metrics.get("building_height_m"), "alternative.building_height_m", positive=True)
-    if maximum_footprint is not None and footprint_area > _finite(maximum_footprint, "envelope.max_footprint_m2") + _TOLERANCE_M:
-        raise SpatialLayoutError("LAYOUT_MAX_FOOTPRINT_EXCEEDED", "Selected concept exceeds the current maximum footprint")
+    if (
+        maximum_footprint is not None
+        and footprint_area > _finite(maximum_footprint, "envelope.max_footprint_m2") + _TOLERANCE_M
+    ):
+        raise SpatialLayoutError(
+            "LAYOUT_MAX_FOOTPRINT_EXCEEDED",
+            "Selected concept exceeds the current maximum footprint",
+        )
     if maximum_gfa is not None and actual_gfa > _finite(maximum_gfa, "envelope.max_gfa_m2") + _TOLERANCE_M:
         raise SpatialLayoutError("LAYOUT_MAX_GFA_EXCEEDED", "Selected concept exceeds the current maximum GFA")
-    if maximum_height is not None and building_height > _finite(maximum_height, "envelope.max_height_m") + _TOLERANCE_M:
+    if (
+        maximum_height is not None
+        and building_height > _finite(maximum_height, "envelope.max_height_m") + _TOLERANCE_M
+    ):
         raise SpatialLayoutError("LAYOUT_MAX_HEIGHT_EXCEEDED", "Selected concept exceeds the current maximum height")
     if abs(footprint_area - floor_area) > max(0.02, floor_area * 1e-4):
         raise SpatialLayoutError(
@@ -230,18 +247,34 @@ def build_spatial_layout(
     target_total = 0.0
     for index, item in enumerate(spaces):
         if not isinstance(item, dict):
-            raise SpatialLayoutError("LAYOUT_PROGRAM_INVALID", "Every programme space must be an object", {"index": index})
+            raise SpatialLayoutError(
+                "LAYOUT_PROGRAM_INVALID",
+                "Every programme space must be an object",
+                {"index": index},
+            )
         space_id = item.get("id")
         quantity = item.get("quantity", 1)
         if not isinstance(space_id, str) or not space_id:
-            raise SpatialLayoutError("LAYOUT_PROGRAM_INVALID", "Every programme space requires a stable ID", {"index": index})
+            raise SpatialLayoutError(
+                "LAYOUT_PROGRAM_INVALID",
+                "Every programme space requires a stable ID",
+                {"index": index},
+            )
         if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity < 1:
-            raise SpatialLayoutError("LAYOUT_PROGRAM_INVALID", "Programme space quantity must be a positive integer", {"space_id": space_id})
+            raise SpatialLayoutError(
+                "LAYOUT_PROGRAM_INVALID",
+                "Programme space quantity must be a positive integer",
+                {"space_id": space_id},
+            )
         target = _finite(item.get("target_area_m2"), f"spaces[{index}].target_area_m2", positive=True)
         minimum = _finite(item.get("min_area_m2"), f"spaces[{index}].min_area_m2", positive=True)
         maximum = _finite(item.get("max_area_m2"), f"spaces[{index}].max_area_m2", positive=True)
         if not minimum <= target <= maximum:
-            raise SpatialLayoutError("LAYOUT_PROGRAM_BOUNDS_INVALID", "Programme target must be within its declared area bounds", {"space_id": space_id})
+            raise SpatialLayoutError(
+                "LAYOUT_PROGRAM_BOUNDS_INVALID",
+                "Programme target must be within its declared area bounds",
+                {"space_id": space_id},
+            )
         target_total += target * quantity
         normalized_spaces.append({
             "id": space_id,
@@ -266,7 +299,11 @@ def build_spatial_layout(
         item["allocated_area_per_floor_m2"] = item["target_area_m2"] * scale / floors
         item["minimum_area_per_floor_m2"] = item["min_area_m2"] * scale / floors
         item["maximum_area_per_floor_m2"] = item["max_area_m2"] * scale / floors
-        if not item["minimum_area_per_floor_m2"] - 1e-6 <= item["allocated_area_per_floor_m2"] <= item["maximum_area_per_floor_m2"] + 1e-6:
+        if not (
+            item["minimum_area_per_floor_m2"] - 1e-6
+            <= item["allocated_area_per_floor_m2"]
+            <= item["maximum_area_per_floor_m2"] + 1e-6
+        ):
             raise SpatialLayoutError(
                 "LAYOUT_PROGRAM_BOUNDS_EXCEEDED",
                 "The selected concept GFA would move a programme space outside its allowed area range",
@@ -314,7 +351,12 @@ def build_spatial_layout(
     for floor_number in range(1, floors + 1):
         floor_z = (floor_number - 1) * floor_height
         floor_plates.append({
-            "id": str(uuid5(NAMESPACE_URL, f"airchitect:floor-plate:{project_version_id}:{floor_number}:{world_model_hash}")),
+            "id": str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"airchitect:floor-plate:{project_version_id}:{floor_number}:{world_model_hash}",
+                )
+            ),
             "level_number": floor_number,
             "elevation_m": round(floor_z, 6),
             "area_m2": round(footprint_area, 6),
@@ -332,7 +374,10 @@ def build_spatial_layout(
             for instance_number in range(1, item["quantity"] + 1):
                 instance_id = str(uuid5(
                     NAMESPACE_URL,
-                    f"airchitect:layout-space:{project_id}:{project_version_id}:{item['id']}:{floor_number}:{instance_number}",
+                    (
+                        f"airchitect:layout-space:{project_id}:{project_version_id}:"
+                        f"{item['id']}:{floor_number}:{instance_number}"
+                    ),
                 ))
                 ids_by_program.setdefault(item["id"], []).append(instance_id)
                 instances.append({
@@ -365,9 +410,17 @@ def build_spatial_layout(
             )
             polygon = Polygon([(point[0], point[1]) for point in world_ring[:-1]])
             if polygon.is_empty or not polygon.is_valid or polygon.area <= 0:
-                raise SpatialLayoutError("LAYOUT_SPACE_GEOMETRY_INVALID", "A generated space boundary is invalid", {"space_id": item["instance_id"]})
+                raise SpatialLayoutError(
+                    "LAYOUT_SPACE_GEOMETRY_INVALID",
+                    "A generated space boundary is invalid",
+                    {"space_id": item["instance_id"]},
+                )
             if not footprint.buffer(_TOLERANCE_M).covers(polygon):
-                raise SpatialLayoutError("LAYOUT_SPACE_OUTSIDE_FOOTPRINT", "A generated space falls outside its floor plate", {"space_id": item["instance_id"]})
+                raise SpatialLayoutError(
+                    "LAYOUT_SPACE_OUTSIDE_FOOTPRINT",
+                    "A generated space falls outside its floor plate",
+                    {"space_id": item["instance_id"]},
+                )
             space_polygons[item["instance_id"]] = polygon
             layout_spaces.append({
                 "id": item["instance_id"],
@@ -391,8 +444,13 @@ def build_spatial_layout(
                 },
                 "geometry_status": "DERIVED_PRELIMINARY",
             })
-        if abs(cursor - (depth / 2 if width >= depth else width / 2)) > max(0.02, (depth if width >= depth else width) * 1e-4):
-            raise SpatialLayoutError("LAYOUT_AREA_RECONCILIATION_FAILED", "Generated room partitions do not cover the selected floor plate")
+        end_cursor = depth / 2 if width >= depth else width / 2
+        axis_length = depth if width >= depth else width
+        if abs(cursor - end_cursor) > max(0.02, axis_length * 1e-4):
+            raise SpatialLayoutError(
+                "LAYOUT_AREA_RECONCILIATION_FAILED",
+                "Generated room partitions do not cover the selected floor plate",
+            )
 
     adjacency_results: list[dict[str, Any]] = []
     unknowns = [
@@ -416,7 +474,11 @@ def build_spatial_layout(
                 if relation in {"direct", "adjacent"}:
                     status = "SATISFIED" if shared_length > _TOLERANCE_M else "UNSATISFIED"
                 elif relation == "near":
-                    status = "SATISFIED" if first_polygon.distance(second_polygon) <= 1.0 + _TOLERANCE_M else "UNSATISFIED"
+                    status = (
+                        "SATISFIED"
+                        if first_polygon.distance(second_polygon) <= 1.0 + _TOLERANCE_M
+                        else "UNSATISFIED"
+                    )
                 elif relation == "separate":
                     status = "SATISFIED" if shared_length <= _TOLERANCE_M else "UNSATISFIED"
                 else:
@@ -431,11 +493,16 @@ def build_spatial_layout(
                 })
 
     unmet_required = [item for item in adjacency_results if item["required"] and item["status"] == "UNSATISFIED"]
-    deferred_required = [item for item in adjacency_results if item["required"] and item["status"] == "DEFERRED_TO_TOPOLOGY"]
+    deferred_required = [
+        item for item in adjacency_results
+        if item["required"] and item["status"] == "DEFERRED_TO_TOPOLOGY"
+    ]
     assumptions = [
         "Programme area targets are distributed evenly across the confirmed storeys.",
-        "Each space is represented as a deterministic rectangular area partition; room-specific proportions and furniture clearances are not inferred.",
-        "The selected concept footprint is placed at the nearest deterministic fit within the current buildable polygon.",
+        "Each space is represented as a deterministic rectangular area partition; "
+        "room-specific proportions and furniture clearances are not inferred.",
+        "The selected concept footprint is placed at the nearest deterministic fit "
+        "within the current buildable polygon.",
         "This layout is preliminary and requires architectural review before downstream use.",
     ]
     if not orientation_was_explicit:
@@ -470,7 +537,10 @@ def build_spatial_layout(
             "selected_concept_gfa_m2": round(actual_gfa, 6),
             "allocated_space_area_m2": round(sum(item["area_m2"] for item in layout_spaces), 6),
             "floor_plate_area_total_m2": round(sum(item["area_m2"] for item in floor_plates), 6),
-            "reconciled": abs(sum(item["area_m2"] for item in layout_spaces) - actual_gfa) <= max(0.02, actual_gfa * 1e-4),
+            "reconciled": (
+                abs(sum(item["area_m2"] for item in layout_spaces) - actual_gfa)
+                <= max(0.02, actual_gfa * 1e-4)
+            ),
         },
         "assumptions": assumptions,
         "unknowns": sorted(set(unknowns)),
