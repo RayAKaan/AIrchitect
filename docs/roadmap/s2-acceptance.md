@@ -4,7 +4,7 @@ S2 provides an authenticated, server-authoritative workflow:
 
 `brief → extracted requirements → confirmed requirements → architectural programme → planning envelope → concept alternatives → evaluation → human selection → design-direction approval`
 
-## Verified implementation contracts
+## Implementation contracts
 
 - Brief content is version-scoped, normalized and hashed.
 - Requirement candidates retain source text, extraction method and candidate confidence.
