@@ -135,6 +135,8 @@ def test_element_compiler_rejects_topology_from_another_layout():
     layout = _layout()
     other_layout = _layout()
     other_layout["spaces"][0]["area_m2"] = 49.0
+    other_layout["spaces"][0]["boundary"][1][0] = 4.9
+    other_layout["spaces"][0]["boundary"][2][0] = 4.9
     other_layout.pop("layout_hash")
     other_layout = _seal(other_layout)
 
