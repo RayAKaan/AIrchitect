@@ -126,8 +126,16 @@ def test_element_compiler_rejects_non_finite_coordinates():
     layout["spaces"][0]["boundary"][0][0] = float("inf")
     layout = _seal(layout)
 
+    topology = {
+        "world_model_hash": layout["world_model_hash"],
+        "source_lineage": {"layout_hash": layout["layout_hash"]},
+    }
+    topology["topology_hash"] = hashlib.sha256(
+        json.dumps(topology, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
     with pytest.raises(ArchitecturalElementError) as exc:
-        compile_architectural_elements(layout, _topology(_layout()))
+        compile_architectural_elements(layout, topology)
     assert exc.value.code == "ELEMENT_BOUNDARY_INVALID"
 
 
