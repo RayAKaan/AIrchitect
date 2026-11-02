@@ -589,14 +589,23 @@ async def get_architectural_elements(
         .order_by(ArtifactVersion.version.desc())
         .limit(1)
     )
+    layout_current = (
+        layout_artifact is not None
+        and await _layout_is_current(session, version.id, world.model_hash or "", layout_artifact)
+    )
     source = artifact.payload_json.get("source_lineage") or {}
+    topology_source = topology_artifact.payload_json.get("source_lineage") if topology_artifact else {}
     stale = (
         artifact.status != "current"
+        or not layout_current
         or layout_artifact is None
         or topology_artifact is None
+        or topology_artifact.status != "current"
         or source.get("world_model_hash") != world.model_hash
         or source.get("layout_hash") != (layout_artifact.output_hash if layout_artifact else None)
         or source.get("topology_hash") != (topology_artifact.output_hash if topology_artifact else None)
+        or topology_source.get("layout_hash") != (layout_artifact.output_hash if layout_artifact else None)
+        or topology_source.get("world_model_hash") != world.model_hash
     )
     return {
         "artifact_id": artifact.id,
