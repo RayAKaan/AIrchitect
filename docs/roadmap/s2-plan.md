@@ -1,7 +1,7 @@
 # S2 — Brief → Requirements → Program → Envelope → Concepts
 
 **Stage:** S2  
-**Status:** Backend and authenticated browser workflow implemented; final integration CI and merge verification in progress  
+**Status:** Implementation complete; final CI certification and merge verification are the release gate  
 **Scope:** Turn a natural-language architectural brief plus the canonical Site World Model into a traceable, validated program, deterministic buildable envelope, and materially different concept alternatives.
 
 ## Product contract
