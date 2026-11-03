@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, field_validator
 # Artifact kinds the worker may emit. Extension is implied by kind; the API
 # refuses anything outside this set, which is what stops a job from writing
 # arbitrary files into the artifact root.
-ArtifactKind = Literal["freecad_document", "step", "ifc", "glb", "brep"]
+ArtifactKind = Literal["freecad_document", "step", "ifc", "glb", "brep", "dxf"]
 
 ARTIFACT_EXTENSIONS: dict[str, str] = {
     "freecad_document": ".FCStd",
@@ -33,6 +33,7 @@ ARTIFACT_EXTENSIONS: dict[str, str] = {
     "ifc": ".ifc",
     "glb": ".glb",
     "brep": ".brep",
+    "dxf": ".dxf",
 }
 
 #: Extensions the worker is permitted to write, case-insensitively.
@@ -54,6 +55,7 @@ ARTIFACT_CONTENT_TYPES: dict[str, str] = {
     "ifc": "application/x-ifc",
     "glb": "model/gltf-binary",
     "brep": "model/occt-brep",
+    "dxf": "image/vnd.dxf",
 }
 
 MassingKind = Literal["building_mass", "floor_plate", "core", "site_boundary", "wall"]
@@ -145,6 +147,7 @@ class CadJobOptions(BaseModel):
     write_step: bool = True
     write_ifc: bool = True
     write_glb: bool = True
+    write_dxf: bool = True
     # Named run_validation, not validate: a field called "validate" shadows
     # BaseModel.validate, which pydantic defines as a classmethod, and the
     # shadowing breaks model-level validation helpers.
