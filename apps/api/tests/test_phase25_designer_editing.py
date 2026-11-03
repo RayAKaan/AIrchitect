@@ -822,11 +822,14 @@ def test_authored_slab_preserves_validated_polygon_geometry_and_storey_placement
         {"x": 0.0, "y": 8.0, "z": 0.0},
         {"x": 0.0, "y": 0.0, "z": 0.0},
     ]
+    slab_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "airchitect:reviewed-slab:stable"))
     slab = create_element(
         model, state, element_type="Slab", name="Ground floor slab",
         properties={"boundary_m": boundary, "area_m2": 80.0, "thickness_m": 0.25},
         level_number=1, actor_id="designer-1", reason="Review floor plate geometry",
+        element_id=slab_id,
     )
+    assert slab["element_id"] == slab_id
     intent = next(
         item for item in compile_parametric_geometry(model, model["semantic_model"])["intents"]
         if item["element_id"] == slab["element_id"]
