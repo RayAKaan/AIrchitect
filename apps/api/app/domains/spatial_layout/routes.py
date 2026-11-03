@@ -17,6 +17,7 @@ from app.domains.semantic_model.editing import create_element, state_for
 from app.domains.lifecycle.service import new_artifact
 
 from .architectural_elements import ArchitecturalElementError, compile_architectural_elements
+from .constraints import ArchitecturalConstraintError, compile_architectural_constraints
 from .service import SpatialLayoutError, build_spatial_layout
 from .topology import SpatialTopologyError, build_spatial_topology
 
@@ -427,6 +428,106 @@ async def get_spatial_topology(
         "topology_hash": artifact.output_hash,
         "status": "STALE" if stale else artifact.payload_json.get("status", "REVIEW_REQUIRED"),
         "topology": artifact.payload_json,
+    }
+
+
+@router.post(
+    "/projects/{project_id}/versions/{version_ref}/architectural-elements/constraints",
+    status_code=201,
+)
+async def evaluate_architectural_constraints(
+    project_id: str,
+    version_ref: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Evaluate and persist hard architectural constraints for current spatial artifacts."""
+    project, version = await resolve_project_version(
+        session, project_id, version_ref, user.id, write=True
+    )
+    world = await resolve_world_model(session, version.id)
+    layout_artifact = await _current_artifact(session, version.id, "spatial_layout")
+    topology_artifact = await _current_artifact(session, version.id, "spatial_topology")
+    elements_artifact = await _current_artifact(session, version.id, "architectural_elements")
+    envelope_artifact = await _current_artifact(session, version.id, "planning_envelope")
+    if not await _layout_is_current(
+        session, version.id, world.model_hash or "", layout_artifact
+    ):
+        raise error(409, "STALE_SPATIAL_LAYOUT", "Regenerate spatial layout before evaluating architectural constraints")
+    try:
+        payload = compile_architectural_constraints(
+            layout_artifact.payload_json,
+            topology_artifact.payload_json,
+            elements_artifact.payload_json,
+            envelope_artifact.payload_json,
+            world_model_hash=world.model_hash or "",
+        )
+    except ArchitecturalConstraintError as exc:
+        raise error(409, exc.code, str(exc), **exc.context) from exc
+
+    digest = payload["constraints_hash"]
+    existing = await session.scalar(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "architectural_constraints",
+            ArtifactVersion.output_hash == digest,
+            ArtifactVersion.status == "current",
+        )
+    )
+    if existing is not None:
+        return {
+            "artifact_id": existing.id,
+            "artifact_version": existing.version,
+            "constraints_hash": digest,
+            "constraints": existing.payload_json,
+            "idempotent": True,
+        }
+    previous = list((
+        await session.scalars(
+            select(ArtifactVersion).where(
+                ArtifactVersion.project_version_id == version.id,
+                ArtifactVersion.artifact_type == "architectural_constraints",
+                ArtifactVersion.status == "current",
+            )
+        )
+    ).all())
+    for row in previous:
+        row.status = "stale"
+    artifact = await new_artifact(
+        session,
+        project=project,
+        version=version,
+        world=world,
+        actor=user.id,
+        artifact_type="architectural_constraints",
+        payload=payload,
+        dependencies=[layout_artifact, topology_artifact, elements_artifact, envelope_artifact],
+        alternative_id=layout_artifact.payload_json.get("selected_alternative_id"),
+        status="current",
+    )
+    artifact.output_hash = digest
+    await audit(
+        session,
+        project=project,
+        version=version,
+        actor=user.id,
+        action="ARCHITECTURAL_CONSTRAINTS_EVALUATED",
+        entity="artifact_version",
+        entity_id=artifact.id,
+        metadata={
+            "constraints_hash": digest,
+            "status": payload["status"],
+            "summary": payload["summary"],
+            "source_lineage": payload["source_lineage"],
+        },
+    )
+    await session.commit()
+    return {
+        "artifact_id": artifact.id,
+        "artifact_version": artifact.version,
+        "constraints_hash": digest,
+        "constraints": payload,
+        "idempotent": False,
     }
 
 
