@@ -29,7 +29,7 @@ function parseMesh(value: unknown, index: number): SceneMesh {
   const mesh = value as Record<string, unknown>;
   const vertices = mesh.vertices;
   const faces = mesh.faces;
-  if (typeof mesh.element_id !== 'string' || typeof mesh.element_type !== 'string' || typeof mesh.source_model_hash !== 'string' || typeof mesh.geometry_hash !== 'string' || !Array.isArray(vertices) || !vertices.every(isVec3) || !Array.isArray(faces) || !faces.every((face) => Array.isArray(face) && face.every((item) => typeof item === 'number' && Number.isInteger(item) && item >= 0))) throw new Error(`scene mesh ${index} is invalid`);
+  if (typeof mesh.element_id !== 'string' || !mesh.element_id || typeof mesh.element_type !== 'string' || !mesh.element_type || typeof mesh.source_model_hash !== 'string' || !mesh.source_model_hash || typeof mesh.geometry_hash !== 'string' || !mesh.geometry_hash || !Array.isArray(vertices) || vertices.length < 3 || !vertices.every(isVec3) || !Array.isArray(faces) || faces.length === 0 || !faces.every((face) => Array.isArray(face) && face.length >= 3 && face.every((item) => typeof item === 'number' && Number.isInteger(item) && item >= 0 && item < vertices.length))) throw new Error(`scene mesh ${index} is invalid`);
   return Object.freeze({ elementId: mesh.element_id, elementType: mesh.element_type, sourceModelHash: mesh.source_model_hash, vertices, faces, geometryHash: mesh.geometry_hash });
 }
 
@@ -45,8 +45,49 @@ export function parseScene(value: unknown): ModelScene {
   const nodes = scene.nodes.map((value, index) => {
     if (!value || typeof value !== 'object') throw new Error(`scene node ${index} is invalid`);
     const node = value as Record<string, unknown>;
-    if (typeof node.id !== 'string' || typeof node.element_type !== 'string' || typeof node.mesh_index !== 'number' || !Number.isInteger(node.mesh_index) || node.mesh_index < 0 || node.mesh_index >= meshes.length || typeof node.source_model_hash !== 'string' || typeof node.geometry_hash !== 'string') throw new Error(`scene node ${index} is invalid`);
+    if (typeof node.id !== 'string' || !node.id || typeof node.element_type !== 'string' || typeof node.mesh_index !== 'number' || !Number.isInteger(node.mesh_index) || node.mesh_index < 0 || node.mesh_index >= meshes.length || typeof node.source_model_hash !== 'string' || typeof node.geometry_hash !== 'string') throw new Error(`scene node ${index} is invalid`);
+    const mesh = meshes[node.mesh_index];
+    if (mesh.elementId !== node.id || mesh.elementType !== node.element_type || mesh.sourceModelHash !== node.source_model_hash || mesh.geometryHash !== node.geometry_hash || node.source_model_hash !== scene.model_hash) throw new Error(`scene node ${index} lineage does not match its mesh and model`);
     return Object.freeze({ id: node.id, elementType: node.element_type, meshIndex: node.mesh_index, sourceModelHash: node.source_model_hash, geometryHash: node.geometry_hash });
   });
   return Object.freeze({ modelHash: scene.model_hash, nodes: Object.freeze(nodes), meshes: Object.freeze(meshes), bounds: Object.freeze({ minimum: bounds.minimum, maximum: bounds.maximum }) });
+}
+
+
+export type SceneView = 'plan' | 'front' | 'side';
+export type ProjectedFace = Readonly<{ elementId: string; points: readonly (readonly [number, number])[] }>;
+export type SceneProjection = Readonly<{ view: SceneView; bounds: Readonly<{ minimum: readonly [number, number]; maximum: readonly [number, number] }>; faces: readonly ProjectedFace[] }>;
+
+export function projectScene(scene: ModelScene, view: SceneView): SceneProjection {
+  const axes: Readonly<Record<SceneView, readonly [number, number]>> = {
+    plan: [0, 1],
+    front: [0, 2],
+    side: [1, 2],
+  };
+  const [horizontal, vertical] = axes[view];
+  const faces: ProjectedFace[] = [];
+  const projectedPoints: (readonly [number, number])[] = [];
+  for (const node of scene.nodes) {
+    const mesh = scene.meshes[node.meshIndex];
+    if (!mesh || mesh.geometryHash !== node.geometryHash || mesh.sourceModelHash !== scene.modelHash) {
+      throw new Error(`scene node ${node.id} has stale geometry lineage`);
+    }
+    for (const face of mesh.faces) {
+      const points = face.map((index) => {
+        const vertex = mesh.vertices[index];
+        const point = [vertex[horizontal], vertex[vertical]] as const;
+        projectedPoints.push(point);
+        return point;
+      });
+      faces.push(Object.freeze({ elementId: node.id, points: Object.freeze(points) }));
+    }
+  }
+  if (projectedPoints.length === 0) throw new Error('scene has no projectable faces');
+  const minimum = [0, 1].map(axis => Math.min(...projectedPoints.map(point => point[axis]))) as [number, number];
+  const maximum = [0, 1].map(axis => Math.max(...projectedPoints.map(point => point[axis]))) as [number, number];
+  return Object.freeze({
+    view,
+    bounds: Object.freeze({ minimum: Object.freeze(minimum), maximum: Object.freeze(maximum) }),
+    faces: Object.freeze(faces),
+  });
 }
