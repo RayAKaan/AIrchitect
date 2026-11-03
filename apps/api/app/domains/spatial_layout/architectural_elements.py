@@ -261,6 +261,18 @@ def compile_architectural_elements(
         and isinstance(edge.get("id"), str)
     }
 
+    # Detect non-manifold ownership globally before requiring topology edges.
+    # Otherwise an earlier duplicated perimeter segment can mask a later
+    # three-space shared segment with a less useful missing-edge error.
+    for level, segments in sorted(segments_by_level.items()):
+        for owners in segments.values():
+            if len(owners) > 2:
+                raise ArchitecturalElementError(
+                    "ELEMENT_BOUNDARY_NON_MANIFOLD",
+                    "A wall segment cannot be shared by more than two spaces",
+                    {"level_number": level, "space_ids": sorted(owners)},
+                )
+
     candidates: list[dict[str, Any]] = []
     for level, segments in sorted(segments_by_level.items()):
         for (start, end), owners in sorted(segments.items()):
