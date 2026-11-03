@@ -119,7 +119,21 @@ def build_semantic_cad_request(
     element types are not approximated as massing; this adapter currently accepts
     only dimension-complete horizontal walls.
     """
+    source_world_hash = semantic_model.get("source_world_model_hash")
+    if (
+        not isinstance(source_world_hash, str)
+        or len(source_world_hash) != 64
+        or any(character not in "0123456789abcdef" for character in source_world_hash.lower())
+    ):
+        raise ValueError("SEMANTIC_WORLD_MODEL_HASH_REQUIRED")
     specification = compile_parametric_geometry(world_model, semantic_model)
+    semantic_hash = specification.get("semantic_model_hash")
+    if (
+        not isinstance(semantic_hash, str)
+        or len(semantic_hash) != 64
+        or any(character not in "0123456789abcdef" for character in semantic_hash.lower())
+    ):
+        raise ValueError("SEMANTIC_MODEL_HASH_INVALID")
     walls = [
         intent for intent in specification.get("intents", [])
         if intent.get("element_type") == "Wall"
@@ -152,7 +166,9 @@ def build_semantic_cad_request(
         declared_length = float(params["length_m"])
         if abs(axis_length - declared_length) > max(1e-4, axis_length * 1e-4):
             raise ValueError(f"WALL_LENGTH_MISMATCH:{intent['element_id']}")
-        wall = elements_by_id[intent["element_id"]]
+        wall = elements_by_id.get(intent["element_id"])
+        if wall is None:
+            raise ValueError(f"SEMANTIC_ELEMENT_MISSING:{intent['element_id']}")
         placement = intent.get("placement") or {}
         elements.append(MassingElement(
             id=intent["element_id"],
@@ -163,12 +179,12 @@ def build_semantic_cad_request(
             height_m=float(params["height_m"]),
             storey_index=placement.get("level_number"),
             material_class="architectural_wall",
-            source_reference=semantic_model["source_world_model_hash"],
+            source_reference=source_world_hash,
             metadata={
                 "semantic_element_id": intent["element_id"],
                 "element_type": "Wall",
-                "world_model_hash": semantic_model["source_world_model_hash"],
-                "semantic_model_hash": specification["semantic_model_hash"],
+                "world_model_hash": source_world_hash,
+                "semantic_model_hash": semantic_hash,
                 "coordinate_system": "local_cartesian_z_up",
                 "units": "m",
             },
