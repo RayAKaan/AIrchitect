@@ -225,6 +225,10 @@ def test_architectural_element_proposal_routes_are_registered():
         in paths
     )
     assert "/api/v1/projects/{project_id}/versions/{version_ref}/architectural-elements" in paths
+    assert (
+        "/api/v1/projects/{project_id}/versions/{version_ref}/architectural-elements/commit"
+        in paths
+    )
 
 
 def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
