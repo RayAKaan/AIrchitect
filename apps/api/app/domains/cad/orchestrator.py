@@ -446,7 +446,7 @@ async def run_cad_job_for_semantic_model(
     capabilities: WorkerCapabilities | None = None,
     world: WorldModelRevision | None = None,
 ) -> CadJobOutcome:
-    """Generate and persist B-rep artifacts from reviewed canonical semantic walls."""
+    """Generate and persist B-rep artifacts from reviewed canonical semantic walls and floor slabs."""
     from starlette.concurrency import run_in_threadpool
 
     if world is None:
