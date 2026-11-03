@@ -260,15 +260,13 @@ def main(argv):
                 json.dumps({"schema_version": "1.0", "pad": padding}), encoding="utf-8")
         else:
             document = build(scenario)
-            if scenario == "ok":
-                requested_elements = request.get("elements") or []
-                document["measurements"] = [
-                    measurement(id=element["id"], kind=element.get("kind", "building_mass"))
-                    for element in requested_elements
-                ]
-                document["element_count"] = len(requested_elements)
-                document["combined_volume_m3"] = 3000.0 * len(requested_elements)
-                document["combined_area_m2"] = 1400.0 * len(requested_elements)
+            requested_elements = request.get("elements") or []
+            if document.get("status") == "ok" and document.get("measurements") and requested_elements:
+                if len(document["measurements"]) == len(requested_elements):
+                    for measured, requested in zip(document["measurements"], requested_elements):
+                        measured["id"] = requested["id"]
+                        measured["kind"] = requested.get("kind", "building_mass")
+                    document["element_count"] = len(requested_elements)
             options = request.get("options", {})
             # Honour the narrow-output contract for the end-to-end workflow. The
             # normal default remains the STEP fixture so existing STEP-focused tests
