@@ -80,6 +80,7 @@ def test_drawing_generation_and_retrieval_routes_are_registered():
     paths = {route.path for route in app.routes}
     assert "/api/v1/projects/{project_id}/drawings/generate" in paths
     assert "/api/v1/projects/{project_id}/drawings" in paths
+    assert "/api/v1/projects/{project_id}/drawings/document" in paths
 
 
 def test_drawing_package_keeps_unassigned_elements_visible_without_storeys():
