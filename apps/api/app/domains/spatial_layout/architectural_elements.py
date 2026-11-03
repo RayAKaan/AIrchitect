@@ -78,9 +78,9 @@ def compile_architectural_elements(
 ) -> dict[str, Any]:
     """Create deterministic, reviewable architectural element proposals.
 
-    This compiler only derives wall axes from validated room polygon boundaries.
-    It does not invent wall heights, thicknesses, openings, slabs, stairs or roofs.
-    The output is a proposal artifact, not a canonical World Model mutation.
+    This compiler derives wall axes and floor-slab boundaries from validated
+    room polygons. It does not invent wall/slab thicknesses, openings, stairs
+    or roofs. The output is a proposal artifact, not a canonical mutation.
     """
     layout_hash = _verified_payload(layout, "layout_hash", "ELEMENT_LAYOUT")
     topology_hash = _verified_payload(topology, "topology_hash", "ELEMENT_TOPOLOGY")
@@ -94,6 +94,16 @@ def compile_architectural_elements(
         raise ArchitecturalElementError(
             "ELEMENT_WORLD_MODEL_MISMATCH",
             "Spatial topology and layout use different World Model revisions",
+        )
+    blocking_topology_issues = [
+        issue for issue in topology.get("issues", [])
+        if isinstance(issue, dict) and issue.get("severity") == "ERROR"
+    ]
+    if blocking_topology_issues:
+        raise ArchitecturalElementError(
+            "ELEMENT_TOPOLOGY_INVALID",
+            "Architectural elements cannot be derived from topology with blocking geometry issues",
+            {"issues": blocking_topology_issues},
         )
     if default_wall_thickness_m is not None and (
         isinstance(default_wall_thickness_m, bool)
