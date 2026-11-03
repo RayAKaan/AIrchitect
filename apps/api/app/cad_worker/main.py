@@ -292,11 +292,13 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
             masses=[
                 {
                     "id": element["id"],
+                    "kind": element.get("kind", "building_mass"),
                     "name": element.get("name") or element["id"],
                     "footprint": element["footprint"]["points"],
                     "base_elevation_m": element.get("base_elevation_m", 0.0),
                     "height_m": element["height_m"],
                     "material_class": element.get("material_class", "conceptual_mass"),
+                    "source_world_model_hash": (element.get("metadata") or {}).get("world_model_hash", ""),
                 }
                 for element in elements
             ],
@@ -307,9 +309,23 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
                 "ElementCount": len(elements),
             },
         )
-        # Re-open the file we just wrote. An export that cannot be read back is
-        # not a successful export.
-        ifc_summary["inspection"] = ifc_io.inspect_ifc(ifc_path)
+        # Re-open and semantically reconcile the file we just wrote. A syntactically
+        # valid IFC that drops canonical IDs or model lineage is not an accepted export.
+        inspection = ifc_io.inspect_ifc(ifc_path)
+        source_hashes = {
+            (element.get("metadata") or {}).get("world_model_hash")
+            for element in elements
+            if (element.get("metadata") or {}).get("world_model_hash")
+        }
+        source_hash = next(iter(source_hashes)) if len(source_hashes) == 1 else None
+        if len(source_hashes) > 1:
+            raise ValueError("IFC_SOURCE_WORLD_MODEL_HASH_MISMATCH")
+        ifc_summary["inspection"] = inspection
+        ifc_summary["round_trip"] = ifc_io.validate_round_trip(
+            inspection,
+            expected_element_ids=[element["id"] for element in elements],
+            source_world_model_hash=source_hash,
+        )
         artifacts.append(_read_artifact(ifc_path, "ifc"))
 
     kernel = geom.describe_kernel()

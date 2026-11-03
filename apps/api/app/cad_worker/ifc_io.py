@@ -48,6 +48,8 @@ _CLASSIFICATION: dict[str, str] = {
     "floor_plate": "Floor Plate",
     "core": "Circulation Core",
     "site_boundary": "Site Boundary",
+    "architectural_wall": "Architectural Wall",
+    "architectural_slab": "Architectural Slab",
 }
 
 #: Preflight grid lines, as an IFC4 element class.
@@ -111,6 +113,8 @@ def write_ifc(
 
     if not masses:
         raise IfcError("cannot write an IFC model with no masses")
+    if schema != "IFC4":
+        raise IfcError(f"this export contract requires IFC4, received {schema!r}")
 
     try:
         file = ifcopenshell.api.project.create_file(version=schema)
@@ -144,6 +148,9 @@ def write_ifc(
             base_elevation_m=float(entry.get("base_elevation_m", 0.0)),
             height_m=float(entry["height_m"]),
             material_class=entry.get("material_class", "conceptual_mass"),
+            element_kind=entry.get("kind", "building_mass"),
+            canonical_element_id=entry["id"],
+            source_world_model_hash=entry.get("source_world_model_hash", ""),
         )
         written.append(
             {
@@ -205,6 +212,9 @@ def _add_mass(
     base_elevation_m: float,
     height_m: float,
     material_class: str,
+    element_kind: str,
+    canonical_element_id: str,
+    source_world_model_hash: str = "",
 ) -> Any:
     """Create one ``IfcBuildingElementProxy`` swept from an arbitrary profile."""
     ring = _normalise_ring(footprint)
@@ -241,15 +251,19 @@ def _add_mass(
         Items=[solid],
     )
     product_shape = file.create_entity("IfcProductDefinitionShape", Representations=[representation])
+    if element_kind == "wall":
+        ifc_class, predefined_type = "IfcWall", "STANDARD"
+    elif element_kind == "floor_plate":
+        ifc_class, predefined_type = "IfcSlab", "FLOOR"
+    else:
+        # Generic conceptual massing remains an IfcBuildingElementProxy.
+        ifc_class, predefined_type = "IfcBuildingElementProxy", "ELEMENT"
     element = file.create_entity(
-        "IfcBuildingElementProxy",
+        ifc_class,
         GlobalId=ifcopenshell.guid.new(),
         OwnerHistory=owner,
         Name=name,
-        # ELEMENT is the only PredefinedType that means "an ordinary built
-        # element" in IFC4. The semantic material class travels in a property
-        # set below instead of being forced into a type enum that cannot hold it.
-        PredefinedType="ELEMENT",
+        PredefinedType=predefined_type,
         ObjectPlacement=file.create_entity(
             "IfcLocalPlacement",
             RelativePlacement=file.create_entity("IfcAxis2Placement3D"),
@@ -269,6 +283,8 @@ def _add_mass(
             "Classification": classification or "Unclassified",
             "BaseElevation_m": float(base_elevation_m),
             "Height_m": float(height_m),
+            "CanonicalElementId": canonical_element_id,
+            "SourceWorldModelHash": source_world_model_hash,
         },
     )
     return element
@@ -296,6 +312,8 @@ def inspect_ifc(path: str) -> dict[str, Any]:
         "IfcBuilding",
         "IfcBuildingStorey",
         "IfcBuildingElementProxy",
+        "IfcWall",
+        "IfcSlab",
         "IfcExtrudedAreaSolid",
         "IfcArbitraryClosedProfileDef",
         "IfcPropertySet",
@@ -306,16 +324,70 @@ def inspect_ifc(path: str) -> dict[str, Any]:
     for pset in model.by_type("IfcPropertySet"):
         psets[pset.Name] = len(pset.HasProperties)
 
+    elements = []
+    try:
+        from ifcopenshell.util.element import get_psets
+    except ImportError as exc:
+        raise IfcError("IfcOpenShell element property inspection is unavailable") from exc
+    semantic_elements = (
+        list(model.by_type("IfcWall"))
+        + list(model.by_type("IfcSlab"))
+        + list(model.by_type("IfcBuildingElementProxy"))
+    )
+    for element in semantic_elements:
+        properties = get_psets(element, should_inherit=False).get("Pset_AIrchitectElement", {})
+        elements.append({
+            "global_id": element.GlobalId,
+            "name": element.Name,
+            "canonical_element_id": properties.get("CanonicalElementId"),
+            "source_world_model_hash": properties.get("SourceWorldModelHash") or None,
+            "material_class": properties.get("MaterialClass"),
+            "has_representation": bool(element.Representation and element.Representation.Representations),
+            "predefined_type": element.PredefinedType,
+        })
     return {
         "schema": model.schema_identifier,
         "schema_version": ".".join(str(p) for p in model.schema_version),
         "entity_counts": counts,
         "property_sets": psets,
-        "element_names": sorted(
-            e.Name for e in model.by_type("IfcBuildingElementProxy") if e.Name
-        ),
+        "element_names": sorted(e["name"] for e in elements if e["name"]),
+        "elements": sorted(elements, key=lambda item: item["canonical_element_id"] or ""),
         "bytes": os.path.getsize(path),
         "ifcopenshell_version": ifcopenshell.version,
+    }
+
+
+def validate_round_trip(
+    inspection: dict[str, Any],
+    *,
+    expected_element_ids: Sequence[str],
+    source_world_model_hash: str | None = None,
+) -> dict[str, Any]:
+    """Fail closed unless IFC4 preserves every canonical element and its lineage."""
+    if inspection.get("schema") != "IFC4":
+        raise IfcError(f"IFC round-trip schema mismatch: {inspection.get('schema')!r}")
+    elements = inspection.get("elements")
+    if not isinstance(elements, list):
+        raise IfcError("IFC round-trip inspection did not return element records")
+    actual_ids = [item.get("canonical_element_id") for item in elements]
+    if any(not isinstance(item, str) or not item for item in actual_ids):
+        raise IfcError("IFC round-trip lost one or more canonical element IDs")
+    if len(actual_ids) != len(set(actual_ids)):
+        raise IfcError("IFC round-trip contains duplicate canonical element IDs")
+    if set(actual_ids) != set(expected_element_ids):
+        raise IfcError("IFC round-trip canonical element IDs do not match the source model")
+    if any(not item.get("has_representation") for item in elements):
+        raise IfcError("IFC round-trip contains an element without a geometric representation")
+    if source_world_model_hash:
+        hashes = {item.get("source_world_model_hash") for item in elements}
+        if hashes != {source_world_model_hash}:
+            raise IfcError("IFC round-trip source World Model lineage does not match")
+    return {
+        "status": "PASS",
+        "schema": "IFC4",
+        "element_count": len(actual_ids),
+        "canonical_element_ids": sorted(actual_ids),
+        "source_world_model_hash": source_world_model_hash,
     }
 
 
