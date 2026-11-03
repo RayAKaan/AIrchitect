@@ -166,6 +166,55 @@ def test_element_compiler_rejects_topology_from_another_layout():
     assert exc.value.code == "ELEMENT_TOPOLOGY_STALE"
 
 
+def test_wall_cad_intent_requires_explicit_axis_endpoints_and_storey_placement():
+    from app.domains.semantic_model.service import compile_parametric_geometry
+
+    def prop(value, unit=None, data_type="number"):
+        return {"value": value, "unit": unit, "data_type": data_type}
+
+    storey = {
+        "id": "storey-1",
+        "element_type": "Storey",
+        "properties": {
+            "level_number": prop(1, "count", "integer"),
+            "elevation_m": prop(0.0, "m"),
+        },
+    }
+    wall = {
+        "id": "wall-1",
+        "element_type": "Wall",
+        "properties": {
+            "length_m": prop(5.0, "m"),
+            "height_m": prop(3.0, "m"),
+            "thickness_m": prop(0.2, "m"),
+        },
+    }
+    semantic = {
+        "project_id": "project-1",
+        "project_version_id": "version-1",
+        "source_world_model_hash": "a" * 64,
+        "elements": [storey, wall],
+        "relationships": [{
+            "source_id": "storey-1",
+            "relationship_type": "hosts_element",
+            "target_id": "wall-1",
+        }],
+    }
+    world = {"building": {}, "properties": {}}
+
+    missing_axis = compile_parametric_geometry(world, semantic)
+    intent = missing_axis["intents"][0]
+    assert intent["status"] == "UNDERCONSTRAINED"
+    assert set(intent["missing_parameters"]) == {"start_m", "end_m"}
+
+    wall["properties"]["start_m"] = prop({"x": 0.0, "y": 0.0, "z": 0.0}, "m", "vector3")
+    wall["properties"]["end_m"] = prop({"x": 5.0, "y": 0.0, "z": 0.0}, "m", "vector3")
+    complete_axis = compile_parametric_geometry(world, semantic)
+    assert complete_axis["intents"][0]["status"] == "READY_FOR_CAD_ADAPTER"
+    assert complete_axis["intents"][0]["parameters"]["start_m"]["x"] == 0.0
+    assert complete_axis["intents"][0]["parameters"]["end_m"]["x"] == 5.0
+
+
 def test_architectural_element_proposal_routes_are_registered():
     from app.main import app
 
