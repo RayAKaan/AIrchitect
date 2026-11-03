@@ -50,14 +50,25 @@ class RegenerationService:
         if artifact.status != "stale":
             raise ValueError(f"artifact is not stale: {artifact.status}")
 
+        dependencies = await self._current_dependencies(session, artifact)
+        dependency_snapshots = {
+            dependency.artifact_type: {
+                "output_hash": dependency.output_hash,
+                "payload": dependency.payload_json,
+            }
+            for dependency in dependencies
+        }
         output = self._handlers.execute(
             RegenerationInput(
                 artifact_type=artifact.artifact_type,
                 source_revision_hash=job.source_revision_hash,
                 payload=artifact.payload_json,
+                dependencies=dependency_snapshots,
             )
         )
-        successor = await self._publish_successor(session, artifact, job, output)
+        successor = await self._publish_successor(
+            session, artifact, job, output, dependencies=dependencies
+        )
         await self._states.transition(session, state, "SUCCEEDED")
 
         successor_state = await self._states.get_for_update(session, successor.id)
@@ -91,6 +102,8 @@ class RegenerationService:
         artifact: ArtifactVersion,
         job: RegenerationJobRecord,
         output: RegenerationOutput,
+        *,
+        dependencies: list[ArtifactVersion],
     ) -> ArtifactVersion:
         if output.artifact_type != artifact.artifact_type:
             raise ValueError("regeneration output artifact type mismatch")
@@ -115,7 +128,6 @@ class RegenerationService:
         if world is None:
             raise ValueError("regeneration source world-model revision not found")
 
-        dependencies = await self._current_dependencies(session, artifact)
         return await rebind_artifact(
             session,
             project=project,
