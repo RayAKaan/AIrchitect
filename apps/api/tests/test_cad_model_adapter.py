@@ -88,3 +88,13 @@ def test_semantic_wall_adapter_rejects_sloped_axis_until_supported():
     )
     with pytest.raises(ValueError, match="WALL_AXIS_NON_HORIZONTAL"):
         build_semantic_cad_request(world, semantic, job_id="sloped-wall")
+
+
+def test_semantic_model_cad_route_is_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert (
+        "/api/v1/projects/{project_id}/versions/{version_ref}/semantic-model/cad"
+        in paths
+    )
