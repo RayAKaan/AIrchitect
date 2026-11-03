@@ -29,7 +29,7 @@ class CadGenerationRequest(BaseModel):
     #: Narrows the artifact set. Omit to get everything the deployment enables.
     #: These values can only ever remove outputs, never add one the deployment has
     #: turned off.
-    requested_outputs: list[Literal["glb", "step", "ifc", "freecad_document"]] | None = None
+    requested_outputs: list[Literal["glb", "step", "ifc", "dxf", "freecad_document"]] | None = None
 
 
 class CadErrorBody(BaseModel):

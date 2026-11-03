@@ -41,6 +41,7 @@ from typing import Any
 
 from app.cad_worker import geometry as geom
 from app.cad_worker import ifc_io
+from app.cad_worker import dxf_io
 from app.cad_worker.mesh import GlbError, MeshPart, build_glb, parse_glb, validate_glb
 
 #: FreeCAD element colours, as linear-ish RGB triples for the GLB material.
@@ -153,6 +154,7 @@ def _read_artifact(path: str, kind: str) -> dict[str, Any]:
         "ifc": "application/x-step",  # placeholder; corrected below
         "glb": "model/gltf-binary",
         "brep": "model/occt-brep",
+        "dxf": "image/vnd.dxf",
     }
     if kind == "ifc":
         content_types["ifc"] = "application/x-ifc"
@@ -263,6 +265,27 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
             )
 
     artifacts: list[dict[str, Any]] = []
+    dxf_summary: dict[str, Any] | None = None
+    if options.get("write_dxf", True):
+        dxf_path = os.path.join(output_dir, job_id + ".dxf")
+        source_hashes = {
+            (element.get("metadata") or {}).get("world_model_hash")
+            for element in elements
+            if (element.get("metadata") or {}).get("world_model_hash")
+        }
+        source_hash = next(iter(source_hashes)) if len(source_hashes) == 1 else None
+        if len(source_hashes) > 1:
+            raise ValueError("DXF_SOURCE_WORLD_MODEL_HASH_MISMATCH")
+        dxf_summary = dxf_io.write_footprint_dxf(
+            dxf_path, elements, source_model_hash=source_hash
+        )
+        with open(dxf_path, "rb") as dxf_handle:
+            dxf_bytes = dxf_handle.read()
+        dxf_summary["validation"] = dxf_io.validate_dxf(
+            dxf_bytes,
+            expected_element_ids=[element["id"] for element in elements],
+        )
+        artifacts.append(_read_artifact(dxf_path, "dxf"))
     if shapes:
         combined = geom.fuse(shapes)
         if options.get("write_step", True):
@@ -353,6 +376,8 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
         "element_count": len(elements),
         "warnings": warnings,
         "ifc_summary": ifc_summary,
+        "dxf_summary": dxf_summary,
+        "export_metadata": {"ifc": ifc_summary, "dxf": dxf_summary},
     }
 
 
@@ -610,6 +635,7 @@ def _merge_providers(freecad: dict[str, Any], occt: dict[str, Any]) -> dict[str,
         "combined_bounding_box": freecad.get("combined_bounding_box"),
         "artifacts": [],
         "validation": validation,
+        "export_metadata": occt.get("export_metadata", {}),
         "element_count": freecad.get("element_count", 0),
         "warnings": warnings,
         "cross_validated": True,

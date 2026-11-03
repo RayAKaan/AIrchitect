@@ -171,6 +171,7 @@ _OUTPUT_FLAGS: dict[str, str] = {
     "glb": "write_glb",
     "step": "write_step",
     "ifc": "write_ifc",
+    "dxf": "write_dxf",
     "freecad_document": "write_fcstd",
 }
 
@@ -256,6 +257,7 @@ def build_request(
         write_glb=config.write_glb,
         write_step=config.write_step,
         write_ifc=config.write_ifc,
+        write_dxf=True,
         write_fcstd=config.write_fcstd,
         ifc_schema=config.ifc_schema,
     )
@@ -468,6 +470,7 @@ async def run_cad_job_for_semantic_model(
         write_glb=config.write_glb,
         write_step=config.write_step,
         write_ifc=config.write_ifc,
+        write_dxf=True,
         write_fcstd=config.write_fcstd,
         ifc_schema=config.ifc_schema,
     )

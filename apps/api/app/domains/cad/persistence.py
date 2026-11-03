@@ -392,6 +392,8 @@ async def record_cad_success(
     engine_version = _engine_version(provider, reported, capabilities)
     measurements = [m.model_dump(mode="json") for m in result.measurements]
     validation_document = result.validation.model_dump(mode="json") if result.validation else None
+    if result.export_metadata:
+        validation_document = {**(validation_document or {}), "exports": result.export_metadata}
 
     run = CadJobRun(
         organization_id=project.organization_id,
