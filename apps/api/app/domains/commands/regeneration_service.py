@@ -166,7 +166,7 @@ class RegenerationService:
             previous = await session.get(ArtifactVersion, edge.depends_on_artifact_version_id)
             if previous is None:
                 raise ValueError("regeneration dependency artifact not found")
-            if previous.artifact_type == "design_alternative":
+            if previous.artifact_type == "design_alternative" and previous.alternative_id is None:
                 selected = await session.scalar(
                     select(DesignAlternative).where(
                         DesignAlternative.project_version_id == artifact.project_version_id,
