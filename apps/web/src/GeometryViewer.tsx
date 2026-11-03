@@ -36,6 +36,8 @@ export default function GeometryViewer({api,token,projectId,onClose}:{api:string
   if(!sr.ok)throw Error('Could not load canonical project snapshot'); const data=await sr.json(); setSnapshot(data);
   const first=data.artifacts.find((a:Artifact)=>a.type==='geometry'&&a.status!=='stale'); setSelected(first?.id||'');
  }catch(e){setError(e instanceof Error?e.message:'Viewer failed')}finally{setBusy(false)}})()},[api,token,projectId]);
+ const geometries=useMemo(()=>snapshot?.artifacts.filter(a=>a.type==='geometry')||[],[snapshot]);
+ const artifact=geometries.find(a=>a.id===selected)||geometries[0];
  const spatialLayouts=useMemo(()=>snapshot?.artifacts.filter(a=>a.type==='spatial_layout'&&a.status!=='stale')||[],[snapshot]);
  const spatialLayout=spatialLayouts.find(a=>a.alternative_id===artifact?.alternative_id)||spatialLayouts[0];
  const levels=useMemo(()=>{
@@ -61,25 +63,23 @@ export default function GeometryViewer({api,token,projectId,onClose}:{api:string
   window.addEventListener(WORKSPACE_SELECTION_EVENT,onSelection);
   return()=>window.removeEventListener(WORKSPACE_SELECTION_EVENT,onSelection);
  },[projectId,selected,selectedSpaceId]);
- const geometries=useMemo(()=>snapshot?.artifacts.filter(a=>a.type==='geometry')||[],[snapshot]);
- const artifact=geometries.find(a=>a.id===selected)||geometries[0];
  return <section className="viewer-shell"><div className="viewer-head"><div><p className="eyebrow">PERSISTED GEOMETRY</p><h2>3D massing</h2><small>WebGL · project version {snapshot?.version.number??'—'} · canonical artifacts only</small></div><button className="btn outline" onClick={onClose}>Close</button></div>
  {busy&&<div className="empty-state"><div className="spinner"/>Loading persisted geometry…</div>}
  {error&&<div className="alert">{error}</div>}
- {!busy&&!error&&!artifact&&<div className="empty-state"><h3>No geometry artifact</h3><p>Submit a complete brief and run the feasibility workflow first.</p></div>}
- {artifact&&<div className="viewer-layout">
+ {!busy&&!error&&!artifact&&!spatialLayout&&<div className="empty-state"><h3>No spatial or geometry artifact</h3><p>Generate a spatial layout or geometry artifact to open the viewer.</p></div>}
+ {(artifact||spatialLayout)&&<div className="viewer-layout">
  <div className="viewer-main">
   <div className="viewer-mode-switch" role="group" aria-label="View mode">
    <button type="button" className={viewMode==='2d'?'active':''} aria-pressed={viewMode==='2d'} disabled={!spatialLayout} onClick={()=>setViewMode('2d')}>2D floor plan</button>
    <button type="button" className={viewMode==='3d'?'active':''} aria-pressed={viewMode==='3d'} onClick={()=>setViewMode('3d')}>3D massing</button>
   </div>
-  {viewMode==='3d'&&<div className="canvas-wrap three-canvas"><Canvas shadows camera={{position:[45,35,45],fov:42}}><color attach="background" args={['#eeece5']}/><ambientLight intensity={1.5}/><directionalLight castShadow position={[30,45,20]} intensity={2}/><Suspense fallback={null}><Bounds fit clip observe margin={1.25}><Massing artifact={artifact} showFloors={showFloors}/><FitButton/></Bounds></Suspense><Grid infiniteGrid fadeDistance={150} sectionColor="#9a765f" cellColor="#c9c2b8"/><OrbitControls makeDefault enablePan enableZoom enableRotate/></Canvas></div>}
+  {viewMode==='3d'&&artifact&&<div className="canvas-wrap three-canvas"><Canvas shadows camera={{position:[45,35,45],fov:42}}><color attach="background" args={['#eeece5']}/><ambientLight intensity={1.5}/><directionalLight castShadow position={[30,45,20]} intensity={2}/><Suspense fallback={null}><Bounds fit clip observe margin={1.25}><Massing artifact={artifact} showFloors={showFloors}/><FitButton/></Bounds></Suspense><Grid infiniteGrid fadeDistance={150} sectionColor="#9a765f" cellColor="#c9c2b8"/><OrbitControls makeDefault enablePan enableZoom enableRotate/></Canvas></div>}
   {viewMode==='2d'&&spatialLayout&&<div className="floorplan-panel">
    <label className="floorplan-level">Floor level<select value={selectedLevel} onChange={event=>setSelectedLevel(Number(event.target.value))}>{levels.map(level=><option key={level} value={level}>Level {level}</option>)}</select></label>
    <FloorPlanCanvas layout={spatialLayout.payload} level={selectedLevel} selectedSpaceId={selectedSpaceId} onSelect={space=>setSelectedSpaceId(space.id)}/>
    <p className="floorplan-source">Derived from persisted spatial layout · {spatialLayout.hash}</p>
   </div>}
  </div>
- <aside className="artifact-panel"><h3>Alternatives</h3>{geometries.map((a,i)=><button className={`alt-btn ${a.id===artifact.id?'active':''}`} key={a.id} onClick={()=>setSelected(a.id)}>Alternative {i+1}<small>{a.status} · {a.payload.height_m.toFixed(1)} m</small></button>)}{viewMode==='3d'&&<label className="toggle"><input type="checkbox" checked={showFloors} onChange={e=>setShowFloors(e.target.checked)}/> Floor visibility</label>}{viewMode==='2d'&&selectedSpaceId&&<><h3>Selected space</h3><p>{spatialLayout?.payload?.spaces?.find((space:any)=>space.id===selectedSpaceId)?.name||selectedSpaceId}</p></>}<h3>Artifact lineage</h3><dl><dt>Artifact version</dt><dd>{artifact.id}</dd><dt>Geometry SHA-256</dt><dd className="hash">{artifact.payload.geometry_sha256}</dd><dt>Gross floor area</dt><dd>{artifact.payload.gross_floor_area_m2.toLocaleString()} m²</dd><dt>Status</dt><dd>{artifact.status}</dd></dl></aside></div>}
+ <aside className="artifact-panel"><h3>Alternatives</h3>{geometries.length?geometries.map((a,i)=><button className={`alt-btn ${a.id===artifact?.id?'active':''}`} key={a.id} onClick={()=>setSelected(a.id)}>Alternative {i+1}<small>{a.status} · {a.payload.height_m.toFixed(1)} m</small></button>):<p>No 3D geometry artifact is available.</p>}{viewMode==='3d'&&artifact&&<label className="toggle"><input type="checkbox" checked={showFloors} onChange={e=>setShowFloors(e.target.checked)}/> Floor visibility</label>}{viewMode==='2d'&&selectedSpaceId&&<><h3>Selected space</h3><p>{spatialLayout?.payload?.spaces?.find((space:any)=>space.id===selectedSpaceId)?.name||selectedSpaceId}</p></>} {artifact&&<><h3>Artifact lineage</h3><dl><dt>Artifact version</dt><dd>{artifact.id}</dd><dt>Geometry SHA-256</dt><dd className="hash">{artifact.payload.geometry_sha256}</dd><dt>Gross floor area</dt><dd>{artifact.payload.gross_floor_area_m2.toLocaleString()} m²</dd><dt>Status</dt><dd>{artifact.status}</dd></dl></>}</aside></div>}
  <div className="caveats"><b>Preliminary geometry only</b><p>Orbit, pan and zoom are enabled. This massing is not BIM, regulatory approval, or engineering certification.</p></div></section>
 }
