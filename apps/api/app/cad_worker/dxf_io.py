@@ -151,7 +151,7 @@ def validate_dxf(data: bytes, *, expected_element_ids: Sequence[str]) -> dict[st
     if not all(marker in values for marker in ("HEADER", "TABLES", "ENTITIES", "ENDSEC")):
         raise DxfError("DXF section structure is incomplete")
     if not any(pairs[index][0] == "70" and pairs[index][1] == "6"
-               for index in range(len(pairs) - 1)
+               for index in range(1, len(pairs))
                if pairs[index - 1] == ("9", "$INSUNITS")):
         raise DxfError("DXF units are not declared as metres")
     ids: list[str] = []
