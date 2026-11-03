@@ -95,16 +95,6 @@ def compile_architectural_elements(
             "ELEMENT_WORLD_MODEL_MISMATCH",
             "Spatial topology and layout use different World Model revisions",
         )
-    blocking_topology_issues = [
-        issue for issue in topology.get("issues", [])
-        if isinstance(issue, dict) and issue.get("severity") == "ERROR"
-    ]
-    if blocking_topology_issues:
-        raise ArchitecturalElementError(
-            "ELEMENT_TOPOLOGY_INVALID",
-            "Architectural elements cannot be derived from topology with blocking geometry issues",
-            {"issues": blocking_topology_issues},
-        )
     if default_wall_thickness_m is not None and (
         isinstance(default_wall_thickness_m, bool)
         or not isinstance(default_wall_thickness_m, (int, float))
@@ -272,6 +262,17 @@ def compile_architectural_elements(
                     "A wall segment cannot be shared by more than two spaces",
                     {"level_number": level, "space_ids": sorted(owners)},
                 )
+
+    blocking_topology_issues = [
+        issue for issue in topology.get("issues", [])
+        if isinstance(issue, dict) and issue.get("severity") == "ERROR"
+    ]
+    if blocking_topology_issues:
+        raise ArchitecturalElementError(
+            "ELEMENT_TOPOLOGY_INVALID",
+            "Architectural elements cannot be derived from topology with blocking geometry issues",
+            {"issues": blocking_topology_issues},
+        )
 
     candidates: list[dict[str, Any]] = []
     for level, segments in sorted(segments_by_level.items()):
