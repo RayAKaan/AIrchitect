@@ -71,3 +71,11 @@ def test_drawing_package_fails_closed_when_opening_exceeds_host_wall():
     invalid = model.model_copy(update={"doors": (invalid_door,)})
     with pytest.raises(ValueError, match="DRAWING_OPENING_OUTSIDE_HOST"):
         build_drawing_package(invalid)
+
+
+def test_drawing_generation_and_retrieval_routes_are_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/projects/{project_id}/drawings/generate" in paths
+    assert "/api/v1/projects/{project_id}/drawings" in paths
