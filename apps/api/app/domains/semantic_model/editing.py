@@ -55,6 +55,8 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
     },
     "Wall": {
         "level_number": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 300},
+        "start_m": {"kind": "vector3", "unit": "m"},
+        "end_m": {"kind": "vector3", "unit": "m"},
         "length_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
         "height_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1_000},
         "thickness_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 10},
