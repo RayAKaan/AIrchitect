@@ -69,6 +69,15 @@ def _topology(layout: dict) -> dict:
     return build_spatial_topology(layout)
 
 
+def _reseal_topology(payload: dict) -> dict:
+    value = dict(payload)
+    value.pop("topology_hash", None)
+    value["topology_hash"] = hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+    return value
+
+
 def test_element_compiler_derives_unique_perimeter_and_partition_wall_axes():
     layout = _layout()
     topology = _topology(layout)
@@ -353,3 +362,29 @@ def test_element_compiler_does_not_fill_floor_plate_voids():
 
     assert not any(item["element_type"] == "Slab" for item in result["candidates"])
     assert "slab_level_1_void_boundary_requires_explicit_opening_geometry" in result["unknowns"]
+
+
+def test_element_compiler_rejects_topology_nodes_that_do_not_match_layout():
+    layout = _layout()
+    topology = _topology(layout)
+    topology["nodes"] = topology["nodes"][:-1]
+    topology = _reseal_topology(topology)
+
+    with pytest.raises(ArchitecturalElementError) as exc:
+        compile_architectural_elements(layout, topology)
+    assert exc.value.code == "ELEMENT_TOPOLOGY_NODES_MISMATCH"
+    assert exc.value.context["missing_node_ids"] == ["room-b"]
+
+
+def test_element_compiler_rejects_non_manifold_shared_wall_segments():
+    layout = _layout()
+    layout.pop("layout_hash")
+    duplicate = dict(layout["spaces"][0])
+    duplicate["id"] = "room-c"
+    layout["spaces"].append(duplicate)
+    layout = _seal(layout)
+    topology = _topology(layout)
+
+    with pytest.raises(ArchitecturalElementError) as exc:
+        compile_architectural_elements(layout, topology)
+    assert exc.value.code == "ELEMENT_BOUNDARY_NON_MANIFOLD"
