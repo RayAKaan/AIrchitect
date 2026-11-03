@@ -8,6 +8,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from shapely.geometry import Polygon
+from shapely.ops import unary_union
 
 
 ENGINE_VERSION = "architectural-elements-v1.0.0"
@@ -272,6 +273,77 @@ def compile_architectural_elements(
                 },
             })
 
+    slab_candidates: list[dict[str, Any]] = []
+    slab_unknowns: set[str] = set()
+    for level in sorted(raw_segments_by_level):
+        level_rows = [row for row in rows if row.get("level_number") == level]
+        level_elevations = {
+            round(float(point[2]), 6)
+            for row in level_rows
+            for point in row.get("boundary", [])
+            if isinstance(point, list) and len(point) == 3
+        }
+        if len(level_elevations) != 1:
+            slab_unknowns.add(f"slab_level_{level}_elevation_mismatch")
+            continue
+        elevation = next(iter(level_elevations))
+        union = unary_union([polygons[row["id"]] for row in level_rows])
+        components = list(union.geoms) if union.geom_type == "MultiPolygon" else [union]
+        for component_index, component in enumerate(sorted(
+            components,
+            key=lambda item: (round(item.bounds[1], 6), round(item.bounds[0], 6), round(item.area, 6)),
+        )):
+            if component.geom_type != "Polygon" or not component.is_valid or component.is_empty:
+                slab_unknowns.add(f"slab_level_{level}_invalid_union")
+                continue
+            if component.interiors:
+                slab_unknowns.add(f"slab_level_{level}_void_boundary_requires_explicit_opening_geometry")
+                continue
+            ring_xy = [(round(float(x), 6), round(float(y), 6)) for x, y in component.exterior.coords]
+            if len(ring_xy) < 4 or ring_xy[0] != ring_xy[-1]:
+                slab_unknowns.add(f"slab_level_{level}_boundary_invalid")
+                continue
+            boundary = [
+                {"x": x, "y": y, "z": elevation}
+                for x, y in ring_xy
+            ]
+            boundary_key = json.dumps(boundary, sort_keys=True, separators=(",", ":"))
+            element_id = str(uuid5(
+                NAMESPACE_URL,
+                f"airchitect:architectural-slab:{layout['project_version_id']}:{level}:{boundary_key}",
+            ))
+            source_space_ids = sorted(row["id"] for row in level_rows
+                                      if polygons[row["id"]].intersection(component).area > _AREA_TOLERANCE_M2)
+            storey_id = str(uuid5(NAMESPACE_URL, f"airchitect:{layout['project_id']}:Storey:level:{level}"))
+            slab_candidates.append({
+                "candidate_id": element_id,
+                "element_type": "Slab",
+                "name": f"Floor slab — Level {level}",
+                "properties": {
+                    "level_number": level,
+                    "boundary_m": boundary,
+                    "area_m2": round(float(component.area), 6),
+                },
+                "relationship_candidates": [{
+                    "relationship_type": "hosts_element",
+                    "source_id": storey_id,
+                    "target_id": element_id,
+                }],
+                "source_space_ids": source_space_ids,
+                "level_number": level,
+                "status": "UNDERCONSTRAINED",
+                "missing_parameters": ["thickness_m"],
+                "assumptions": [],
+                "geometry": {
+                    "coordinate_system": "local_cartesian_z_up",
+                    "units": "m",
+                    "boundary_m": boundary,
+                    "area_m2": round(float(component.area), 6),
+                    "component_index": component_index,
+                },
+            })
+
+    candidates.extend(slab_candidates)
     unresolved = sorted(set(topology.get("unknowns") or []))
     payload = {
         "schema_version": "phase3-architectural-elements-v1",
@@ -285,12 +357,12 @@ def compile_architectural_elements(
         "status": "REVIEW_REQUIRED" if candidates else "UNDERCONSTRAINED",
         "candidates": candidates,
         "counts": {
-            "wall_candidates": len(candidates),
-            "perimeter_walls": sum(item["wall_classification"] == "PERIMETER" for item in candidates),
-            "partition_walls": sum(item["wall_classification"] == "PARTITION" for item in candidates),
+            "wall_candidates": sum(item["element_type"] == "Wall" for item in candidates),
+            "slab_candidates": len(slab_candidates),
+            "perimeter_walls": sum(item.get("wall_classification") == "PERIMETER" for item in candidates),
+            "partition_walls": sum(item.get("wall_classification") == "PARTITION" for item in candidates),
         },
         "not_generated": [
-            "slabs",
             "roof",
             "doors",
             "windows",
@@ -303,6 +375,8 @@ def compile_architectural_elements(
             "door_and_window_locations",
             "slab_edge_and_opening_geometry",
             "stair_and_ramp_geometry",
+            "slab_thickness_m",
+            *sorted(slab_unknowns),
             "fire_and_accessibility_requirements",
         ])),
         "source_lineage": {
