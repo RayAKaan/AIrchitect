@@ -810,3 +810,50 @@ def test_generated_proposal_rejects_non_uuid_semantic_id():
         )
     assert raised.value.status_code == 422
     assert raised.value.detail["error"]["code"] == "INVALID_ELEMENT_ID"
+
+
+def test_authored_slab_preserves_validated_polygon_geometry_and_storey_placement():
+    model = world_fixture()
+    state = model["designer_state"]
+    boundary = [
+        {"x": 0.0, "y": 0.0, "z": 0.0},
+        {"x": 10.0, "y": 0.0, "z": 0.0},
+        {"x": 10.0, "y": 8.0, "z": 0.0},
+        {"x": 0.0, "y": 8.0, "z": 0.0},
+        {"x": 0.0, "y": 0.0, "z": 0.0},
+    ]
+    slab = create_element(
+        model, state, element_type="Slab", name="Ground floor slab",
+        properties={"boundary_m": boundary, "area_m2": 80.0, "thickness_m": 0.25},
+        level_number=1, actor_id="designer-1", reason="Review floor plate geometry",
+    )
+    intent = next(
+        item for item in compile_parametric_geometry(model, model["semantic_model"])["intents"]
+        if item["element_id"] == slab["element_id"]
+    )
+    assert intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert intent["parameters"]["boundary_m"] == boundary
+    assert intent["parameters"]["thickness_m"] == 0.25
+    assert intent["placement"]["level_number"] == 1
+
+
+@pytest.mark.parametrize("boundary", [
+    [{"x": 0, "y": 0, "z": 0}, {"x": 1, "y": 0, "z": 0},
+     {"x": 1, "y": 1, "z": 0}, {"x": 0, "y": 0, "z": 0}],
+    [{"x": 0, "y": 0, "z": 0}, {"x": 2, "y": 2, "z": 0},
+     {"x": 0, "y": 2, "z": 0}, {"x": 2, "y": 0, "z": 0},
+     {"x": 0, "y": 0, "z": 0}],
+    [{"x": 0, "y": 0, "z": 0}, {"x": 2, "y": 0, "z": 0},
+     {"x": 2, "y": 2, "z": 0.1}, {"x": 0, "y": 2, "z": 0},
+     {"x": 0, "y": 0, "z": 0}],
+])
+def test_slab_boundary_rejects_open_degenerate_self_intersecting_or_nonplanar_rings(boundary):
+    model = world_fixture()
+    with pytest.raises(HTTPException) as raised:
+        create_element(
+            model, model["designer_state"], element_type="Slab", name="Invalid slab",
+            properties={"boundary_m": boundary, "area_m2": 4.0, "thickness_m": 0.2},
+            level_number=1, actor_id="designer-1", reason="Reject invalid slab geometry",
+        )
+    assert raised.value.status_code == 422
+    assert raised.value.detail["error"]["code"] == "INVALID_PROPERTY_VALUE"
