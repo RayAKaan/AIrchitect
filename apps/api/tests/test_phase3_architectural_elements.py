@@ -203,16 +203,17 @@ def test_wall_cad_intent_requires_explicit_axis_endpoints_and_storey_placement()
     world = {"building": {}, "properties": {}}
 
     missing_axis = compile_parametric_geometry(world, semantic)
-    intent = missing_axis["intents"][0]
+    intent = next(item for item in missing_axis["intents"] if item["element_id"] == "wall-1")
     assert intent["status"] == "UNDERCONSTRAINED"
     assert set(intent["missing_parameters"]) == {"start_m", "end_m"}
 
     wall["properties"]["start_m"] = prop({"x": 0.0, "y": 0.0, "z": 0.0}, "m", "vector3")
     wall["properties"]["end_m"] = prop({"x": 5.0, "y": 0.0, "z": 0.0}, "m", "vector3")
     complete_axis = compile_parametric_geometry(world, semantic)
-    assert complete_axis["intents"][0]["status"] == "READY_FOR_CAD_ADAPTER"
-    assert complete_axis["intents"][0]["parameters"]["start_m"]["x"] == 0.0
-    assert complete_axis["intents"][0]["parameters"]["end_m"]["x"] == 5.0
+    wall_intent = next(item for item in complete_axis["intents"] if item["element_id"] == "wall-1")
+    assert wall_intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert wall_intent["parameters"]["start_m"]["x"] == 0.0
+    assert wall_intent["parameters"]["end_m"]["x"] == 5.0
 
 
 def test_architectural_element_proposal_routes_are_registered():
