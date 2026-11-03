@@ -9,6 +9,9 @@ from app.domains.spatial_layout.constraints import (
     ArchitecturalConstraintError,
     compile_architectural_constraints,
 )
+from app.domains.commands.regeneration import RegenerationPlan
+from app.domains.commands.regeneration_engine import execution_steps
+from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
 
 
 WORLD_HASH = "a" * 64
@@ -245,3 +248,49 @@ def test_missing_wall_dimensions_remain_unresolved_hard_constraints():
     assert result["summary"]["hard_unknown"] == 1
     assert result["summary"]["hard_constraints_passed"] is False
     assert result["status"] == "REVIEW_REQUIRED"
+
+
+def test_phase3_regeneration_handlers_use_current_spatial_dependencies():
+    layout, topology, elements, envelope = _inputs()
+    registry = RegenerationHandlerRegistry()
+    assert registry.supports("spatial_topology")
+    assert registry.supports("architectural_elements")
+    assert registry.supports("architectural_constraints")
+
+    result = registry.execute(RegenerationInput(
+        artifact_type="architectural_constraints",
+        source_revision_hash=WORLD_HASH,
+        payload={},
+        dependencies={
+            "spatial_layout": {"payload": layout},
+            "spatial_topology": {"payload": topology},
+            "architectural_elements": {"payload": elements},
+            "planning_envelope": {"payload": envelope},
+        },
+    ))
+    assert result.payload["constraints_hash"]
+    assert result.output_hash
+    assert result.payload["source_lineage"]["world_model_hash"] == WORLD_HASH
+
+
+def test_regeneration_order_places_spatial_constraints_before_quantities():
+    plan = RegenerationPlan(
+        command_id="command-1",
+        source_revision_hash=WORLD_HASH,
+        groups=(
+            "architectural_constraints",
+            "quantities",
+            "spatial_topology",
+            "spatial_layout",
+            "architectural_elements",
+        ),
+        requires_recomputation=True,
+    )
+    steps = execution_steps(plan)
+    assert [step.group for step in steps] == [
+        "spatial_layout",
+        "spatial_topology",
+        "architectural_elements",
+        "architectural_constraints",
+        "quantities",
+    ]
