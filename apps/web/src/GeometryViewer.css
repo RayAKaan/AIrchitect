@@ -1,0 +1,160 @@
+.viewer-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.viewer-mode-switch {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid #d6cec4;
+  border-radius: 0.65rem;
+  background: #f5f2ed;
+}
+
+.viewer-mode-switch button {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #51463d;
+  font: inherit;
+  cursor: pointer;
+}
+
+.viewer-mode-switch button.active {
+  background: #fff;
+  color: #6e3e27;
+  box-shadow: 0 1px 4px #3a2a1c1c;
+}
+
+.viewer-mode-switch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.floorplan-panel {
+  display: flex;
+  min-height: 28rem;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #ddd5ca;
+  border-radius: 0.9rem;
+  background: #f7f5f0;
+}
+
+.floorplan-level {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #5a4d43;
+  font-size: 0.875rem;
+}
+
+.floorplan-level select {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #cfc4b8;
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #332920;
+  font: inherit;
+}
+
+.floorplan-canvas {
+  position: relative;
+  display: flex;
+  min-height: 24rem;
+  flex: 1;
+  align-items: stretch;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #e1d9cf;
+  border-radius: 0.65rem;
+  background-color: #fffdfa;
+  background-image: linear-gradient(#e9e3dc 1px, transparent 1px), linear-gradient(90deg, #e9e3dc 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.floorplan-canvas svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 24rem;
+  padding: 1rem;
+}
+
+.floorplan-space polygon {
+  fill: #e7ded2;
+  stroke: #75543d;
+  stroke-width: 0.045;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: fill 120ms ease, stroke 120ms ease;
+}
+
+.floorplan-space polygon:hover,
+.floorplan-space polygon:focus-visible {
+  fill: #ddc4ad;
+  outline: none;
+  stroke: #8a4f2d;
+  stroke-width: 0.07;
+}
+
+.floorplan-space.selected polygon {
+  fill: #c58d64;
+  stroke: #6e3e27;
+  stroke-width: 0.08;
+}
+
+.floorplan-space text {
+  fill: #3c3027;
+  font-size: 0.28px;
+  pointer-events: none;
+}
+
+.floorplan-space .floorplan-area {
+  fill: #75665a;
+  font-size: 0.22px;
+}
+
+.floorplan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: #75685d;
+  font-size: 0.75rem;
+}
+
+.floorplan-source {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #82766b;
+  font-size: 0.72rem;
+}
+
+.floorplan-empty {
+  display: grid;
+  min-height: 18rem;
+  place-items: center;
+  color: #76695d;
+  text-align: center;
+}
+
+@media (max-width: 850px) {
+  .viewer-layout {
+    flex-direction: column;
+  }
+
+  .floorplan-panel {
+    min-height: 22rem;
+  }
+}
