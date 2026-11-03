@@ -367,6 +367,22 @@ def compile_architectural_constraints(
                     subject_id=candidate_id,
                 ))
 
+    preferred_adjacencies = [
+        item for item in layout.get("adjacencies", [])
+        if isinstance(item, dict) and not item.get("required")
+    ]
+    for adjacency in preferred_adjacencies:
+        satisfied = adjacency.get("status") == "SATISFIED"
+        constraints.append(_constraint(
+            "PREFERRED_PROGRAM_ADJACENCY",
+            "PREFERRED",
+            "PASS" if satisfied else "REVIEW_REQUIRED",
+            "Preferred programme adjacency is a design preference, not a hard geometry or code constraint.",
+            subject_id=f"{adjacency.get('from')}:{adjacency.get('to')}",
+            actual=adjacency.get("status"),
+            expected="SATISFIED",
+        ))
+
     required_adjacencies = [
         item for item in layout.get("adjacencies", [])
         if isinstance(item, dict) and item.get("required")
