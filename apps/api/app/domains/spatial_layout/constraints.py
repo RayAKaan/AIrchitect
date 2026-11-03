@@ -85,9 +85,13 @@ def compile_architectural_constraints(
     layout_hash = _verify(layout, "layout_hash", "CONSTRAINT_LAYOUT")
     topology_hash = _verify(topology, "topology_hash", "CONSTRAINT_TOPOLOGY")
     elements_hash = _verify(architectural_elements, "elements_hash", "CONSTRAINT_ELEMENTS")
-    envelope_hash = envelope.get("envelope_hash")
-    if not isinstance(envelope_hash, str) or len(envelope_hash) != 64:
-        raise ArchitecturalConstraintError("CONSTRAINT_ENVELOPE_HASH_REQUIRED", "A current envelope hash is required")
+    envelope_hash = _verify(envelope, "envelope_hash", "CONSTRAINT_ENVELOPE")
+    layout_lineage = layout.get("source_lineage") or {}
+    if layout_lineage.get("envelope_hash") != envelope_hash:
+        raise ArchitecturalConstraintError(
+            "CONSTRAINT_ENVELOPE_LINEAGE_MISMATCH",
+            "Spatial layout must use the exact current planning envelope hash",
+        )
 
     expected_lineage = {
         "world_model_hash": world_model_hash,
