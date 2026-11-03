@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.domains.drawings.engine import build_drawing_package
+from app.domains.drawings.documentation import build_drawing_documentation
 from app.domains.model import (
     ArchitecturalModel, Building, Door, Level, Point3D, Site, Slab, Space, Wall,
 )
@@ -79,6 +80,7 @@ def test_drawing_generation_and_retrieval_routes_are_registered():
     paths = {route.path for route in app.routes}
     assert "/api/v1/projects/{project_id}/drawings/generate" in paths
     assert "/api/v1/projects/{project_id}/drawings" in paths
+    assert "/api/v1/projects/{project_id}/drawings/document" in paths
 
 
 def test_drawing_package_keeps_unassigned_elements_visible_without_storeys():
@@ -95,3 +97,28 @@ def test_drawing_package_keeps_unassigned_elements_visible_without_storeys():
     assert package["views"][0]["id"] == "plan"
     assert package["views"][0]["level_id"] is None
     assert package["views"][0]["primitives"][0]["element_id"] == "wall-unassigned"
+
+
+def test_drawing_documentation_contains_measured_dimensions_schedules_and_sheet_lineage():
+    model = _model()
+    drawing = build_drawing_package(model)
+    document = build_drawing_documentation(model, drawing)
+
+    assert document["source_model_hash"] == drawing["source_model_hash"]
+    assert document["source_drawing_hash"] == drawing["drawing_hash"]
+    assert document["documentation_hash"]
+    assert {item["property"] for item in document["dimensions"] if item["element_id"] == "wall-1"} == {
+        "length", "height", "thickness",
+    }
+    assert document["schedules"]["spaces"][0]["area_m2"] == 48.0
+    assert document["schedules"]["doors"][0]["host_wall_id"] == "wall-1"
+    assert document["sheets"][0]["issue_status"] == "REVIEW"
+    assert document["sheets"][0]["scale"] is None
+
+
+def test_drawing_documentation_rejects_stale_drawing_package():
+    model = _model()
+    drawing = build_drawing_package(model)
+    drawing["views"][0]["primitives"].clear()
+    with pytest.raises(ValueError, match="DRAWING_PACKAGE_HASH_INVALID"):
+        build_drawing_documentation(model, drawing)

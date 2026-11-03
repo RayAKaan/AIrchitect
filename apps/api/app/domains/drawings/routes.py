@@ -15,6 +15,7 @@ from app.domains.model import model_hash
 from app.domains.model.persistence import get_current_model
 
 from .engine import build_drawing_package
+from .documentation import build_drawing_documentation
 
 
 router = APIRouter(tags=["architectural-drawings"])
@@ -102,3 +103,68 @@ async def get_canonical_drawings(
     return {"artifact_id": artifact.id, "artifact_version": artifact.version,
             "drawing_hash": artifact.output_hash, "status": "STALE" if stale else "CURRENT",
             "drawings": artifact.payload_json}
+
+
+@router.post("/projects/{project_id}/drawings/document", status_code=201)
+async def document_canonical_drawings(
+    project_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    project = await resolve_project(session, project_id, user.id)
+    version = await session.get(ProjectVersion, project.current_version_id)
+    if version is None or version.status != "COMMITTED":
+        raise HTTPException(409, {"error": {"code": "VERSION_NOT_READY", "message": "Commit the current project version before documenting drawings"}})
+    current = await get_current_model(session, project_id)
+    if current is None or current[0].project_version_id != version.id:
+        raise HTTPException(409, {"error": {"code": "MODEL_VERSION_MISMATCH", "message": "A canonical model for the current project version is required"}})
+    _, model = current
+    drawing = await session.scalar(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "architectural_drawings",
+            ArtifactVersion.status == "current",
+        ).order_by(ArtifactVersion.version.desc()).limit(1)
+    )
+    if drawing is None:
+        raise HTTPException(409, {"error": {"code": "DRAWING_PACKAGE_REQUIRED", "message": "Generate current drawing vectors before adding dimensions and schedules"}})
+    try:
+        payload = build_drawing_documentation(model, drawing.payload_json)
+    except ValueError as exc:
+        raise HTTPException(409, {"error": {"code": "DRAWING_DOCUMENTATION_INVALID", "message": str(exc)}}) from exc
+    world = await session.scalar(
+        select(WorldModelRevision).where(WorldModelRevision.project_version_id == version.id)
+        .order_by(WorldModelRevision.revision.desc()).limit(1)
+    )
+    if world is None:
+        raise HTTPException(409, "WORLD_MODEL_REQUIRED")
+    digest = payload["documentation_hash"]
+    existing = await session.scalar(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "architectural_drawing_documentation",
+            ArtifactVersion.output_hash == digest,
+            ArtifactVersion.status == "current",
+        ).limit(1)
+    )
+    if existing is not None:
+        return {"artifact_id": existing.id, "documentation_hash": digest,
+                "documentation": existing.payload_json, "idempotent": True}
+    previous = list((await session.scalars(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == version.id,
+            ArtifactVersion.artifact_type == "architectural_drawing_documentation",
+            ArtifactVersion.status == "current",
+        )
+    )).all())
+    for item in previous:
+        item.status = "stale"
+    artifact = await new_artifact(
+        session, project=project, version=version, world=world, actor=user.id,
+        artifact_type="architectural_drawing_documentation", payload=payload,
+        dependencies=[drawing], status="current",
+    )
+    artifact.output_hash = digest
+    await session.commit()
+    return {"artifact_id": artifact.id, "documentation_hash": digest,
+            "documentation": payload, "idempotent": False}
