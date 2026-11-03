@@ -78,14 +78,25 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "width_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100},
         "height_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100},
     },
+    "Stair": {
+        "width_m": {"kind": "number", "unit": "m", "minimum": 0.3, "maximum": 100},
+        "total_rise_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
+        "total_run_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
+        "riser_count": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 200},
+    },
+    "Ramp": {
+        "width_m": {"kind": "number", "unit": "m", "minimum": 0.3, "maximum": 100},
+        "run_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
+        "rise_m": {"kind": "number", "unit": "m", "minimum": 0.0, "maximum": 100},
+    },
 }
 
-CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window"}
+CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"}
 GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
     "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "setback_m", "elevation_m", "level_number",
-    "length_m", "thickness_m", "spaces",
+    "length_m", "thickness_m", "spaces", "total_run_m", "total_rise_m", "riser_count", "run_m", "rise_m",
 }
 
 
