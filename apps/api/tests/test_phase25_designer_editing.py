@@ -842,7 +842,7 @@ def test_authored_slab_preserves_validated_polygon_geometry_and_storey_placement
 
 @pytest.mark.parametrize("boundary", [
     [{"x": 0, "y": 0, "z": 0}, {"x": 1, "y": 0, "z": 0},
-     {"x": 1, "y": 1, "z": 0}, {"x": 0, "y": 0, "z": 0}],
+     {"x": 1, "y": 1, "z": 0}, {"x": 0, "y": 1, "z": 0}],
     [{"x": 0, "y": 0, "z": 0}, {"x": 2, "y": 2, "z": 0},
      {"x": 0, "y": 2, "z": 0}, {"x": 2, "y": 0, "z": 0},
      {"x": 0, "y": 0, "z": 0}],
