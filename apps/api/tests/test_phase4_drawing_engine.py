@@ -5,6 +5,7 @@ import pytest
 from app.domains.drawings.engine import build_drawing_package
 from app.domains.drawings.documentation import build_drawing_documentation
 from app.domains.drawings.site_circulation import build_site_circulation_package
+from app.domains.drawings.environmental_spatial import analyze_environmental_spatial_performance
 from app.domains.model import (
     ArchitecturalModel, Building, Door, Level, Point3D, Site, Slab, Space, Wall,
 )
@@ -165,3 +166,50 @@ def test_site_circulation_api_routes_are_registered():
     paths = {route.path for route in app.routes}
     assert "/api/v1/projects/{project_id}/site-circulation/generate" in paths
     assert "/api/v1/projects/{project_id}/site-circulation" in paths
+
+
+def test_environmental_spatial_analysis_derives_auditable_room_metrics():
+    model = _model()
+    wall = model.walls[0].model_copy(update={"space_ids": ("room-1",)})
+    window = model.doors[0].model_copy(update={
+        "id": "window-1", "element_type": "window", "width_m": 1.2,
+        "height_m": 1.0, "offset_m": 3.0, "sill_height_m": 0.9,
+    })
+    model = model.model_copy(update={"walls": (wall,), "doors": (), "windows": (window,)})
+    result = analyze_environmental_spatial_performance(model)
+
+    assert result["source_model_hash"]
+    assert result["analysis_hash"]
+    room = result["room_metrics"][0]
+    assert room["floor_area_m2"] == 48.0
+    assert room["window_opening_area_m2"] == 1.2
+    assert room["window_to_floor_area_ratio"] == 0.025
+    assert room["daylight_illuminance"]["status"] == "UNKNOWN"
+    assert result["environmental"]["daylight"]["status"] == "NOT_SIMULATED"
+
+
+def test_environmental_spatial_analysis_reports_shared_space_boundary():
+    model = _model()
+    first = model.spaces[0]
+    second = first.model_copy(update={
+        "id": "room-2", "name": "Adjacent",
+        "boundary": (
+            Point3D(x=8, y=0, z=0), Point3D(x=12, y=0, z=0),
+            Point3D(x=12, y=6, z=0), Point3D(x=8, y=6, z=0),
+        ),
+    })
+    model = model.model_copy(update={"spaces": (first, second)})
+    result = analyze_environmental_spatial_performance(model)
+    assert result["spatial_adjacency"]["shared_boundary_edges"] == [{
+        "source_space_id": "room-1", "target_space_id": "room-2",
+        "shared_boundary_m": 6.0, "relationship": "SHARED_BOUNDARY",
+        "traversable": False, "door_opening_ids": [],
+    }]
+
+
+def test_environmental_spatial_analysis_route_is_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/projects/{project_id}/environmental-spatial-analysis/generate" in paths
+    assert "/api/v1/projects/{project_id}/environmental-spatial-analysis" in paths
