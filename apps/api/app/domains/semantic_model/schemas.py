@@ -28,7 +28,7 @@ class SemanticLockChange(ReasonedRequest):
 
 
 class SemanticElementCreate(ReasonedRequest):
-    element_type: Literal["Space", "Wall", "Slab", "Roof", "Door", "Window"]
+    element_type: Literal["Space", "Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"]
     name: str = Field(min_length=1, max_length=120)
     properties: dict[str, Any] = Field(default_factory=dict, max_length=30)
     level_number: int | None = Field(default=None, ge=1, le=300)

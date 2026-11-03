@@ -77,7 +77,7 @@ def test_compiler_does_not_invent_architectural_components_or_geometry():
     world = sample_world_model()
     semantic = compile_semantic_model(world)
     assert not any(e["element_type"] in {"Wall", "Slab", "Roof", "Door", "Window"} for e in semantic["elements"])
-    assert set(semantic["element_types_not_modelled"]) == {"Wall", "Slab", "Roof", "Door", "Window"}
+    assert set(semantic["element_types_not_modelled"]) == {"Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"}
     spec = compile_parametric_geometry(world, semantic)
     assert spec["status"] == "UNDERCONSTRAINED"
     building_intent = next(i for i in spec["intents"] if i["element_type"] == "Building")

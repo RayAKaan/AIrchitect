@@ -16,11 +16,13 @@ CAD_MAPPINGS: dict[str, dict[str, Any]] = {
     "Storey": {"ifc_class": "IfcBuildingStorey", "cad_feature": "storey_reference", "required": []},
     "Space": {"ifc_class": "IfcSpace", "cad_feature": "space_reference", "required": ["area_m2"]},
     "ParkingFacility": {"ifc_class": "IfcSpace", "cad_feature": "parking_program", "required": ["spaces"]},
-    "Wall": {"ifc_class": "IfcWall", "cad_feature": "wall_extrusion", "required": ["length_m", "height_m", "thickness_m"]},
-    "Slab": {"ifc_class": "IfcSlab", "cad_feature": "slab_extrusion", "required": ["width_m", "depth_m", "thickness_m"]},
+    "Wall": {"ifc_class": "IfcWall", "cad_feature": "wall_extrusion", "required": ["start_m", "end_m", "length_m", "height_m", "thickness_m"]},
+    "Slab": {"ifc_class": "IfcSlab", "cad_feature": "slab_extrusion", "required": ["boundary_m", "thickness_m"]},
     "Roof": {"ifc_class": "IfcRoof", "cad_feature": "roof_profile", "required": ["footprint_width_m", "footprint_depth_m"]},
     "Door": {"ifc_class": "IfcDoor", "cad_feature": "door_opening", "required": ["width_m", "height_m"]},
     "Window": {"ifc_class": "IfcWindow", "cad_feature": "window_opening", "required": ["width_m", "height_m"]},
+    "Stair": {"ifc_class": "IfcStair", "cad_feature": "stair_assembly", "required": ["width_m", "total_rise_m", "total_run_m", "riser_count"]},
+    "Ramp": {"ifc_class": "IfcRamp", "cad_feature": "ramp_solid", "required": ["width_m", "run_m", "rise_m"]},
 }
 
 
@@ -221,7 +223,7 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         add_relationship(str(source_id), relationship_type, str(target_id))
 
     element_types_present = sorted({element["element_type"] for element in elements})
-    architectural_types_not_modelled = [kind for kind in ["Wall", "Slab", "Roof", "Door", "Window"]
+    architectural_types_not_modelled = [kind for kind in ["Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"]
                                         if kind not in element_types_present]
     unknowns = sorted(set(world_model.get("unknowns") or []))
     unknowns.extend(f"semantic_element:{kind}" for kind in architectural_types_not_modelled)
@@ -345,7 +347,7 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
                 "level_number": level_number.get("value") if isinstance(level_number, dict) else None,
                 "elevation_m": elevation.get("value") if isinstance(elevation, dict) else None,
             }
-        elif element_type in {"Space", "Wall", "Slab", "Roof", "Door", "Window"}:
+        elif element_type in {"Space", "Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"}:
             missing.append("storey_placement")
         if element_type == "Space":
             translation_item = (element.get("properties") or {}).get("translation_m")
@@ -388,7 +390,7 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
         "intents": intents,
         "limitations": [
             "This is a deterministic parametric feature specification, not a generated B-rep or IFC file.",
-            "No wall, slab, roof, door, or window geometry is inferred without explicit dimensions and relationships.",
+            "No wall, slab, roof, door, window, stair, or ramp geometry is inferred without explicit dimensions and relationships.",
             "Native CAD/BIM generation and geometry validation remain the responsibility of the isolated CAD worker.",
         ],
     }

@@ -104,7 +104,8 @@ def test_floor_count_cannot_orphan_authored_components():
     model = world_fixture()
     state = model["designer_state"]
     create_element(model, state, element_type="Wall", name="Upper wall",
-        properties={"length_m": 5, "height_m": 3, "thickness_m": 0.2},
+        properties={"start_m": {"x": 0, "y": 0, "z": 3}, "end_m": {"x": 5, "y": 0, "z": 3},
+                    "length_m": 5, "height_m": 3, "thickness_m": 0.2},
         level_number=2, actor_id="designer-1", reason="Create wall on upper storey")
     building = semantic_element(model, "Building")
     with pytest.raises(HTTPException) as raised:
@@ -119,7 +120,8 @@ def test_authored_wall_has_typed_properties_and_selective_feature_intent():
     model = world_fixture()
     state = model["designer_state"]
     event = create_element(model, state, element_type="Wall", name="North wall",
-        properties={"length_m": 8, "height_m": 3, "thickness_m": 0.2},
+        properties={"start_m": {"x": 0, "y": 0, "z": 0}, "end_m": {"x": 8, "y": 0, "z": 0},
+                    "length_m": 8, "height_m": 3, "thickness_m": 0.2},
         level_number=1, actor_id="designer-1", reason="Model north facade")
     wall_id = event["element_id"]
     wall = next(item for item in model["semantic_model"]["elements"] if item["id"] == wall_id)
@@ -130,7 +132,11 @@ def test_authored_wall_has_typed_properties_and_selective_feature_intent():
     spec = compile_parametric_geometry(model, model["semantic_model"])
     intent = next(item for item in spec["intents"] if item["element_id"] == wall_id)
     assert intent["status"] == "READY_FOR_CAD_ADAPTER"
-    assert intent["parameters"] == {"length_m": 8.0, "height_m": 3.0, "thickness_m": 0.2}
+    assert intent["parameters"] == {
+        "start_m": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "end_m": {"x": 8.0, "y": 0.0, "z": 0.0},
+        "length_m": 8.0, "height_m": 3.0, "thickness_m": 0.2,
+    }
     selected_spec = compile_parametric_geometry(model, model["semantic_model"], element_ids={wall_id})
     assert [item["element_id"] for item in selected_spec["intents"]] == [wall_id]
 
@@ -488,7 +494,8 @@ async def test_api_edit_lock_undo_redo_and_override_survives_rebuild(api):
     # Designer-authored components participate in the same version-bound semantic graph.
     create_wall = await api.post(f"{base}/elements", headers=headers, json={
         "element_type": "Wall", "name": "North facade",
-        "properties": {"length_m": 8, "height_m": 3, "thickness_m": 0.2},
+        "properties": {"start_m": {"x": 0, "y": 0, "z": 0}, "end_m": {"x": 8, "y": 0, "z": 0},
+                      "length_m": 8, "height_m": 3, "thickness_m": 0.2},
         "level_number": 1, "reason": "Add explicit facade wall", "expected_revision": 8,
     })
     assert create_wall.status_code == 201, create_wall.text
@@ -672,3 +679,184 @@ async def test_direct_designer_mutation_invalidates_persisted_artifacts_atomical
     assert "program" in calls[0]["groups"]
     assert "design_alternatives" in calls[0]["groups"]
     assert "validation" in calls[0]["groups"]
+
+
+def test_authored_stair_and_ramp_compile_to_typed_parametric_intents():
+    model = world_fixture()
+    state = model["designer_state"]
+    stair = create_element(
+        model, state, element_type="Stair", name="Main stair",
+        properties={"width_m": 1.2, "total_rise_m": 3.6, "total_run_m": 4.8, "riser_count": 20},
+        level_number=1, actor_id="designer-1", reason="Author stair dimensions",
+    )
+    ramp = create_element(
+        model, state, element_type="Ramp", name="Service ramp",
+        properties={"width_m": 1.5, "run_m": 12.0, "rise_m": 0.6},
+        level_number=1, actor_id="designer-1", reason="Author ramp dimensions",
+    )
+
+    semantic = model["semantic_model"]
+    stair_element = next(item for item in semantic["elements"] if item["id"] == stair["element_id"])
+    ramp_element = next(item for item in semantic["elements"] if item["id"] == ramp["element_id"])
+    assert stair_element["cad_mapping"]["ifc_class"] == "IfcStair"
+    assert ramp_element["cad_mapping"]["ifc_class"] == "IfcRamp"
+
+    spec = compile_parametric_geometry(model, semantic)
+    stair_intent = next(item for item in spec["intents"] if item["element_id"] == stair["element_id"])
+    ramp_intent = next(item for item in spec["intents"] if item["element_id"] == ramp["element_id"])
+    assert stair_intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert stair_intent["feature"] == "stair_assembly"
+    assert stair_intent["parameters"] == {
+        "width_m": 1.2, "total_rise_m": 3.6, "total_run_m": 4.8, "riser_count": 20,
+    }
+    assert ramp_intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert ramp_intent["feature"] == "ramp_solid"
+    assert ramp_intent["parameters"] == {"width_m": 1.5, "run_m": 12.0, "rise_m": 0.6}
+
+    undo(model, state, "designer-1")
+    assert not any(item["id"] == ramp["element_id"] for item in model["semantic_model"]["elements"])
+    redo(model, state, "designer-1")
+    assert any(item["id"] == ramp["element_id"] for item in model["semantic_model"]["elements"])
+
+
+def test_stair_and_ramp_dimensions_reject_non_positive_or_invalid_values():
+    model = world_fixture()
+    state = model["designer_state"]
+    with pytest.raises(HTTPException):
+        create_element(
+            model, state, element_type="Stair", name="Invalid stair",
+            properties={"width_m": 1.2, "total_rise_m": 3.0, "total_run_m": 0, "riser_count": 12},
+            level_number=1, actor_id="designer-1", reason="Reject invalid stair",
+        )
+    with pytest.raises(HTTPException):
+        create_element(
+            model, state, element_type="Ramp", name="Invalid ramp",
+            properties={"width_m": 1.5, "run_m": 4.0, "rise_m": -0.1},
+            level_number=1, actor_id="designer-1", reason="Reject invalid ramp",
+        )
+
+
+
+def test_unplaced_stair_and_ramp_remain_underconstrained():
+    model = world_fixture()
+    state = model["designer_state"]
+    stair = create_element(
+        model, state, element_type="Stair", name="Unplaced stair",
+        properties={"width_m": 1.2, "total_rise_m": 3.6, "total_run_m": 4.8, "riser_count": 20},
+        level_number=None, actor_id="designer-1", reason="Create stair without storey",
+    )
+    ramp = create_element(
+        model, state, element_type="Ramp", name="Unplaced ramp",
+        properties={"width_m": 1.5, "run_m": 12.0, "rise_m": 0.6},
+        level_number=None, actor_id="designer-1", reason="Create ramp without storey",
+    )
+    spec = compile_parametric_geometry(model, model["semantic_model"])
+    for element_id in (stair["element_id"], ramp["element_id"]):
+        intent = next(item for item in spec["intents"] if item["element_id"] == element_id)
+        assert intent["status"] == "UNDERCONSTRAINED"
+        assert "storey_placement" in intent["missing_parameters"]
+
+
+
+def test_generated_proposal_promotion_preserves_stable_semantic_id():
+    model = world_fixture()
+    state = model["designer_state"]
+    proposal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "airchitect:reviewed-wall:stable"))
+    event = create_element(
+        model, state, element_type="Wall", name="Reviewed generated wall",
+        properties={
+            "start_m": {"x": 0, "y": 0, "z": 0},
+            "end_m": {"x": 6, "y": 0, "z": 0},
+            "length_m": 6,
+            "height_m": 3,
+            "thickness_m": 0.2,
+        },
+        level_number=1, actor_id="reviewer-1", reason="Approve generated wall",
+        element_id=proposal_id,
+    )
+    assert event["element_id"] == proposal_id
+    assert any(item["id"] == proposal_id for item in model["designer_elements"])
+    with pytest.raises(HTTPException) as duplicate:
+        create_element(
+            model, state, element_type="Wall", name="Duplicate generated wall",
+            properties={
+                "start_m": {"x": 0, "y": 0, "z": 0},
+                "end_m": {"x": 6, "y": 0, "z": 0},
+                "length_m": 6,
+                "height_m": 3,
+                "thickness_m": 0.2,
+            },
+            level_number=1, actor_id="reviewer-1", reason="Duplicate approval",
+            element_id=proposal_id,
+        )
+    assert duplicate.value.status_code == 409
+    assert duplicate.value.detail["error"]["code"] == "SEMANTIC_ELEMENT_EXISTS"
+
+
+def test_generated_proposal_rejects_non_uuid_semantic_id():
+    model = world_fixture()
+    with pytest.raises(HTTPException) as raised:
+        create_element(
+            model, model["designer_state"], element_type="Wall", name="Invalid generated wall",
+            properties={
+                "start_m": {"x": 0, "y": 0, "z": 0},
+                "end_m": {"x": 6, "y": 0, "z": 0},
+                "length_m": 6,
+                "height_m": 3,
+                "thickness_m": 0.2,
+            },
+            level_number=1, actor_id="reviewer-1", reason="Invalid identifier",
+            element_id="not-a-uuid",
+        )
+    assert raised.value.status_code == 422
+    assert raised.value.detail["error"]["code"] == "INVALID_ELEMENT_ID"
+
+
+def test_authored_slab_preserves_validated_polygon_geometry_and_storey_placement():
+    model = world_fixture()
+    state = model["designer_state"]
+    boundary = [
+        {"x": 0.0, "y": 0.0, "z": 0.0},
+        {"x": 10.0, "y": 0.0, "z": 0.0},
+        {"x": 10.0, "y": 8.0, "z": 0.0},
+        {"x": 0.0, "y": 8.0, "z": 0.0},
+        {"x": 0.0, "y": 0.0, "z": 0.0},
+    ]
+    slab_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "airchitect:reviewed-slab:stable"))
+    slab = create_element(
+        model, state, element_type="Slab", name="Ground floor slab",
+        properties={"boundary_m": boundary, "area_m2": 80.0, "thickness_m": 0.25},
+        level_number=1, actor_id="designer-1", reason="Review floor plate geometry",
+        element_id=slab_id,
+    )
+    assert slab["element_id"] == slab_id
+    intent = next(
+        item for item in compile_parametric_geometry(model, model["semantic_model"])["intents"]
+        if item["element_id"] == slab["element_id"]
+    )
+    assert intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert intent["parameters"]["boundary_m"] == boundary
+    assert intent["parameters"]["thickness_m"] == 0.25
+    assert intent["placement"]["level_number"] == 1
+
+
+@pytest.mark.parametrize("boundary", [
+    [{"x": 0, "y": 0, "z": 0}, {"x": 1, "y": 0, "z": 0},
+     {"x": 1, "y": 1, "z": 0}, {"x": 0, "y": 1, "z": 0}],
+    [{"x": 0, "y": 0, "z": 0}, {"x": 2, "y": 2, "z": 0},
+     {"x": 0, "y": 2, "z": 0}, {"x": 2, "y": 0, "z": 0},
+     {"x": 0, "y": 0, "z": 0}],
+    [{"x": 0, "y": 0, "z": 0}, {"x": 2, "y": 0, "z": 0},
+     {"x": 2, "y": 2, "z": 0.1}, {"x": 0, "y": 2, "z": 0},
+     {"x": 0, "y": 0, "z": 0}],
+])
+def test_slab_boundary_rejects_open_degenerate_self_intersecting_or_nonplanar_rings(boundary):
+    model = world_fixture()
+    with pytest.raises(HTTPException) as raised:
+        create_element(
+            model, model["designer_state"], element_type="Slab", name="Invalid slab",
+            properties={"boundary_m": boundary, "area_m2": 4.0, "thickness_m": 0.2},
+            level_number=1, actor_id="designer-1", reason="Reject invalid slab geometry",
+        )
+    assert raised.value.status_code == 422
+    assert raised.value.detail["error"]["code"] == "INVALID_PROPERTY_VALUE"

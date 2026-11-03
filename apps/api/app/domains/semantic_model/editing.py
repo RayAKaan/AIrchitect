@@ -55,14 +55,16 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
     },
     "Wall": {
         "level_number": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 300},
+        "start_m": {"kind": "vector3", "unit": "m"},
+        "end_m": {"kind": "vector3", "unit": "m"},
         "length_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
         "height_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1_000},
         "thickness_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 10},
     },
     "Slab": {
         "level_number": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 300},
-        "width_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
-        "depth_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
+        "boundary_m": {"kind": "polygon3", "unit": "m"},
+        "area_m2": {"kind": "number", "unit": "m2", "minimum": 0.01, "maximum": 100_000_000},
         "thickness_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 10},
     },
     "Roof": {
@@ -78,14 +80,25 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
         "width_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100},
         "height_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100},
     },
+    "Stair": {
+        "width_m": {"kind": "number", "unit": "m", "minimum": 0.3, "maximum": 100},
+        "total_rise_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
+        "total_run_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
+        "riser_count": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 200},
+    },
+    "Ramp": {
+        "width_m": {"kind": "number", "unit": "m", "minimum": 0.3, "maximum": 100},
+        "run_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
+        "rise_m": {"kind": "number", "unit": "m", "minimum": 0.001, "maximum": 100},
+    },
 }
 
-CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window"}
+CREATABLE_TYPES = {"Space", "Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"}
 GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
     "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "setback_m", "elevation_m", "level_number",
-    "length_m", "thickness_m", "spaces",
+    "length_m", "thickness_m", "start_m", "end_m", "boundary_m", "area_m2", "spaces", "total_run_m", "total_rise_m", "riser_count", "run_m", "rise_m",
 }
 
 
@@ -144,6 +157,35 @@ def _normalise(element_type: str, property_name: str, value: Any) -> tuple[Any, 
             if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)) or not math.isfinite(float(coordinate)):
                 raise error(422, "INVALID_PROPERTY_VALUE", "Vector coordinates must be finite numbers", property=property_name, axis=axis)
             normalised[axis] = float(coordinate)
+    elif kind == "polygon3":
+        if not isinstance(value, list) or len(value) < 4 or len(value) > 513:
+            raise error(422, "INVALID_PROPERTY_VALUE", "A slab boundary must be a closed ring of 4–513 metric points",
+                        property=property_name)
+        normalised = []
+        for index, point in enumerate(value):
+            if not isinstance(point, dict) or set(point) != {"x", "y", "z"}:
+                raise error(422, "INVALID_PROPERTY_VALUE", "Every slab boundary point must contain x, y and z",
+                            property=property_name, point_index=index)
+            coordinates = {}
+            for axis in ("x", "y", "z"):
+                coordinate = point[axis]
+                if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)) or not math.isfinite(float(coordinate)):
+                    raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary coordinates must be finite numbers",
+                                property=property_name, point_index=index, axis=axis)
+                coordinates[axis] = float(coordinate)
+            normalised.append(coordinates)
+        if normalised[0] != normalised[-1]:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary ring must be explicitly closed",
+                        property=property_name)
+        elevations = [point["z"] for point in normalised]
+        if max(elevations) - min(elevations) > 1e-6:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary must be planar and horizontal",
+                        property=property_name)
+        from shapely.geometry import Polygon
+        polygon = Polygon([(point["x"], point["y"]) for point in normalised])
+        if not polygon.is_valid or polygon.is_empty or polygon.area <= 1e-6 or polygon.interiors:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary must be a valid simple polygon without unmodelled voids",
+                        property=property_name)
     elif kind == "string":
         if not isinstance(value, str) or not value.strip() or len(value.strip()) > 500:
             raise error(422, "INVALID_PROPERTY_VALUE", "Value must be a non-empty string of at most 500 characters",
@@ -915,7 +957,7 @@ def set_lock(state: dict[str, Any], element_id: str, actor_id: str, locked: bool
 
 def create_element(model: dict[str, Any], state: dict[str, Any], *, element_type: str, name: str,
                    properties: dict[str, Any], level_number: int | None, actor_id: str, reason: str,
-                   host_element_id: str | None = None) -> dict[str, Any]:
+                   host_element_id: str | None = None, element_id: str | None = None) -> dict[str, Any]:
     if element_type not in CREATABLE_TYPES:
         raise error(422, "ELEMENT_TYPE_NOT_CREATABLE", "Only spaces and explicit architectural components can be authored",
                     allowed=sorted(CREATABLE_TYPES))
@@ -927,7 +969,20 @@ def create_element(model: dict[str, Any], state: dict[str, Any], *, element_type
         raise error(422, "INVALID_ELEMENT_NAME", "Element name must contain 1–120 characters")
     if len(properties) > 30:
         raise error(422, "TOO_MANY_PROPERTIES", "An element can contain at most 30 properties")
-    element_id = str(uuid4())
+    # Generated proposal promotion may supply its already-reviewed stable ID.
+    # Validate it as a UUID so arbitrary client identifiers cannot enter the graph.
+    if element_id is not None:
+        try:
+            from uuid import UUID
+            element_id = str(UUID(element_id))
+        except (ValueError, TypeError, AttributeError):
+            raise error(422, "INVALID_ELEMENT_ID", "A supplied semantic element ID must be a UUID")
+        if any(item.get("id") == element_id for item in model.get("designer_elements", [])):
+            raise error(409, "SEMANTIC_ELEMENT_EXISTS", "The semantic element ID already exists", element_id=element_id)
+        if element_id in {item.get("id") for item in (model.get("semantic_model") or {}).get("elements", [])}:
+            raise error(409, "SEMANTIC_ELEMENT_EXISTS", "The semantic element ID already exists", element_id=element_id)
+    else:
+        element_id = str(uuid4())
     identity_key = f"designer:{element_id}"
     typed: dict[str, Any] = {}
     for key, value in properties.items():
