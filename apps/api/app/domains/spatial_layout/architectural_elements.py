@@ -354,6 +354,10 @@ def compile_architectural_elements(
                 slab_unknowns.add(f"slab_level_{level}_void_boundary_requires_explicit_opening_geometry")
                 continue
             component = orient(component, sign=1.0)
+            # Remove redundant collinear vertices introduced by polygon union.
+            # This keeps the persisted slab boundary minimal and stable across
+            # equivalent room partitioning.
+            component = component.simplify(_GEOMETRY_TOLERANCE_M, preserve_topology=True)
             open_ring = [
                 (round(float(x), 6), round(float(y), 6))
                 for x, y in list(component.exterior.coords)[:-1]
