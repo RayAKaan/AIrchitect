@@ -120,6 +120,19 @@ def test_element_compiler_rejects_tampered_topology_and_mismatched_layout():
     assert exc.value.code == "ELEMENT_TOPOLOGY_HASH_INVALID"
 
 
+def test_element_compiler_rejects_non_planar_room_boundaries():
+    layout = _layout()
+    layout.pop("layout_hash")
+    layout["spaces"][0]["boundary"][2][2] = 0.25
+    layout = _seal(layout)
+
+    with pytest.raises(ArchitecturalElementError) as exc:
+        compile_architectural_elements(layout, _topology(layout))
+
+    assert exc.value.code == "ELEMENT_BOUNDARY_NON_PLANAR"
+    assert exc.value.context["space_id"] == "room-a"
+
+
 def test_element_compiler_rejects_non_finite_coordinates():
     layout = _layout()
     layout.pop("layout_hash")
