@@ -112,3 +112,12 @@ The older apps/api/app/domains/design/compiler.py produces a separate prototype 
 - Binds the artifact to World Model, programme, envelope, selected alternative and site revision lineage.
 - Registers the previously unmounted programme, envelope and concept routers alongside the new spatial-layout API.
 - PR 1 deliberately does not claim a circulation network, egress solution, doors, complete architectural components or native B-rep geometry; those are later PR acceptance gates.
+
+
+## PR 3 implementation record
+
+- Adds deterministic wall and partition candidates from the exact room-boundary geometry, including T-junction noding, shared-boundary deduplication, non-manifold rejection and topology-edge lineage.
+- Adds per-storey floor-slab proposals from validated room-polygon unions. Courtyard/void boundaries remain unresolved rather than being silently filled.
+- Persists wall/slab proposal artifacts against the exact spatial layout and topology hashes, with stable candidate IDs, source-space lineage, local metric geometry and explicit missing dimensions.
+- Adds a review/commit endpoint that forks the immutable committed source version into a draft, requires human-reviewed wall height/thickness or slab thickness, promotes stable IDs into the canonical semantic graph, records provenance/audit history, and uses the existing undo/redo event lifecycle.
+- Door/window locations, roof geometry, stairs, ramps, and fire/accessibility facts remain explicit unknowns where the source data does not provide authoritative geometry. PR 3 does not claim those elements are generated.
