@@ -141,6 +141,25 @@ def _dependency_payload(request: RegenerationInput, artifact_type: str) -> dict[
     return payload
 
 
+def _architectural_program_handler(request: RegenerationInput) -> RegenerationOutput:
+    from types import SimpleNamespace
+
+    from app.domains.program.service import build_program
+
+    dependencies = request.dependencies or {}
+    world = dependencies.get("world_model") or {}
+    requirements = dependencies.get("requirements") or {}
+    world_payload = world.get("payload")
+    world_hash = world.get("model_hash")
+    records = requirements.get("records")
+    if not isinstance(world_payload, dict) or world_hash != request.source_revision_hash:
+        raise ValueError("architectural program regeneration requires the exact current World Model revision")
+    if not isinstance(records, list):
+        raise ValueError("architectural program regeneration requires current requirement records")
+    payload = build_program(records, SimpleNamespace(model_json=world_payload, model_hash=world_hash))
+    return _output(request, payload, "program-template-v2")
+
+
 def _spatial_layout_handler(request: RegenerationInput) -> RegenerationOutput:
     from app.domains.spatial_layout.service import build_spatial_layout
 
@@ -232,6 +251,7 @@ class RegenerationHandlerRegistry:
             "quantity": _quantity_handler,
             "cost": _cost_handler,
             "structural": _structural_handler,
+            "architectural_program": _architectural_program_handler,
             "spatial_layout": _spatial_layout_handler,
             "spatial_topology": _spatial_topology_handler,
             "architectural_elements": _architectural_elements_handler,
