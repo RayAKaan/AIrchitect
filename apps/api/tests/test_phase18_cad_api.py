@@ -750,3 +750,55 @@ async def test_cad_export_manifest_hides_runs_from_other_tenants(api, cad):
         headers=other_headers,
     )
     assert response.status_code == 404
+
+
+async def test_semantic_wall_cad_generation_persists_version_bound_geometry(api, cad):
+    headers, _, project, source_version = await _committed_project(api, suffix="semantic-wall")
+    draft_response = await api.post(
+        f"/api/v1/projects/{project['id']}/versions",
+        headers={**headers, "Idempotency-Key": "semantic-wall-draft-001"},
+        json={
+            "expected_current_version_id": source_version["id"],
+            "expected_revision": source_version["revision_number"],
+            "change_summary": "Create editable draft for reviewed architectural wall",
+            "changes": {},
+        },
+    )
+    assert draft_response.status_code == 200, draft_response.text
+    draft = draft_response.json()["version"]
+    created = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{draft['id']}/semantic-model/elements",
+        headers=headers,
+        json={
+            "element_type": "Wall",
+            "name": "North facade wall",
+            "properties": {
+                "start_m": {"x": 0.0, "y": 0.0, "z": 0.0},
+                "end_m": {"x": 8.0, "y": 0.0, "z": 0.0},
+                "length_m": 8.0,
+                "height_m": 3.0,
+                "thickness_m": 0.2,
+            },
+            "level_number": 1,
+            "reason": "Model reviewed north facade dimensions",
+            "expected_revision": draft["revision_number"],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    generated = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{draft['id']}/semantic-model/cad",
+        headers=headers,
+    )
+    assert generated.status_code == 201, generated.text
+    payload = generated.json()
+    assert payload["status"] == "SUCCEEDED"
+    assert payload["element_count"] == 1
+    assert payload["geometry_artifact_id"]
+    assert payload["artifacts"]
+    assert cad.worker.count == 1
+    assert cad.worker.last.request["elements"][0]["kind"] == "wall"
+    assert cad.worker.last.request["elements"][0]["id"] == created.json()["event"]["element_id"]
+    assert cad.worker.last.request["elements"][0]["footprint"]["points"] == [
+        [0.0, 0.1], [8.0, 0.1], [8.0, -0.1], [0.0, -0.1],
+    ]
