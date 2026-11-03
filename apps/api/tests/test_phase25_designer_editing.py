@@ -728,3 +728,24 @@ def test_stair_and_ramp_dimensions_reject_non_positive_or_invalid_values():
             level_number=1, actor_id="designer-1", reason="Reject invalid ramp",
         )
 
+
+
+def test_unplaced_stair_and_ramp_remain_underconstrained():
+    model = world_fixture()
+    state = model["designer_state"]
+    stair = create_element(
+        model, state, element_type="Stair", name="Unplaced stair",
+        properties={"width_m": 1.2, "total_rise_m": 3.6, "total_run_m": 4.8, "riser_count": 20},
+        level_number=None, actor_id="designer-1", reason="Create stair without storey",
+    )
+    ramp = create_element(
+        model, state, element_type="Ramp", name="Unplaced ramp",
+        properties={"width_m": 1.5, "run_m": 12.0, "rise_m": 0.6},
+        level_number=None, actor_id="designer-1", reason="Create ramp without storey",
+    )
+    spec = compile_parametric_geometry(model, model["semantic_model"])
+    for element_id in (stair["element_id"], ramp["element_id"]):
+        intent = next(item for item in spec["intents"] if item["element_id"] == element_id)
+        assert intent["status"] == "UNDERCONSTRAINED"
+        assert "storey_placement" in intent["missing_parameters"]
+
