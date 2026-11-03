@@ -47,11 +47,16 @@ export default function GeometryViewer({api,token,projectId,onClose}:{api:string
  useEffect(()=>{
   if(levels.length&&!levels.includes(selectedLevel)) setSelectedLevel(levels[0]);
   if(!levels.length) setSelectedSpaceId(null);
- },[levels,selectedLevel]);
+  if(selectedSpaceId&&!spatialLayout?.payload?.spaces?.some((space:any)=>space.id===selectedSpaceId&&space.level_number===selectedLevel)) setSelectedSpaceId(null);
+ },[levels,selectedLevel,selectedSpaceId,spatialLayout]);
  useEffect(()=>{
-  if(!selected) return;
-  emitWorkspaceSelection({artifactId:selected,projectId,elementId:selectedSpaceId||undefined});
- },[selected,selectedSpaceId,projectId]);
+  if(!artifact&&spatialLayout) setViewMode('2d');
+ },[artifact,spatialLayout]);
+ useEffect(()=>{
+  const activeArtifactId=selected||spatialLayout?.id;
+  if(!activeArtifactId) return;
+  emitWorkspaceSelection({artifactId:activeArtifactId,projectId,elementId:selectedSpaceId||undefined});
+ },[selected,selectedSpaceId,projectId,spatialLayout]);
  useEffect(()=>{
   const onSelection=(event:Event)=>{
     const detail=(event as CustomEvent<WorkspaceSelectionEvent>).detail;
@@ -63,7 +68,7 @@ export default function GeometryViewer({api,token,projectId,onClose}:{api:string
   window.addEventListener(WORKSPACE_SELECTION_EVENT,onSelection);
   return()=>window.removeEventListener(WORKSPACE_SELECTION_EVENT,onSelection);
  },[projectId,selected,selectedSpaceId]);
- return <section className="viewer-shell"><div className="viewer-head"><div><p className="eyebrow">PERSISTED GEOMETRY</p><h2>3D massing</h2><small>WebGL · project version {snapshot?.version.number??'—'} · canonical artifacts only</small></div><button className="btn outline" onClick={onClose}>Close</button></div>
+ return <section className="viewer-shell"><div className="viewer-head"><div><p className="eyebrow">PERSISTED GEOMETRY</p><h2>{viewMode==='2d'?'2D floor plan':'3D massing'}</h2><small>WebGL · project version {snapshot?.version.number??'—'} · canonical artifacts only</small></div><button className="btn outline" onClick={onClose}>Close</button></div>
  {busy&&<div className="empty-state"><div className="spinner"/>Loading persisted geometry…</div>}
  {error&&<div className="alert">{error}</div>}
  {!busy&&!error&&!artifact&&!spatialLayout&&<div className="empty-state"><h3>No spatial or geometry artifact</h3><p>Generate a spatial layout or geometry artifact to open the viewer.</p></div>}
@@ -71,7 +76,7 @@ export default function GeometryViewer({api,token,projectId,onClose}:{api:string
  <div className="viewer-main">
   <div className="viewer-mode-switch" role="group" aria-label="View mode">
    <button type="button" className={viewMode==='2d'?'active':''} aria-pressed={viewMode==='2d'} disabled={!spatialLayout} onClick={()=>setViewMode('2d')}>2D floor plan</button>
-   <button type="button" className={viewMode==='3d'?'active':''} aria-pressed={viewMode==='3d'} onClick={()=>setViewMode('3d')}>3D massing</button>
+   <button type="button" className={viewMode==='3d'?'active':''} aria-pressed={viewMode==='3d'} disabled={!artifact} onClick={()=>setViewMode('3d')}>3D massing</button>
   </div>
   {viewMode==='3d'&&artifact&&<div className="canvas-wrap three-canvas"><Canvas shadows camera={{position:[45,35,45],fov:42}}><color attach="background" args={['#eeece5']}/><ambientLight intensity={1.5}/><directionalLight castShadow position={[30,45,20]} intensity={2}/><Suspense fallback={null}><Bounds fit clip observe margin={1.25}><Massing artifact={artifact} showFloors={showFloors}/><FitButton/></Bounds></Suspense><Grid infiniteGrid fadeDistance={150} sectionColor="#9a765f" cellColor="#c9c2b8"/><OrbitControls makeDefault enablePan enableZoom enableRotate/></Canvas></div>}
   {viewMode==='2d'&&spatialLayout&&<div className="floorplan-panel">
