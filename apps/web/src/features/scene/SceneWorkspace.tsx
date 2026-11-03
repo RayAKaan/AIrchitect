@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ModelScene, SceneNode, SceneView } from './sceneContract';
+type WorkspaceView = SceneView | '3d';
 import { EditToolbar, type EditCommand } from './EditToolbar';
 import { SceneCanvas } from './SceneCanvas';
 import { SceneInspector } from './SceneInspector';
@@ -13,7 +14,7 @@ type SceneWorkspaceProps = Readonly<{
 
 export function SceneWorkspace({ scene, onPreviewEdit, onCommitEdit }: SceneWorkspaceProps) {
   const [selectedNode, setSelectedNode] = useState<SceneNode | null>(null);
-  const [view, setView] = useState<SceneView>('plan');
+  const [view, setView] = useState<WorkspaceView>('plan');
   const previewEdit = onPreviewEdit ?? (() => undefined);
   const commitEdit = onCommitEdit ?? (() => undefined);
 
@@ -29,7 +30,7 @@ export function SceneWorkspace({ scene, onPreviewEdit, onCommitEdit }: SceneWork
             onClick={() => setView(item)}>{item === 'plan' ? 'Plan' : item === 'front' ? 'Front elevation / section' : 'Side elevation / section'}</button>
         ))}
         <button type="button" className="btn outline" aria-pressed={view === '3d'}
-          onClick={() => setView('3d' as SceneView)}>3D</button>
+          onClick={() => setView('3d')}>3D</button>
       </div>
       <EditToolbar elementId={selectedNode?.id ?? null} onPreview={previewEdit} onCommit={commitEdit} />
       <div className="viewer-layout">
