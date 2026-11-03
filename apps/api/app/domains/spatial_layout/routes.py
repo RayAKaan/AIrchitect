@@ -588,6 +588,10 @@ async def generate_architectural_elements(
     except ArchitecturalElementError as exc:
         raise error(409, exc.code, str(exc), **exc.context) from exc
 
+    payload["regeneration_request"] = {"default_wall_thickness_m": None}
+    hash_input = dict(payload)
+    hash_input.pop("elements_hash", None)
+    payload["elements_hash"] = canonical_hash(hash_input)
     digest = payload["elements_hash"]
     existing = await session.scalar(
         select(ArtifactVersion).where(
