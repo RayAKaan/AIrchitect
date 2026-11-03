@@ -785,6 +785,29 @@ async def test_semantic_wall_cad_generation_persists_version_bound_geometry(api,
         },
     )
     assert created.status_code == 201, created.text
+    slab = await api.post(
+        f"/api/v1/projects/{project['id']}/versions/{draft['id']}/semantic-model/elements",
+        headers=headers,
+        json={
+            "element_type": "Slab",
+            "name": "Ground floor slab",
+            "properties": {
+                "boundary_m": [
+                    {"x": 0.0, "y": 0.0, "z": 0.0},
+                    {"x": 8.0, "y": 0.0, "z": 0.0},
+                    {"x": 8.0, "y": 6.0, "z": 0.0},
+                    {"x": 0.0, "y": 6.0, "z": 0.0},
+                    {"x": 0.0, "y": 0.0, "z": 0.0},
+                ],
+                "area_m2": 48.0,
+                "thickness_m": 0.25,
+            },
+            "level_number": 1,
+            "reason": "Review ground floor slab boundary and thickness",
+            "expected_revision": created.json()["version"]["revision_number"],
+        },
+    )
+    assert slab.status_code == 201, slab.text
 
     generated = await api.post(
         f"/api/v1/projects/{project['id']}/versions/{draft['id']}/semantic-model/cad",
@@ -793,12 +816,18 @@ async def test_semantic_wall_cad_generation_persists_version_bound_geometry(api,
     assert generated.status_code == 201, generated.text
     payload = generated.json()
     assert payload["status"] == "SUCCEEDED"
-    assert payload["element_count"] == 1
+    assert payload["element_count"] == 2
     assert payload["geometry_artifact_id"]
     assert payload["artifacts"]
     assert cad.worker.count == 1
-    assert cad.worker.last.request["elements"][0]["kind"] == "wall"
-    assert cad.worker.last.request["elements"][0]["id"] == created.json()["event"]["element_id"]
-    assert cad.worker.last.request["elements"][0]["footprint"]["points"] == [
+    worker_elements = {
+        element["id"]: element for element in cad.worker.last.request["elements"]
+    }
+    assert worker_elements[created.json()["event"]["element_id"]]["kind"] == "wall"
+    assert worker_elements[created.json()["event"]["element_id"]]["footprint"]["points"] == [
         [0.0, 0.1], [8.0, 0.1], [8.0, -0.1], [0.0, -0.1],
     ]
+    slab_element_id = slab.json()["event"]["element_id"]
+    assert worker_elements[slab_element_id]["kind"] == "floor_plate"
+    assert worker_elements[slab_element_id]["base_elevation_m"] == -0.25
+    assert worker_elements[slab_element_id]["height_m"] == 0.25
