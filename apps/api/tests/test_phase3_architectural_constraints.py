@@ -209,3 +209,18 @@ def test_architectural_constraint_evaluation_route_is_registered():
         "/api/v1/projects/{project_id}/versions/{version_ref}/architectural-elements/constraints"
         in paths
     )
+
+
+def test_explicitly_unsatisfied_required_adjacency_is_a_hard_failure():
+    layout, topology, elements, envelope = _inputs()
+    layout["adjacencies"][0]["status"] = "UNSATISFIED"
+    layout = _seal(layout, "layout_hash")
+    layout, topology, elements = _relink(layout, topology, elements, envelope)
+
+    result = compile_architectural_constraints(
+        layout, topology, elements, envelope, world_model_hash=WORLD_HASH
+    )
+    required = next(item for item in result["constraints"] if item["code"] == "REQUIRED_PROGRAM_ADJACENCY")
+    assert required["classification"] == "HARD"
+    assert required["status"] == "FAIL"
+    assert result["status"] == "BLOCKED"
