@@ -21,6 +21,8 @@ CAD_MAPPINGS: dict[str, dict[str, Any]] = {
     "Roof": {"ifc_class": "IfcRoof", "cad_feature": "roof_profile", "required": ["footprint_width_m", "footprint_depth_m"]},
     "Door": {"ifc_class": "IfcDoor", "cad_feature": "door_opening", "required": ["width_m", "height_m"]},
     "Window": {"ifc_class": "IfcWindow", "cad_feature": "window_opening", "required": ["width_m", "height_m"]},
+    "Stair": {"ifc_class": "IfcStair", "cad_feature": "stair_assembly", "required": ["width_m", "total_rise_m", "total_run_m", "riser_count"]},
+    "Ramp": {"ifc_class": "IfcRamp", "cad_feature": "ramp_solid", "required": ["width_m", "run_m", "rise_m"]},
 }
 
 
@@ -221,7 +223,7 @@ def compile_semantic_model(world_model: dict[str, Any]) -> dict[str, Any]:
         add_relationship(str(source_id), relationship_type, str(target_id))
 
     element_types_present = sorted({element["element_type"] for element in elements})
-    architectural_types_not_modelled = [kind for kind in ["Wall", "Slab", "Roof", "Door", "Window"]
+    architectural_types_not_modelled = [kind for kind in ["Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"]
                                         if kind not in element_types_present]
     unknowns = sorted(set(world_model.get("unknowns") or []))
     unknowns.extend(f"semantic_element:{kind}" for kind in architectural_types_not_modelled)
