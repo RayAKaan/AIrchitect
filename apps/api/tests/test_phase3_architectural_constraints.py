@@ -224,3 +224,24 @@ def test_explicitly_unsatisfied_required_adjacency_is_a_hard_failure():
     assert required["classification"] == "HARD"
     assert required["status"] == "FAIL"
     assert result["status"] == "BLOCKED"
+
+
+def test_missing_wall_dimensions_remain_unresolved_hard_constraints():
+    layout, topology, elements, envelope = _inputs()
+    wall = elements["candidates"][0]
+    wall["properties"].pop("height_m")
+    wall["properties"].pop("thickness_m")
+    wall["missing_parameters"] = ["height_m", "thickness_m"]
+    elements = _seal(elements, "elements_hash")
+
+    result = compile_architectural_constraints(
+        layout, topology, elements, envelope, world_model_hash=WORLD_HASH
+    )
+    wall_constraint = next(
+        item for item in result["constraints"] if item["code"] == "WALL_DIMENSIONS_COMPLETE"
+    )
+    assert wall_constraint["classification"] == "HARD"
+    assert wall_constraint["status"] == "UNKNOWN"
+    assert result["summary"]["hard_unknown"] == 1
+    assert result["summary"]["hard_constraints_passed"] is False
+    assert result["status"] == "REVIEW_REQUIRED"
