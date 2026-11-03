@@ -581,6 +581,8 @@ from app.domains.spatial_layout.routes import router as spatial_layout_router
 app.include_router(spatial_layout_router, prefix=settings.api_prefix)
 from app.domains.drawings.routes import router as drawings_router
 app.include_router(drawings_router, prefix=settings.api_prefix)
+from app.domains.drawings.environmental_routes import router as environmental_analysis_router
+app.include_router(environmental_analysis_router, prefix=settings.api_prefix)
 from app.domains.design.system_preview_routes import router as system_preview_router
 app.include_router(system_preview_router, prefix=settings.api_prefix)
 from app.domains.cad.routes import router as cad_router
