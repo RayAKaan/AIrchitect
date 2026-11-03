@@ -83,8 +83,14 @@ export function projectScene(scene: ModelScene, view: SceneView): SceneProjectio
     }
   }
   if (projectedPoints.length === 0) throw new Error('scene has no projectable faces');
-  const minimum = [0, 1].map(axis => Math.min(...projectedPoints.map(point => point[axis]))) as [number, number];
-  const maximum = [0, 1].map(axis => Math.max(...projectedPoints.map(point => point[axis]))) as [number, number];
+  const minimum: [number, number] = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
+  const maximum: [number, number] = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
+  for (const point of projectedPoints) {
+    for (const axis of [0, 1] as const) {
+      minimum[axis] = Math.min(minimum[axis], point[axis]);
+      maximum[axis] = Math.max(maximum[axis], point[axis]);
+    }
+  }
   return Object.freeze({
     view,
     bounds: Object.freeze({ minimum: Object.freeze(minimum), maximum: Object.freeze(maximum) }),
