@@ -4,6 +4,7 @@ import pytest
 
 from app.domains.drawings.engine import build_drawing_package
 from app.domains.drawings.documentation import build_drawing_documentation
+from app.domains.drawings.site_circulation import build_site_circulation_package
 from app.domains.model import (
     ArchitecturalModel, Building, Door, Level, Point3D, Site, Slab, Space, Wall,
 )
@@ -122,3 +123,45 @@ def test_drawing_documentation_rejects_stale_drawing_package():
     drawing["views"][0]["primitives"].clear()
     with pytest.raises(ValueError, match="DRAWING_PACKAGE_HASH_INVALID"):
         build_drawing_documentation(model, drawing)
+
+
+def test_site_circulation_package_is_deterministic_and_does_not_claim_unverified_routes():
+    model = _model()
+    wall = model.walls[0].model_copy(update={"space_ids": ("room-1",)})
+    model = model.model_copy(update={"walls": (wall,)})
+    first = build_site_circulation_package(model)
+    second = build_site_circulation_package(model)
+
+    assert first == second
+    assert first["source_model_hash"]
+    assert first["package_hash"]
+    assert first["site"]["area_m2"] == 400.0
+    assert first["building_footprints"][0]["within_site"] is True
+    assert first["access_candidates"][0]["id"] == "door-1"
+    assert first["access_candidates"][0]["adjacent_space_ids"] == ["room-1"]
+    assert first["circulation"]["status"] == "CANDIDATE_GRAPH_ONLY"
+    assert first["circulation"]["edges"] == []
+    assert first["circulation"]["route_geometry"] == []
+    assert first["circulation"]["unknowns"]
+
+
+def test_site_circulation_package_reports_footprints_outside_canonical_site():
+    model = _model()
+    slab = model.slabs[0].model_copy(update={
+        "boundary": (
+            Point3D(x=-1, y=0, z=0), Point3D(x=8, y=0, z=0),
+            Point3D(x=8, y=6, z=0), Point3D(x=-1, y=6, z=0),
+        ),
+    })
+    invalid = model.model_copy(update={"slabs": (slab,)})
+    package = build_site_circulation_package(invalid)
+    assert package["site_constraints"]["footprints_within_site"] is False
+    assert package["site_constraints"]["outside_site_area_m2"] == 6.0
+
+
+def test_site_circulation_api_routes_are_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/projects/{project_id}/site-circulation/generate" in paths
+    assert "/api/v1/projects/{project_id}/site-circulation" in paths
