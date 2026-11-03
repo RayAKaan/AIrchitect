@@ -58,31 +58,33 @@ class RegenerationService:
             }
             for dependency in dependencies
         }
-        selected_alternative = await session.scalar(
-            select(DesignAlternative).where(
-                DesignAlternative.project_version_id == artifact.project_version_id,
-                DesignAlternative.status == "SELECTED",
+        if "design_alternative" in dependency_snapshots:
+            selected_alternative = await session.scalar(
+                select(DesignAlternative).where(
+                    DesignAlternative.project_version_id == artifact.project_version_id,
+                    DesignAlternative.status == "SELECTED",
+                )
             )
-        )
-        if selected_alternative is not None and "design_alternative" in dependency_snapshots:
-            dependency_snapshots["design_alternative"]["selected_alternative_id"] = selected_alternative.id
-        world_revision = await session.scalar(
-            select(WorldModelRevision).where(
-                WorldModelRevision.project_version_id == artifact.project_version_id,
-                WorldModelRevision.model_hash == job.source_revision_hash,
-            ).order_by(WorldModelRevision.revision_number.desc()).limit(1)
-        )
-        if world_revision is not None:
-            dependency_snapshots["world_model"] = {
-                "payload": world_revision.model_json,
-                "model_hash": world_revision.model_hash,
-            }
-        requirements = list((await session.scalars(
-            select(RequirementRecord).where(
-                RequirementRecord.project_version_id == artifact.project_version_id
-            ).order_by(RequirementRecord.created_at, RequirementRecord.id)
-        )).all())
-        dependency_snapshots["requirements"] = {"records": requirements}
+            if selected_alternative is not None:
+                dependency_snapshots["design_alternative"]["selected_alternative_id"] = selected_alternative.id
+        if artifact.artifact_type == "architectural_program":
+            world_revision = await session.scalar(
+                select(WorldModelRevision).where(
+                    WorldModelRevision.project_version_id == artifact.project_version_id,
+                    WorldModelRevision.model_hash == job.source_revision_hash,
+                ).order_by(WorldModelRevision.revision_number.desc()).limit(1)
+            )
+            if world_revision is not None:
+                dependency_snapshots["world_model"] = {
+                    "payload": world_revision.model_json,
+                    "model_hash": world_revision.model_hash,
+                }
+            requirements = list((await session.scalars(
+                select(RequirementRecord).where(
+                    RequirementRecord.project_version_id == artifact.project_version_id
+                ).order_by(RequirementRecord.created_at, RequirementRecord.id)
+            )).all())
+            dependency_snapshots["requirements"] = {"records": requirements}
         output = self._handlers.execute(
             RegenerationInput(
                 artifact_type=artifact.artifact_type,
