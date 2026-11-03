@@ -79,6 +79,7 @@ def test_element_compiler_derives_unique_perimeter_and_partition_wall_axes():
     assert first["elements_hash"] == second["elements_hash"]
     assert first["counts"] == {
         "wall_candidates": 7,
+        "slab_candidates": 1,
         "perimeter_walls": 6,
         "partition_walls": 1,
     }
@@ -86,7 +87,7 @@ def test_element_compiler_derives_unique_perimeter_and_partition_wall_axes():
     assert partition["source_space_ids"] == ["room-a", "room-b"]
     assert partition["status"] == "UNDERCONSTRAINED"
     assert set(partition["missing_parameters"]) == {"height_m", "thickness_m"}
-    assert first["not_generated"] == ["slabs", "roof", "doors", "windows", "stairs", "ramps"]
+    assert first["not_generated"] == ["roof", "doors", "windows", "stairs", "ramps"]
 
 
 def test_explicit_wall_thickness_is_preserved_as_a_design_parameter():
@@ -289,3 +290,45 @@ def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
     }
     assert result["counts"]["partition_walls"] == 3
     assert len({item["candidate_id"] for item in result["candidates"]}) == len(result["candidates"])
+
+
+def test_element_compiler_derives_stable_floor_slab_from_room_union():
+    layout = _layout()
+    topology = _topology(layout)
+    first = compile_architectural_elements(layout, topology)
+    second = compile_architectural_elements(layout, topology)
+
+    slab = next(item for item in first["candidates"] if item["element_type"] == "Slab")
+    repeated = next(item for item in second["candidates"] if item["element_type"] == "Slab")
+    assert slab["candidate_id"] == repeated["candidate_id"]
+    assert slab["source_space_ids"] == ["room-a", "room-b"]
+    assert slab["properties"]["area_m2"] == 100.0
+    assert slab["properties"]["boundary_m"] == [
+        {"x": 0.0, "y": 0.0, "z": 0.0},
+        {"x": 10.0, "y": 0.0, "z": 0.0},
+        {"x": 10.0, "y": 10.0, "z": 0.0},
+        {"x": 0.0, "y": 10.0, "z": 0.0},
+        {"x": 0.0, "y": 0.0, "z": 0.0},
+    ]
+    assert slab["status"] == "UNDERCONSTRAINED"
+    assert slab["missing_parameters"] == ["thickness_m"]
+
+
+def test_element_compiler_does_not_fill_floor_plate_voids():
+    layout = _layout()
+    layout.pop("layout_hash")
+    layout["spaces"] = [{
+        "id": "courtyard-ring",
+        "level_number": 1,
+        "area_m2": 84.0,
+        "boundary": [
+            [0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0],
+            [0.0, 10.0, 0.0], [0.0, 0.0, 0.0],
+        ],
+    }]
+    layout = _seal(layout)
+    topology = _topology(layout)
+    result = compile_architectural_elements(layout, topology)
+
+    assert not any(item["element_type"] == "Slab" for item in result["candidates"])
+    assert "slab_level_1_void_boundary_requires_explicit_opening_geometry" in result["unknowns"]
