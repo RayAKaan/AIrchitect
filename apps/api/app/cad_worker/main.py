@@ -377,6 +377,7 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
         "warnings": warnings,
         "ifc_summary": ifc_summary,
         "dxf_summary": dxf_summary,
+        "export_metadata": {"ifc": ifc_summary, "dxf": dxf_summary},
     }
 
 
