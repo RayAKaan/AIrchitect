@@ -164,6 +164,14 @@ def _spatial_layout_handler(request: RegenerationInput) -> RegenerationOutput:
         design_parameters=alternative["parameters"],
         design_metrics=metrics,
     )
+    from app.domains.semantic_model.service import canonical_hash
+    payload["regeneration_request"] = {
+        "project_id": raw["project_id"],
+        "project_version_id": raw["project_version_id"],
+    }
+    hash_input = dict(payload)
+    hash_input.pop("layout_hash", None)
+    payload["layout_hash"] = canonical_hash(hash_input)
     return _output(request, payload, "phase3-spatial-layout-v1")
 
 
@@ -187,6 +195,13 @@ def _architectural_elements_handler(request: RegenerationInput) -> RegenerationO
         topology,
         default_wall_thickness_m=raw.get("default_wall_thickness_m"),
     )
+    from app.domains.semantic_model.service import canonical_hash
+    payload["regeneration_request"] = {
+        "default_wall_thickness_m": raw.get("default_wall_thickness_m"),
+    }
+    hash_input = dict(payload)
+    hash_input.pop("elements_hash", None)
+    payload["elements_hash"] = canonical_hash(hash_input)
     return _output(request, payload, "phase3-architectural-elements-v1")
 
 
