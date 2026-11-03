@@ -37,10 +37,13 @@ def _wall_opening_line(opening: Any, wall: Any) -> tuple[tuple[float, float], tu
     if length <= 1e-9:
         raise ValueError(f"DRAWING_WALL_ZERO_LENGTH:{wall.id}")
     ux, uy = dx / length, dy / length
-    half = opening.width_m / 2
-    cx = wall.start.x + ux * opening.offset_m
-    cy = wall.start.y + uy * opening.offset_m
-    return (cx - ux * half, cy - uy * half), (cx + ux * half, cy + uy * half)
+    start_distance = opening.offset_m
+    end_distance = opening.offset_m + opening.width_m
+    if start_distance < 0 or end_distance > length + 1e-9:
+        raise ValueError(f"DRAWING_OPENING_OUTSIDE_HOST:{opening.id}")
+    start = (wall.start.x + ux * start_distance, wall.start.y + uy * start_distance)
+    end = (wall.start.x + ux * end_distance, wall.start.y + uy * end_distance)
+    return start, end
 
 
 def build_drawing_package(model: ArchitecturalModel) -> dict[str, Any]:
@@ -83,8 +86,8 @@ def build_drawing_package(model: ArchitecturalModel) -> dict[str, Any]:
         elevations.append({
             "kind": "RECTANGLE", "layer": "A-DOOR" if opening.element_type == "door" else "A-WINDOW",
             "element_id": opening.id,
-            "start": _point(offset - opening.width_m / 2, wall.start.z + opening.sill_height_m),
-            "end": _point(offset + opening.width_m / 2, wall.start.z + opening.sill_height_m + opening.height_m),
+            "start": _point(offset, wall.start.z + opening.sill_height_m),
+            "end": _point(offset + opening.width_m, wall.start.z + opening.sill_height_m + opening.height_m),
             "host_wall_id": wall.id,
         })
     levels = [{"id": level.id, "name": level.name, "elevation_m": level.elevation_m}
