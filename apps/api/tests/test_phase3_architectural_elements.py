@@ -162,3 +162,63 @@ def test_architectural_element_proposal_routes_are_registered():
         in paths
     )
     assert "/api/v1/projects/{project_id}/versions/{version_ref}/architectural-elements" in paths
+
+
+def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
+    layout = _seal({
+        "schema_version": "phase3-spatial-layout-v1",
+        "project_id": "project-1",
+        "project_version_id": "version-1",
+        "world_model_hash": "a" * 64,
+        "selected_alternative_id": "alternative-1",
+        "spaces": [
+            {
+                "id": "left",
+                "level_number": 1,
+                "area_m2": 100.0,
+                "boundary": [
+                    [0.0, 0.0, 0.0], [5.0, 0.0, 0.0],
+                    [5.0, 10.0, 0.0], [0.0, 10.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                ],
+            },
+            {
+                "id": "right-lower",
+                "level_number": 1,
+                "area_m2": 25.0,
+                "boundary": [
+                    [5.0, 0.0, 0.0], [10.0, 0.0, 0.0],
+                    [10.0, 5.0, 0.0], [5.0, 5.0, 0.0],
+                    [5.0, 0.0, 0.0],
+                ],
+            },
+            {
+                "id": "right-upper",
+                "level_number": 1,
+                "area_m2": 25.0,
+                "boundary": [
+                    [5.0, 5.0, 0.0], [10.0, 5.0, 0.0],
+                    [10.0, 10.0, 0.0], [5.0, 10.0, 0.0],
+                    [5.0, 5.0, 0.0],
+                ],
+            },
+        ],
+        "adjacencies": [],
+        "source_lineage": {"world_model_hash": "a" * 64},
+    })
+
+    result = compile_architectural_elements(layout, _topology(layout))
+    shared_vertical = [
+        item for item in result["candidates"]
+        if item["wall_classification"] == "PARTITION"
+        and item["properties"]["start_m"]["x"] == 5.0
+        and item["properties"]["end_m"]["x"] == 5.0
+    ]
+
+    assert len(shared_vertical) == 2
+    assert {tuple(item["source_space_ids"]) for item in shared_vertical} == {
+        ("left", "right-lower"),
+        ("left", "right-upper"),
+    }
+    assert result["counts"]["partition_walls"] == 3
+    assert len({item["candidate_id"] for item in result["candidates"]}) == len(result["candidates"])
