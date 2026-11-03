@@ -147,15 +147,22 @@ def _spatial_layout_handler(request: RegenerationInput) -> RegenerationOutput:
     raw = request.payload.get("regeneration_request")
     if not isinstance(raw, dict):
         raise ValueError("spatial layout artifact is missing regeneration_request")
+    alternative_dependency = (request.dependencies or {}).get("design_alternative") or {}
+    alternative = alternative_dependency.get("payload") or {}
+    alternative_id = alternative_dependency.get("selected_alternative_id")
+    metrics = dict(alternative.get("metrics") or {})
+    metrics["design_hash"] = alternative.get("design_hash")
+    if not alternative_id or not isinstance(alternative.get("parameters"), dict):
+        raise ValueError("spatial layout regeneration requires the current selected design alternative")
     payload = build_spatial_layout(
         project_id=raw["project_id"],
         project_version_id=raw["project_version_id"],
         world_model_hash=request.source_revision_hash,
-        program=raw["program"],
-        envelope=raw["envelope"],
-        alternative_id=raw["alternative_id"],
-        design_parameters=raw["design_parameters"],
-        design_metrics=raw["design_metrics"],
+        program=_dependency_payload(request, "architectural_program"),
+        envelope=_dependency_payload(request, "planning_envelope"),
+        alternative_id=alternative_id,
+        design_parameters=alternative["parameters"],
+        design_metrics=metrics,
     )
     return _output(request, payload, "phase3-spatial-layout-v1")
 
