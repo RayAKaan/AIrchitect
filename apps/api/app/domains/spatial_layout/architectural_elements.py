@@ -8,6 +8,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from shapely.geometry import Polygon
+from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 
@@ -342,10 +343,17 @@ def compile_architectural_elements(
             if component.interiors:
                 slab_unknowns.add(f"slab_level_{level}_void_boundary_requires_explicit_opening_geometry")
                 continue
-            ring_xy = [(round(float(x), 6), round(float(y), 6)) for x, y in component.exterior.coords]
-            if len(ring_xy) < 4 or ring_xy[0] != ring_xy[-1]:
+            component = orient(component, sign=1.0)
+            open_ring = [
+                (round(float(x), 6), round(float(y), 6))
+                for x, y in list(component.exterior.coords)[:-1]
+            ]
+            if len(open_ring) < 3:
                 slab_unknowns.add(f"slab_level_{level}_boundary_invalid")
                 continue
+            start_index = min(range(len(open_ring)), key=lambda index: open_ring[index])
+            open_ring = open_ring[start_index:] + open_ring[:start_index]
+            ring_xy = open_ring + [open_ring[0]]
             boundary = [
                 {"x": x, "y": y, "z": elevation}
                 for x, y in ring_xy
