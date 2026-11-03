@@ -96,12 +96,12 @@ def test_explicit_wall_thickness_is_preserved_as_a_design_parameter():
 
     result = compile_architectural_elements(layout, topology, default_wall_thickness_m=0.2)
 
-    assert all(item["properties"]["thickness_m"] == 0.2 for item in result["candidates"])
-    assert all("thickness_m" not in item["missing_parameters"] for item in result["candidates"])
-    assert all(
-        "not a code minimum" in item["assumptions"][0]
-        for item in result["candidates"]
-    )
+    walls = [item for item in result["candidates"] if item["element_type"] == "Wall"]
+    assert all(item["properties"]["thickness_m"] == 0.2 for item in walls)
+    assert all("thickness_m" not in item["missing_parameters"] for item in walls)
+    assert all("not a code minimum" in item["assumptions"][0] for item in walls)
+    slabs = [item for item in result["candidates"] if item["element_type"] == "Slab"]
+    assert all("thickness_m" in item["missing_parameters"] for item in slabs)
 
 
 @pytest.mark.parametrize("thickness", [0, -0.1, 1.01, float("nan"), True])
