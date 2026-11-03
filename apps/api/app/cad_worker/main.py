@@ -292,6 +292,7 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
             masses=[
                 {
                     "id": element["id"],
+                    "kind": element.get("kind", "building_mass"),
                     "name": element.get("name") or element["id"],
                     "footprint": element["footprint"]["points"],
                     "base_elevation_m": element.get("base_elevation_m", 0.0),
