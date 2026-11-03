@@ -23,6 +23,17 @@ def _seal(payload: dict, field: str) -> dict:
     return value
 
 
+def _relink(layout, topology, elements, envelope):
+    layout["source_lineage"]["envelope_hash"] = envelope["envelope_hash"]
+    layout = _seal(layout, "layout_hash")
+    topology["layout_hash"] = layout["layout_hash"]
+    topology = _seal(topology, "topology_hash")
+    elements["source_lineage"]["layout_hash"] = layout["layout_hash"]
+    elements["source_lineage"]["topology_hash"] = topology["topology_hash"]
+    elements = _seal(elements, "elements_hash")
+    return layout, topology, elements
+
+
 def _inputs():
     layout = {
         "project_id": "project-1",
@@ -145,6 +156,7 @@ def test_constraint_engine_blocks_footprint_and_gfa_hard_limit_violations():
     envelope["max_footprint_m2"] = 50.0
     envelope["max_gfa_m2"] = 700.0
     envelope = _seal(envelope, "envelope_hash")
+    layout, topology, elements = _relink(layout, topology, elements, envelope)
 
     result = compile_architectural_constraints(
         layout, topology, elements, envelope, world_model_hash=WORLD_HASH
