@@ -561,6 +561,8 @@ from app.domains.regulatory.routes import router as regulatory_router
 app.include_router(regulatory_router, prefix=settings.api_prefix)
 from app.domains.regulatory.profile_routes import router as regulatory_profile_router
 app.include_router(regulatory_profile_router, prefix=settings.api_prefix)
+from app.domains.regulatory.canonical_routes import router as canonical_regulatory_router
+app.include_router(canonical_regulatory_router, prefix=settings.api_prefix)
 from app.domains.change_impact.routes import router as change_impact_router
 app.include_router(change_impact_router, prefix=settings.api_prefix)
 from app.domains.validation.routes import router as validation_router
