@@ -406,3 +406,29 @@ def test_element_compiler_blocks_topology_geometry_errors():
     with pytest.raises(ArchitecturalElementError) as exc:
         compile_architectural_elements(layout, topology)
     assert exc.value.code == "ELEMENT_TOPOLOGY_INVALID"
+
+
+def test_spatial_topology_and_element_regeneration_use_current_layout_dependencies():
+    layout = _layout()
+    expected_topology = _topology(layout)
+    registry = RegenerationHandlerRegistry()
+
+    topology_result = registry.execute(RegenerationInput(
+        artifact_type="spatial_topology",
+        source_revision_hash=layout["world_model_hash"],
+        payload={},
+        dependencies={"spatial_layout": {"payload": layout}},
+    ))
+    assert topology_result.payload["topology_hash"] == expected_topology["topology_hash"]
+
+    expected_elements = compile_architectural_elements(layout, expected_topology)
+    elements_result = registry.execute(RegenerationInput(
+        artifact_type="architectural_elements",
+        source_revision_hash=layout["world_model_hash"],
+        payload={"regeneration_request": {"default_wall_thickness_m": None}},
+        dependencies={
+            "spatial_layout": {"payload": layout},
+            "spatial_topology": {"payload": expected_topology},
+        },
+    ))
+    assert elements_result.payload["elements_hash"] == expected_elements["elements_hash"]
