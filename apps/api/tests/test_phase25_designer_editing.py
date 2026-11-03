@@ -104,7 +104,8 @@ def test_floor_count_cannot_orphan_authored_components():
     model = world_fixture()
     state = model["designer_state"]
     create_element(model, state, element_type="Wall", name="Upper wall",
-        properties={"length_m": 5, "height_m": 3, "thickness_m": 0.2},
+        properties={"start_m": {"x": 0, "y": 0, "z": 3}, "end_m": {"x": 5, "y": 0, "z": 3},
+                    "length_m": 5, "height_m": 3, "thickness_m": 0.2},
         level_number=2, actor_id="designer-1", reason="Create wall on upper storey")
     building = semantic_element(model, "Building")
     with pytest.raises(HTTPException) as raised:
@@ -119,7 +120,8 @@ def test_authored_wall_has_typed_properties_and_selective_feature_intent():
     model = world_fixture()
     state = model["designer_state"]
     event = create_element(model, state, element_type="Wall", name="North wall",
-        properties={"length_m": 8, "height_m": 3, "thickness_m": 0.2},
+        properties={"start_m": {"x": 0, "y": 0, "z": 0}, "end_m": {"x": 8, "y": 0, "z": 0},
+                    "length_m": 8, "height_m": 3, "thickness_m": 0.2},
         level_number=1, actor_id="designer-1", reason="Model north facade")
     wall_id = event["element_id"]
     wall = next(item for item in model["semantic_model"]["elements"] if item["id"] == wall_id)
@@ -130,7 +132,11 @@ def test_authored_wall_has_typed_properties_and_selective_feature_intent():
     spec = compile_parametric_geometry(model, model["semantic_model"])
     intent = next(item for item in spec["intents"] if item["element_id"] == wall_id)
     assert intent["status"] == "READY_FOR_CAD_ADAPTER"
-    assert intent["parameters"] == {"length_m": 8.0, "height_m": 3.0, "thickness_m": 0.2}
+    assert intent["parameters"] == {
+        "start_m": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "end_m": {"x": 8.0, "y": 0.0, "z": 0.0},
+        "length_m": 8.0, "height_m": 3.0, "thickness_m": 0.2,
+    }
     selected_spec = compile_parametric_geometry(model, model["semantic_model"], element_ids={wall_id})
     assert [item["element_id"] for item in selected_spec["intents"]] == [wall_id]
 
@@ -488,7 +494,8 @@ async def test_api_edit_lock_undo_redo_and_override_survives_rebuild(api):
     # Designer-authored components participate in the same version-bound semantic graph.
     create_wall = await api.post(f"{base}/elements", headers=headers, json={
         "element_type": "Wall", "name": "North facade",
-        "properties": {"length_m": 8, "height_m": 3, "thickness_m": 0.2},
+        "properties": {"start_m": {"x": 0, "y": 0, "z": 0}, "end_m": {"x": 8, "y": 0, "z": 0},
+                      "length_m": 8, "height_m": 3, "thickness_m": 0.2},
         "level_number": 1, "reason": "Add explicit facade wall", "expected_revision": 8,
     })
     assert create_wall.status_code == 201, create_wall.text
