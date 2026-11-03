@@ -616,11 +616,26 @@ async def commit_architectural_elements(
         idempotency_key=idempotency_key,
     )
     if not created:
+        existing_elements = {
+            item.get("id"): item for item in draft_world.model_json.get("designer_elements", [])
+        }
+        replay_matches = all(
+            candidate_id in existing_elements
+            and (existing_elements[candidate_id].get("provenance") or {}).get("generated_from", {}).get("proposal_hash")
+                == proposal.output_hash
+            and (existing_elements[candidate_id].get("provenance") or {}).get("generated_from", {}).get("review_reason")
+                == reason.strip()
+            for candidate_id in candidate_ids
+        )
+        if not replay_matches:
+            raise error(409, "IDEMPOTENCY_KEY_REUSED",
+                        "This idempotency key was already used for a different architectural element commit")
         return {
             "created": False,
             "version": {"id": draft.id, "version_number": draft.version, "status": draft.status,
                         "revision_number": draft.revision_number},
             "world_model_hash": draft_world.model_hash,
+            "committed_element_ids": sorted(candidate_ids),
         }
     model = dict(draft_world.model_json)
     state = state_for(model)
