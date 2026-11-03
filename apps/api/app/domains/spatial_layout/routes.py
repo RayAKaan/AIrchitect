@@ -649,21 +649,32 @@ async def commit_architectural_elements(
     committed: list[str] = []
     for candidate_id in sorted(candidate_ids):
         candidate = by_id[candidate_id]
-        if candidate.get("element_type") != "Wall":
+        element_type = candidate.get("element_type")
+        required_reviewed = (
+            {"height_m", "thickness_m"} if element_type == "Wall"
+            else {"thickness_m"} if element_type == "Slab"
+            else None
+        )
+        if required_reviewed is None:
             raise error(422, "UNSUPPORTED_PROPOSAL_TYPE",
-                        "Only wall candidates can currently be promoted by this workflow",
-                        candidate_id=candidate_id, element_type=candidate.get("element_type"))
+                        "Only wall and slab candidates can currently be promoted",
+                        candidate_id=candidate_id, element_type=element_type)
         dimensions = reviewed[candidate_id]
-        if not isinstance(dimensions, dict) or set(dimensions) != {"height_m", "thickness_m"}:
-            raise error(422, "WALL_DIMENSIONS_REQUIRED",
-                        "Each wall requires exactly reviewed height_m and thickness_m values",
-                        candidate_id=candidate_id)
+        if not isinstance(dimensions, dict) or set(dimensions) != required_reviewed:
+            raise error(
+                422,
+                "ARCHITECTURAL_DIMENSIONS_REQUIRED",
+                "Provide exactly the missing reviewed dimensions for each selected element",
+                candidate_id=candidate_id,
+                element_type=element_type,
+                required_properties=sorted(required_reviewed),
+            )
         properties = dict(candidate.get("properties") or {})
         properties.update(dimensions)
         create_element(
             model, state,
-            element_type="Wall",
-            name=str(candidate.get("name") or "Reviewed wall"),
+            element_type=element_type,
+            name=str(candidate.get("name") or f"Reviewed {str(element_type).lower()}"),
             properties=properties,
             level_number=candidate.get("level_number"),
             actor_id=user.id,
