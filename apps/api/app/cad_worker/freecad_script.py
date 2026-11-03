@@ -24,6 +24,7 @@ ignored by the caller.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import traceback
@@ -97,8 +98,8 @@ def _add_native_metadata(feature, element):
         "CoordinateSystem": ("App::PropertyString", metadata.get("coordinate_system", "local_cartesian_z_up")),
         "Units": ("App::PropertyString", metadata.get("units", "m")),
         "MaterialClass": ("App::PropertyString", element.get("material_class", "unspecified")),
-        "BaseElevationM": ("App::PropertyLength", float(element.get("base_elevation_m", 0.0))),
-        "HeightM": ("App::PropertyLength", float(element["height_m"])),
+        "BaseElevationM": ("App::PropertyFloat", float(element.get("base_elevation_m", 0.0))),
+        "HeightM": ("App::PropertyFloat", float(element["height_m"])),
     }
     for name, (property_type, value) in values.items():
         if not hasattr(feature, name):
@@ -127,11 +128,10 @@ def _build_native_feature(document, element):
         if length <= 1e-6 or thickness <= 1e-6:
             raise ValueError("wall dimensions must be positive")
         # The local X axis follows the wall axis; the local Y axis spans thickness.
-        angle = __import__("math").degrees(__import__("math").atan2(end[1] - start[1], end[0] - start[0]))
-        normal = (-__import__("math").sin(__import__("math").radians(angle)),
-                  __import__("math").cos(__import__("math").radians(angle)))
-        origin = FreeCAD.Vector(start[0] - normal[0] * thickness / 2,
-                                start[1] - normal[1] * thickness / 2, base)
+        angle = math.degrees(math.atan2(end[1] - start[1], end[0] - start[0]))
+        normal = (-math.sin(math.radians(angle)), math.cos(math.radians(angle)))
+        origin = FreeCAD.Vector(start[0] - normal[0] * thickness,
+                                start[1] - normal[1] * thickness, base)
         feature = document.addObject("Part::Box", object_name)
         feature.Length = length
         feature.Width = thickness
