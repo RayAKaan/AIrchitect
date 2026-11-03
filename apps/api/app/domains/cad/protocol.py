@@ -285,6 +285,7 @@ class CadJobResult(BaseModel):
     combined_bounding_box: BoundingBox | None = None
     artifacts: list[ArtifactRef] = Field(default_factory=list)
     validation: CadValidationResult | None = None
+    export_metadata: dict[str, Any] = Field(default_factory=dict)
     element_count: int
     warnings: list[str] = Field(default_factory=list)
 
