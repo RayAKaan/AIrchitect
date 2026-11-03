@@ -59,14 +59,17 @@ class RegenerationService:
             for dependency in dependencies
         }
         if "design_alternative" in dependency_snapshots:
-            selected_alternative = await session.scalar(
-                select(DesignAlternative).where(
-                    DesignAlternative.project_version_id == artifact.project_version_id,
-                    DesignAlternative.status == "SELECTED",
+            target_alternative = (
+                await session.get(DesignAlternative, artifact.alternative_id)
+                if artifact.alternative_id else await session.scalar(
+                    select(DesignAlternative).where(
+                        DesignAlternative.project_version_id == artifact.project_version_id,
+                        DesignAlternative.status == "SELECTED",
+                    )
                 )
             )
-            if selected_alternative is not None:
-                dependency_snapshots["design_alternative"]["selected_alternative_id"] = selected_alternative.id
+            if target_alternative is not None:
+                dependency_snapshots["design_alternative"]["selected_alternative_id"] = target_alternative.id
         if artifact.artifact_type == "architectural_program":
             world_revision = await session.scalar(
                 select(WorldModelRevision).where(
@@ -186,15 +189,18 @@ class RegenerationService:
             if previous is None:
                 raise ValueError("regeneration dependency artifact not found")
             if previous.artifact_type == "design_alternative" and previous.alternative_id is None:
-                selected = await session.scalar(
-                    select(DesignAlternative).where(
-                        DesignAlternative.project_version_id == artifact.project_version_id,
-                        DesignAlternative.status == "SELECTED",
+                target_alternative = (
+                    await session.get(DesignAlternative, artifact.alternative_id)
+                    if artifact.alternative_id else await session.scalar(
+                        select(DesignAlternative).where(
+                            DesignAlternative.project_version_id == artifact.project_version_id,
+                            DesignAlternative.status == "SELECTED",
+                        )
                     )
                 )
                 current = (
-                    await session.get(ArtifactVersion, selected.artifact_version_id)
-                    if selected is not None else None
+                    await session.get(ArtifactVersion, target_alternative.artifact_version_id)
+                    if target_alternative is not None else None
                 )
                 if current is not None and current.status != "current":
                     current = None
