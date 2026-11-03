@@ -17,7 +17,7 @@ from typing import Any
 
 from app.domains.cad.protocol import ARTIFACT_CONTENT_TYPES
 
-SUPPORTED_FORMATS = frozenset({"glb", "step", "ifc", "freecad_document", "brep"})
+SUPPORTED_FORMATS = frozenset({"glb", "step", "ifc", "freecad_document", "brep", "dxf"})
 
 
 def _check(code: str, passed: bool, detail: str, *, actual: Any = None, expected: Any = None) -> dict[str, Any]:
@@ -129,6 +129,29 @@ def _freecad_checks(data: bytes) -> list[dict[str, Any]]:
         return [_check("FCSTD_ARCHIVE", False, "FreeCAD document is not a readable ZIP container")]
 
 
+def _dxf_checks(data: bytes) -> list[dict[str, Any]]:
+    try:
+        from app.cad_worker.dxf_io import validate_dxf
+        # Parse the format through the same strict validator used by the worker.
+        text = data.decode("ascii")
+        pairs = text.splitlines()
+        ids = []
+        for index in range(0, len(pairs) - 3, 2):
+            if pairs[index].strip() == "1001" and pairs[index + 1].strip() == "AIrchitect":
+                if pairs[index + 2].strip() == "1000":
+                    ids.append(pairs[index + 3].strip())
+        result = validate_dxf(data, expected_element_ids=ids)
+        return [
+            _check("DXF_SIGNATURE", result["schema"] == "AC1015", "DXF R2000 signature is present"),
+            _check("DXF_ENTITIES", result["entity_count"] > 0, "DXF contains canonical footprint entities",
+                   actual=result["entity_count"], expected="> 0"),
+            _check("DXF_CANONICAL_IDS", len(result["canonical_element_ids"]) == result["entity_count"],
+                   "DXF canonical element IDs are unique and complete"),
+        ]
+    except (UnicodeDecodeError, ValueError) as exc:
+        return [_check("DXF_STRUCTURE", False, f"DXF structure is invalid: {exc}")]
+
+
 def validate_export(
     kind: str,
     data: bytes,
@@ -157,6 +180,8 @@ def validate_export(
             checks.extend(_step_checks(data, ifc=False))
         elif kind == "ifc":
             checks.extend(_step_checks(data, ifc=True))
+        elif kind == "dxf":
+            checks.extend(_dxf_checks(data))
         elif kind == "freecad_document":
             checks.extend(_freecad_checks(data))
         elif kind == "brep":
