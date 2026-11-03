@@ -72,7 +72,7 @@ class RegenerationService:
                 select(WorldModelRevision).where(
                     WorldModelRevision.project_version_id == artifact.project_version_id,
                     WorldModelRevision.model_hash == job.source_revision_hash,
-                ).order_by(WorldModelRevision.revision_number.desc()).limit(1)
+                ).order_by(WorldModelRevision.revision.desc()).limit(1)
             )
             if world_revision is not None:
                 dependency_snapshots["world_model"] = {
