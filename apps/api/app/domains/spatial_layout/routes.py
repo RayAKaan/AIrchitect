@@ -572,13 +572,15 @@ async def commit_architectural_elements(
     candidate_ids = body.get("candidate_ids")
     reviewed = body.get("reviewed_properties")
     reason = body.get("reason")
-    if expected_current != source_version.id or isinstance(expected_revision, bool) or expected_revision != source_version.revision_number:
+    if (expected_current != source_version.id or isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int) or expected_revision != source_version.revision_number):
         raise error(409, "VERSION_CONFLICT", "The source version changed; refresh the proposal before committing",
                     expected_revision=source_version.revision_number)
-    if not isinstance(candidate_ids, list) or not candidate_ids or len(candidate_ids) > 500:
-        raise error(422, "INVALID_CANDIDATES", "Select between 1 and 500 architectural element candidates")
-    if len(set(candidate_ids)) != len(candidate_ids) or not all(isinstance(item, str) for item in candidate_ids):
-        raise error(422, "INVALID_CANDIDATES", "Candidate IDs must be unique strings")
+    if (not isinstance(candidate_ids, list) or not candidate_ids or len(candidate_ids) > 500
+            or not all(isinstance(item, str) and item for item in candidate_ids)):
+        raise error(422, "INVALID_CANDIDATES", "Select between 1 and 500 non-empty candidate IDs")
+    if len(set(candidate_ids)) != len(candidate_ids):
+        raise error(422, "INVALID_CANDIDATES", "Candidate IDs must be unique")
     if not isinstance(reviewed, dict) or set(reviewed) != set(candidate_ids):
         raise error(422, "REVIEWED_PROPERTIES_REQUIRED",
                     "Provide reviewed dimensions for every selected candidate")
