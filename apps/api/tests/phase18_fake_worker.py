@@ -261,7 +261,15 @@ def main(argv):
         else:
             document = build(scenario)
             requested_elements = request.get("elements") or []
-            if document.get("status") == "ok" and document.get("measurements") and requested_elements:
+            if scenario == "ok":
+                document["measurements"] = [
+                    measurement(id=element["id"], kind=element.get("kind", "building_mass"))
+                    for element in requested_elements
+                ]
+                document["element_count"] = len(requested_elements)
+                document["combined_volume_m3"] = 3000.0 * len(requested_elements)
+                document["combined_area_m2"] = 1400.0 * len(requested_elements)
+            elif document.get("status") == "ok" and document.get("measurements") and requested_elements:
                 if len(document["measurements"]) == len(requested_elements):
                     for measured, requested in zip(document["measurements"], requested_elements):
                         measured["id"] = requested["id"]
