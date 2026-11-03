@@ -427,10 +427,11 @@ def compile_architectural_constraints(
         ))
 
     failures = sum(item["classification"] == "HARD" and item["status"] == "FAIL" for item in constraints)
+    hard_unknowns = sum(item["classification"] == "HARD" and item["status"] == "UNKNOWN" for item in constraints)
     unknowns = sum(item["status"] == "UNKNOWN" for item in constraints)
     review = sum(item["status"] == "REVIEW_REQUIRED" for item in constraints)
     passed = sum(item["status"] == "PASS" for item in constraints)
-    status = "BLOCKED" if failures else "REVIEW_REQUIRED" if unknowns or review else "PASS"
+    status = "BLOCKED" if failures else "REVIEW_REQUIRED" if hard_unknowns or unknowns or review else "PASS"
     payload = {
         "schema_version": "phase3-architectural-constraints-v1",
         "engine_version": ENGINE_VERSION,
@@ -443,7 +444,8 @@ def compile_architectural_constraints(
             "failed": failures,
             "unknown": unknowns,
             "review_required": review,
-            "hard_constraints_passed": failures == 0,
+            "hard_unknown": hard_unknowns,
+            "hard_constraints_passed": failures == 0 and hard_unknowns == 0,
         },
         "unknowns": sorted(set(layout.get("unknowns") or []) | set(topology.get("unknowns") or []) | set(architectural_elements.get("unknowns") or [])),
         "source_lineage": {
