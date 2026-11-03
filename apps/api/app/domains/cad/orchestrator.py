@@ -70,6 +70,7 @@ from app.domains.cad.errors import (
     CadStorageError,
     GeometryEngineUnavailableError,
 )
+from app.domains.cad.model_adapter import build_semantic_cad_request
 from app.domains.cad.persistence import (
     RecordedCadRun,
     record_cad_failure,
@@ -87,6 +88,7 @@ from app.domains.cad.protocol import (
 )
 from app.domains.cad.runner import run_cad_job
 from app.domains.cad.storage import ContentAddressedStore, StoredBlob
+from app.domains.lifecycle.service import canonical_hash
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +421,131 @@ async def run_cad_job_for_alternative(
         stored=stored,
         alternative_id=alternative.id,
         design_hash=alternative.design_hash or "",
+        capabilities=capabilities,
+        duration_ms=duration_ms,
+    )
+    await session.commit()
+    return CadJobOutcome(
+        run=recorded.run,
+        artifacts=recorded.artifacts,
+        geometry_artifact_id=recorded.geometry_artifact_id,
+        validation_run_id=recorded.validation_run_id,
+        stale=recorded.stale,
+    )
+
+
+async def run_cad_job_for_semantic_model(
+    session: AsyncSession,
+    *,
+    project: Project,
+    version: ProjectVersion,
+    semantic_model: dict[str, Any],
+    actor_id: str,
+    config: CadConfig,
+    requested_outputs: list[str] | None = None,
+    capabilities: WorkerCapabilities | None = None,
+    world: WorldModelRevision | None = None,
+) -> CadJobOutcome:
+    """Generate and persist B-rep artifacts from reviewed canonical semantic walls."""
+    from starlette.concurrency import run_in_threadpool
+
+    if world is None:
+        world = await resolve_current_world(session, version)
+    job_id = f"cad-semantic-{version.id[:8]}-{uuid4().hex[:12]}"
+    try:
+        request = build_semantic_cad_request(
+            world.model_json,
+            semantic_model,
+            job_id=job_id,
+            project_name=project.name or "AIrchitect Project",
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        code = detail.split(":", 1)[0]
+        raise CadRequestRejected(code, detail, status=409) from exc
+
+    options = CadJobOptions(
+        write_glb=config.write_glb,
+        write_step=config.write_step,
+        write_ifc=config.write_ifc,
+        write_fcstd=config.write_fcstd,
+        ifc_schema=config.ifc_schema,
+    )
+    if requested_outputs:
+        unknown = sorted(set(requested_outputs) - set(ARTIFACT_EXTENSIONS))
+        if unknown:
+            raise CadRequestRejected(
+                "CAD_UNKNOWN_OUTPUT",
+                f"Unknown requested output(s): {', '.join(unknown)}",
+                status=400,
+            )
+        for kind, flag in _OUTPUT_FLAGS.items():
+            if kind not in requested_outputs:
+                setattr(options, flag, False)
+        if not any(getattr(options, flag) for flag in _OUTPUT_FLAGS.values()):
+            raise CadRequestRejected(
+                "CAD_NO_OUTPUTS_ENABLED",
+                "None of the requested outputs are enabled on this deployment",
+                status=409,
+            )
+    request = request.model_copy(update={
+        "options": options,
+        "mesh_deflection_m": config.mesh_deflection_m,
+        "mesh_angular_deflection_rad": config.mesh_angular_deflection_rad,
+        "freecad_timeout_seconds": config.freecad_timeout_seconds,
+    })
+
+    started = time.monotonic()
+    try:
+        result, stored = await run_in_threadpool(
+            _run_worker_blocking,
+            request,
+            config,
+            capabilities,
+            project.organization_id,
+        )
+    except CadDependencyMissingError as exc:
+        code, message = classify_failure(exc)
+        logger.error("cad_toolchain_unavailable", extra={"error": str(exc)})
+        return CadJobOutcome(
+            run=None, artifacts=[], geometry_artifact_id=None, validation_run_id=None,
+            stale=False, error_code=code, error_message=message, unavailable=True,
+        )
+    except CadError as exc:
+        code, message = classify_failure(exc)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        run = await record_cad_failure(
+            session,
+            project=project,
+            version=version,
+            world=world,
+            actor_id=actor_id,
+            provider=config.provider,
+            request=request,
+            error_code=code,
+            error_message=message,
+            capabilities=capabilities,
+            duration_ms=duration_ms,
+        )
+        await session.commit()
+        return CadJobOutcome(
+            run=run, artifacts=[], geometry_artifact_id=None, validation_run_id=None,
+            stale=False, error_code=code, error_message=message,
+        )
+
+    duration_ms = int((time.monotonic() - started) * 1000)
+    recorded = await record_cad_success(
+        session,
+        project=project,
+        version=version,
+        world=world,
+        actor_id=actor_id,
+        provider=result.provider.provider or config.provider,
+        request=request,
+        result=result,
+        stored=stored,
+        alternative_id=None,
+        design_hash=canonical_hash(semantic_model),
         capabilities=capabilities,
         duration_ms=duration_ms,
     )
