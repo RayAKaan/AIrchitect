@@ -20,6 +20,7 @@ import json
 import os
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 
 import pytest
@@ -45,7 +46,7 @@ from app.domains.cad.errors import (
     CadSecurityError,
 )
 from app.domains.cad.protocol import CadJobRequest, Footprint, MassingElement
-from app.domains.cad.runner import _memory_limit_kwargs, _response_byte_budget, run_cad_job
+from app.domains.cad.runner import _memory_limit_kwargs, _response_byte_budget, _verify_result_matches_request, run_cad_job
 from tests.phase18_fake_worker import (
     BAD_BASE64,
     EMPTY_PAYLOAD,
@@ -712,3 +713,27 @@ class TestResultVerification:
         )
         assert result.status == "ok"
         assert fake_worker.last.scenario == OK
+
+
+def test_worker_measurements_must_match_requested_element_ids_and_kinds():
+    request = make_request()
+    wrong_id = SimpleNamespace(
+        measurements=[SimpleNamespace(id="other-wall", kind="building_mass")],
+        element_count=1,
+    )
+    with pytest.raises(CadJobError, match="exactly the requested elements"):
+        _verify_result_matches_request(wrong_id, request)
+
+    wrong_kind = SimpleNamespace(
+        measurements=[SimpleNamespace(id="mass-1", kind="wall")],
+        element_count=1,
+    )
+    with pytest.raises(CadJobError, match="element kinds"):
+        _verify_result_matches_request(wrong_kind, request)
+
+    wrong_count = SimpleNamespace(
+        measurements=[SimpleNamespace(id="mass-1", kind="building_mass")],
+        element_count=2,
+    )
+    with pytest.raises(CadJobError, match="containing 1"):
+        _verify_result_matches_request(wrong_count, request)
