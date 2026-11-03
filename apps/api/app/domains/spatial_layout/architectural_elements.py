@@ -224,6 +224,30 @@ def compile_architectural_elements(
                     ordered = tuple(sorted((a, b)))
                     segments_by_level[level][ordered].add(owner_id)
 
+    topology_nodes = topology.get("nodes")
+    if not isinstance(topology_nodes, list):
+        raise ArchitecturalElementError("ELEMENT_TOPOLOGY_NODES_REQUIRED", "Topology nodes are required")
+    topology_space_ids = {
+        node.get("id") for node in topology_nodes
+        if isinstance(node, dict) and isinstance(node.get("id"), str)
+    }
+    if topology_space_ids != set(spaces):
+        raise ArchitecturalElementError(
+            "ELEMENT_TOPOLOGY_NODES_MISMATCH",
+            "Topology nodes must match the exact source layout space set",
+            {
+                "missing_node_ids": sorted(set(spaces) - topology_space_ids),
+                "unknown_node_ids": sorted(topology_space_ids - set(spaces)),
+            },
+        )
+    topology_edges_by_pair = {
+        tuple(sorted((edge.get("source_space_id"), edge.get("target_space_id")))): edge.get("id")
+        for edge in topology.get("edges", [])
+        if isinstance(edge, dict)
+        and edge.get("relationship") == "SHARED_BOUNDARY"
+        and isinstance(edge.get("id"), str)
+    }
+
     candidates: list[dict[str, Any]] = []
     for level, segments in sorted(segments_by_level.items()):
         for (start, end), owners in sorted(segments.items()):
@@ -231,6 +255,22 @@ def compile_architectural_elements(
             if length <= _GEOMETRY_TOLERANCE_M:
                 continue
             owner_ids = sorted(owners)
+            if len(owner_ids) > 2:
+                raise ArchitecturalElementError(
+                    "ELEMENT_BOUNDARY_NON_MANIFOLD",
+                    "A wall segment cannot be shared by more than two spaces",
+                    {"level_number": level, "space_ids": owner_ids},
+                )
+            topology_edge_ids: list[str] = []
+            if len(owner_ids) == 2:
+                edge_id = topology_edges_by_pair.get(tuple(owner_ids))
+                if edge_id is None:
+                    raise ArchitecturalElementError(
+                        "ELEMENT_TOPOLOGY_BOUNDARY_MISMATCH",
+                        "A shared wall segment has no matching topology edge",
+                        {"level_number": level, "space_ids": owner_ids},
+                    )
+                topology_edge_ids.append(edge_id)
             element_id = str(
                 uuid5(
                     NAMESPACE_URL,
@@ -257,6 +297,7 @@ def compile_architectural_elements(
                     for space_id in owner_ids
                 ],
                 "source_space_ids": owner_ids,
+                "topology_edge_ids": topology_edge_ids,
                 "level_number": level,
                 "wall_classification": "PARTITION" if len(owner_ids) > 1 else "PERIMETER",
                 "status": "UNDERCONSTRAINED" if missing else "REVIEW_REQUIRED",
