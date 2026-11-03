@@ -431,4 +431,8 @@ def test_spatial_topology_and_element_regeneration_use_current_layout_dependenci
             "spatial_topology": {"payload": expected_topology},
         },
     ))
+    expected_elements["regeneration_request"] = {"default_wall_thickness_m": None}
+    expected_hash_input = dict(expected_elements)
+    expected_hash_input.pop("elements_hash", None)
+    expected_elements["elements_hash"] = canonical_hash(expected_hash_input)
     assert elements_result.payload["elements_hash"] == expected_elements["elements_hash"]
