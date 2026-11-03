@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +12,8 @@ from app.db.session import get_session
 from app.dependencies import current_user
 from app.domains.design.lineage import alternative_is_stale, current_design_input_lineage
 from app.domains.design.s2_inputs import S2DesignInputError, resolve_s2_design_inputs
-from app.domains.foundation.service import audit, error, resolve_project_version, resolve_world_model
+from app.domains.foundation.service import audit, create_next_version, error, persist_world_model, resolve_project_version, resolve_world_model
+from app.domains.semantic_model.editing import create_element, state_for
 from app.domains.lifecycle.service import new_artifact
 
 from .architectural_elements import ArchitecturalElementError, compile_architectural_elements
@@ -542,6 +543,153 @@ async def generate_architectural_elements(
         "elements_hash": digest,
         "elements": payload,
         "idempotent": False,
+    }
+
+
+@router.post("/projects/{project_id}/versions/{version_ref}/architectural-elements/commit", status_code=201)
+async def commit_architectural_elements(
+    project_id: str,
+    version_ref: str,
+    body: dict[str, Any],
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=8, max_length=200),
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Promote explicitly completed wall proposals into a new editable canonical draft.
+
+    The committed source version remains immutable. Every generated wall must have
+    human-supplied height and thickness; proposal geometry alone is never treated
+    as a complete buildable wall.
+    """
+    project, source_version = await resolve_project_version(
+        session, project_id, version_ref, user.id, write=True
+    )
+    if source_version.status != "COMMITTED":
+        raise error(409, "SOURCE_VERSION_NOT_COMMITTED",
+                    "Architectural proposals can only be committed from an immutable committed source version")
+    expected_current = body.get("expected_current_version_id")
+    expected_revision = body.get("expected_revision")
+    candidate_ids = body.get("candidate_ids")
+    reviewed = body.get("reviewed_properties")
+    reason = body.get("reason")
+    if expected_current != source_version.id or isinstance(expected_revision, bool) or expected_revision != source_version.revision_number:
+        raise error(409, "VERSION_CONFLICT", "The source version changed; refresh the proposal before committing",
+                    expected_revision=source_version.revision_number)
+    if not isinstance(candidate_ids, list) or not candidate_ids or len(candidate_ids) > 500:
+        raise error(422, "INVALID_CANDIDATES", "Select between 1 and 500 architectural element candidates")
+    if len(set(candidate_ids)) != len(candidate_ids) or not all(isinstance(item, str) for item in candidate_ids):
+        raise error(422, "INVALID_CANDIDATES", "Candidate IDs must be unique strings")
+    if not isinstance(reviewed, dict) or set(reviewed) != set(candidate_ids):
+        raise error(422, "REVIEWED_PROPERTIES_REQUIRED",
+                    "Provide reviewed dimensions for every selected candidate")
+    if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 500:
+        raise error(422, "REVIEW_REASON_REQUIRED", "A concise human review reason is required")
+
+    source_world = await resolve_world_model(session, source_version.id)
+    proposal = await session.scalar(
+        select(ArtifactVersion).where(
+            ArtifactVersion.project_version_id == source_version.id,
+            ArtifactVersion.artifact_type == "architectural_elements",
+            ArtifactVersion.status == "current",
+        ).order_by(ArtifactVersion.version.desc()).limit(1)
+    )
+    if proposal is None or not proposal.output_hash:
+        raise error(409, "ARCHITECTURAL_ELEMENTS_REQUIRED", "Generate current architectural element proposals first")
+    proposal_source = proposal.payload_json.get("source_lineage") or {}
+    if (proposal.output_hash != proposal.payload_json.get("elements_hash")
+            or proposal_source.get("world_model_hash") != source_world.model_hash):
+        raise error(409, "STALE_ARCHITECTURAL_ELEMENTS", "The architectural element proposal is stale")
+    by_id = {item.get("candidate_id"): item for item in proposal.payload_json.get("candidates", [])}
+    unknown = sorted(set(candidate_ids) - set(by_id))
+    if unknown:
+        raise error(422, "UNKNOWN_CANDIDATES", "One or more selected candidates are not in the current proposal",
+                    candidate_ids=unknown)
+
+    # Version cloning is the only supported path from immutable committed state
+    # to a mutable draft. An empty canonical change set preserves source facts.
+    draft, draft_world, created = await create_next_version(
+        session, project_id, user,
+        expected_current_version_id=source_version.id,
+        expected_revision=source_version.revision_number,
+        change_summary=f"Review and commit {len(candidate_ids)} architectural element(s)",
+        changes={},
+        idempotency_key=idempotency_key,
+    )
+    if not created:
+        return {
+            "created": False,
+            "version": {"id": draft.id, "version_number": draft.version, "status": draft.status,
+                        "revision_number": draft.revision_number},
+            "world_model_hash": draft_world.model_hash,
+        }
+    model = dict(draft_world.model_json)
+    state = state_for(model)
+    committed: list[str] = []
+    for candidate_id in sorted(candidate_ids):
+        candidate = by_id[candidate_id]
+        if candidate.get("element_type") != "Wall":
+            raise error(422, "UNSUPPORTED_PROPOSAL_TYPE",
+                        "Only wall candidates can currently be promoted by this workflow",
+                        candidate_id=candidate_id, element_type=candidate.get("element_type"))
+        dimensions = reviewed[candidate_id]
+        if not isinstance(dimensions, dict) or set(dimensions) != {"height_m", "thickness_m"}:
+            raise error(422, "WALL_DIMENSIONS_REQUIRED",
+                        "Each wall requires exactly reviewed height_m and thickness_m values",
+                        candidate_id=candidate_id)
+        properties = dict(candidate.get("properties") or {})
+        properties.update(dimensions)
+        event = create_element(
+            model, state,
+            element_type="Wall",
+            name=str(candidate.get("name") or "Reviewed wall"),
+            properties=properties,
+            level_number=candidate.get("level_number"),
+            actor_id=user.id,
+            reason=reason.strip(),
+            element_id=candidate_id,
+        )
+        authored = next(item for item in model.get("designer_elements", []) if item.get("id") == candidate_id)
+        authored.setdefault("provenance", {})["generated_from"] = {
+            "proposal_artifact_id": proposal.id,
+            "proposal_hash": proposal.output_hash,
+            "source_world_model_hash": source_world.model_hash,
+            "layout_hash": proposal_source.get("layout_hash"),
+            "topology_hash": proposal_source.get("topology_hash"),
+            "source_space_ids": candidate.get("source_space_ids", []),
+            "review_reason": reason.strip(),
+        }
+        committed.append(candidate_id)
+
+    model["designer_state"] = state
+    draft.revision_number += 1
+    updated_world = await persist_world_model(
+        session, project, draft, user.id,
+        source="architectural_element_review_commit",
+        designer_source=model,
+    )
+    await audit(
+        session, project=project, version=draft, actor=user.id,
+        action="ARCHITECTURAL_ELEMENTS_COMMITTED",
+        entity="world_model_revision", entity_id=updated_world.id,
+        metadata={
+            "source_version_id": source_version.id,
+            "source_world_model_hash": source_world.model_hash,
+            "proposal_artifact_id": proposal.id,
+            "proposal_hash": proposal.output_hash,
+            "element_ids": committed,
+            "review_reason": reason.strip(),
+        },
+    )
+    await session.commit()
+    return {
+        "created": True,
+        "source_version_id": source_version.id,
+        "version": {"id": draft.id, "version_number": draft.version, "status": draft.status,
+                    "revision_number": draft.revision_number},
+        "world_model_revision": {"id": updated_world.id, "revision_number": updated_world.revision,
+                                 "model_hash": updated_world.model_hash},
+        "committed_element_ids": committed,
+        "semantic_model": updated_world.model_json.get("semantic_model"),
     }
 
 
