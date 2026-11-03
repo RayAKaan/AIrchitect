@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ArtifactDependency, ArtifactVersion, Project, ProjectVersion, WorldModelRevision
+from app.db.models import ArtifactDependency, ArtifactVersion, DesignAlternative, Project, ProjectVersion, WorldModelRevision
 from app.db.regeneration_job_models import RegenerationJobRecord
 from app.db.regeneration_models import RegenerationStateRecord
 from app.domains.lifecycle.artifact_rebinding import rebind_artifact
@@ -58,6 +58,14 @@ class RegenerationService:
             }
             for dependency in dependencies
         }
+        selected_alternative = await session.scalar(
+            select(DesignAlternative).where(
+                DesignAlternative.project_version_id == artifact.project_version_id,
+                DesignAlternative.status == "SELECTED",
+            )
+        )
+        if selected_alternative is not None and "design_alternative" in dependency_snapshots:
+            dependency_snapshots["design_alternative"]["selected_alternative_id"] = selected_alternative.id
         output = self._handlers.execute(
             RegenerationInput(
                 artifact_type=artifact.artifact_type,
@@ -158,18 +166,32 @@ class RegenerationService:
             previous = await session.get(ArtifactVersion, edge.depends_on_artifact_version_id)
             if previous is None:
                 raise ValueError("regeneration dependency artifact not found")
-            current_result = await session.execute(
-                select(ArtifactVersion)
-                .where(
-                    ArtifactVersion.project_version_id == artifact.project_version_id,
-                    ArtifactVersion.artifact_type == previous.artifact_type,
-                    ArtifactVersion.alternative_id == previous.alternative_id,
-                    ArtifactVersion.status == "current",
+            if previous.artifact_type == "design_alternative":
+                selected = await session.scalar(
+                    select(DesignAlternative).where(
+                        DesignAlternative.project_version_id == artifact.project_version_id,
+                        DesignAlternative.status == "SELECTED",
+                    )
                 )
-                .order_by(ArtifactVersion.version.desc())
-                .limit(1)
-            )
-            current = current_result.scalar_one_or_none()
+                current = (
+                    await session.get(ArtifactVersion, selected.artifact_version_id)
+                    if selected is not None else None
+                )
+                if current is not None and current.status != "current":
+                    current = None
+            else:
+                current_result = await session.execute(
+                    select(ArtifactVersion)
+                    .where(
+                        ArtifactVersion.project_version_id == artifact.project_version_id,
+                        ArtifactVersion.artifact_type == previous.artifact_type,
+                        ArtifactVersion.alternative_id == previous.alternative_id,
+                        ArtifactVersion.status == "current",
+                    )
+                    .order_by(ArtifactVersion.version.desc())
+                    .limit(1)
+                )
+                current = current_result.scalar_one_or_none()
             if current is None:
                 raise ValueError(
                     f"REGENERATION_DEPENDENCY_NOT_CURRENT: {previous.artifact_type} "
