@@ -134,14 +134,14 @@ def build_semantic_cad_request(
         or any(character not in "0123456789abcdef" for character in semantic_hash.lower())
     ):
         raise ValueError("SEMANTIC_MODEL_HASH_INVALID")
-    walls = [
+    architectural_intents = [
         intent for intent in specification.get("intents", [])
-        if intent.get("element_type") == "Wall"
+        if intent.get("element_type") in {"Wall", "Slab"}
     ]
-    if not walls:
-        raise ValueError("SEMANTIC_WALLS_REQUIRED")
-    if len(walls) > 2_000:
-        raise ValueError("SEMANTIC_WALL_LIMIT_EXCEEDED")
+    if not architectural_intents:
+        raise ValueError("SEMANTIC_ARCHITECTURAL_ELEMENTS_REQUIRED")
+    if len(architectural_intents) > 2_000:
+        raise ValueError("SEMANTIC_ARCHITECTURAL_ELEMENT_LIMIT_EXCEEDED")
     elements_by_id = {
         element["id"]: element for element in semantic_model.get("elements", [])
     }
@@ -152,37 +152,68 @@ def build_semantic_cad_request(
                 f"SEMANTIC_WALL_UNDERCONSTRAINED:{intent.get('element_id')}:{','.join(intent.get('missing_parameters', []))}"
             )
         params = intent.get("parameters") or {}
-        start = params.get("start_m") or {}
-        end = params.get("end_m") or {}
-        footprint, base_elevation = _wall_footprint(
-            start,
-            end,
-            params.get("thickness_m"),
-        )
-        axis_length = math.hypot(
-            float(end["x"]) - float(start["x"]),
-            float(end["y"]) - float(start["y"]),
-        )
-        declared_length = float(params["length_m"])
-        if abs(axis_length - declared_length) > max(1e-4, axis_length * 1e-4):
-            raise ValueError(f"WALL_LENGTH_MISMATCH:{intent['element_id']}")
-        wall = elements_by_id.get(intent["element_id"])
-        if wall is None:
-            raise ValueError(f"SEMANTIC_ELEMENT_MISSING:{intent['element_id']}")
+        element_id = intent["element_id"]
+        authored = elements_by_id.get(element_id)
+        if authored is None:
+            raise ValueError(f"SEMANTIC_ELEMENT_MISSING:{element_id}")
         placement = intent.get("placement") or {}
+        element_type = intent["element_type"]
+        if element_type == "Wall":
+            start = params.get("start_m") or {}
+            end = params.get("end_m") or {}
+            footprint, base_elevation = _wall_footprint(
+                start,
+                end,
+                params.get("thickness_m"),
+            )
+            axis_length = math.hypot(
+                float(end["x"]) - float(start["x"]),
+                float(end["y"]) - float(start["y"]),
+            )
+            declared_length = float(params["length_m"])
+            if abs(axis_length - declared_length) > max(1e-4, axis_length * 1e-4):
+                raise ValueError(f"WALL_LENGTH_MISMATCH:{element_id}")
+            kind = "wall"
+            height = float(params["height_m"])
+            material_class = "architectural_wall"
+        else:
+            boundary = params.get("boundary_m")
+            if not isinstance(boundary, list) or len(boundary) < 4:
+                raise ValueError(f"SLAB_BOUNDARY_INVALID:{element_id}")
+            points = [
+                (float(point["x"]), float(point["y"]))
+                for point in boundary
+            ]
+            elevations = [float(point["z"]) for point in boundary]
+            if max(elevations) - min(elevations) > 1e-6:
+                raise ValueError(f"SLAB_BOUNDARY_NON_PLANAR:{element_id}")
+            if points[0] != points[-1]:
+                raise ValueError(f"SLAB_BOUNDARY_NOT_CLOSED:{element_id}")
+            from shapely.geometry import Polygon
+            polygon = Polygon(points)
+            if not polygon.is_valid or polygon.is_empty or polygon.interiors or polygon.area <= 1e-6:
+                raise ValueError(f"SLAB_BOUNDARY_INVALID:{element_id}")
+            declared_area = params.get("area_m2")
+            if declared_area is not None and abs(polygon.area - float(declared_area)) > max(0.02, polygon.area * 1e-4):
+                raise ValueError(f"SLAB_AREA_MISMATCH:{element_id}")
+            footprint = points[:-1]
+            base_elevation = elevations[0]
+            kind = "floor_plate"
+            height = float(params["thickness_m"])
+            material_class = "architectural_slab"
         elements.append(MassingElement(
-            id=intent["element_id"],
-            kind="wall",
-            name=wall.get("name") or "Wall",
+            id=element_id,
+            kind=kind,
+            name=authored.get("name") or element_type,
             footprint=Footprint(points=footprint),
             base_elevation_m=base_elevation,
-            height_m=float(params["height_m"]),
+            height_m=height,
             storey_index=placement.get("level_number"),
-            material_class="architectural_wall",
+            material_class=material_class,
             source_reference=source_world_hash,
             metadata={
-                "semantic_element_id": intent["element_id"],
-                "element_type": "Wall",
+                "semantic_element_id": element_id,
+                "element_type": element_type,
                 "world_model_hash": source_world_hash,
                 "semantic_model_hash": semantic_hash,
                 "coordinate_system": "local_cartesian_z_up",
