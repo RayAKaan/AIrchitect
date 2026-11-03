@@ -147,7 +147,7 @@ def _add_semantic_slab(world, semantic):
 
 def test_semantic_slab_adapter_builds_floor_plate_solid_below_top_elevation():
     world, semantic = _semantic_wall(start_z=3.0)
-    boundary = _add_semantic_slab(world, semantic)
+    _add_semantic_slab(world, semantic)
     request = build_semantic_cad_request(world, semantic, job_id="wall-and-slab")
     slab = next(element for element in request.elements if element.id == "slab-1")
 
