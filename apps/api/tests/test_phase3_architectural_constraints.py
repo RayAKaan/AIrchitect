@@ -38,9 +38,10 @@ def _inputs():
             "selected_concept_gfa_m2": 800.0,
         },
         "spaces": [{"id": "space-1"}],
-        "adjacencies": [{
-            "from": "lobby", "to": "work", "required": True, "status": "SATISFIED",
-        }],
+        "adjacencies": [
+            {"from": "lobby", "to": "work", "required": True, "status": "SATISFIED"},
+            {"from": "office", "to": "terrace", "required": False, "status": "DEFERRED_TO_TOPOLOGY"},
+        ],
         "unknowns": ["egress_routes"],
     }
     layout = _seal(layout, "layout_hash")
@@ -127,6 +128,9 @@ def test_constraint_engine_separates_hard_passes_from_unknown_access_and_egress(
     assert statuses["WALL_AXIS_VALID"] == "PASS"
     assert statuses["SLAB_BOUNDARY_AND_AREA_VALID"] == "PASS"
     assert statuses["TRAVERSABLE_CIRCULATION"] == "UNKNOWN"
+    preferred = next(item for item in result["constraints"] if item["code"] == "PREFERRED_PROGRAM_ADJACENCY")
+    assert preferred["classification"] == "PREFERRED"
+    assert preferred["status"] == "REVIEW_REQUIRED"
 
 
 def test_constraint_engine_blocks_footprint_and_gfa_hard_limit_violations():
