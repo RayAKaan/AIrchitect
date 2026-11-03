@@ -756,3 +756,57 @@ def test_unplaced_stair_and_ramp_remain_underconstrained():
         assert intent["status"] == "UNDERCONSTRAINED"
         assert "storey_placement" in intent["missing_parameters"]
 
+
+
+def test_generated_proposal_promotion_preserves_stable_semantic_id():
+    model = world_fixture()
+    state = model["designer_state"]
+    proposal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "airchitect:reviewed-wall:stable"))
+    event = create_element(
+        model, state, element_type="Wall", name="Reviewed generated wall",
+        properties={
+            "start_m": {"x": 0, "y": 0, "z": 0},
+            "end_m": {"x": 6, "y": 0, "z": 0},
+            "length_m": 6,
+            "height_m": 3,
+            "thickness_m": 0.2,
+        },
+        level_number=1, actor_id="reviewer-1", reason="Approve generated wall",
+        element_id=proposal_id,
+    )
+    assert event["element_id"] == proposal_id
+    assert any(item["id"] == proposal_id for item in model["designer_elements"])
+    with pytest.raises(HTTPException) as duplicate:
+        create_element(
+            model, state, element_type="Wall", name="Duplicate generated wall",
+            properties={
+                "start_m": {"x": 0, "y": 0, "z": 0},
+                "end_m": {"x": 6, "y": 0, "z": 0},
+                "length_m": 6,
+                "height_m": 3,
+                "thickness_m": 0.2,
+            },
+            level_number=1, actor_id="reviewer-1", reason="Duplicate approval",
+            element_id=proposal_id,
+        )
+    assert duplicate.value.status_code == 409
+    assert duplicate.value.detail["error"]["code"] == "SEMANTIC_ELEMENT_EXISTS"
+
+
+def test_generated_proposal_rejects_non_uuid_semantic_id():
+    model = world_fixture()
+    with pytest.raises(HTTPException) as raised:
+        create_element(
+            model, model["designer_state"], element_type="Wall", name="Invalid generated wall",
+            properties={
+                "start_m": {"x": 0, "y": 0, "z": 0},
+                "end_m": {"x": 6, "y": 0, "z": 0},
+                "length_m": 6,
+                "height_m": 3,
+                "thickness_m": 0.2,
+            },
+            level_number=1, actor_id="reviewer-1", reason="Invalid identifier",
+            element_id="not-a-uuid",
+        )
+    assert raised.value.status_code == 422
+    assert raised.value.detail["error"]["code"] == "INVALID_ELEMENT_ID"
