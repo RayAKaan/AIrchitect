@@ -48,6 +48,8 @@ _CLASSIFICATION: dict[str, str] = {
     "floor_plate": "Floor Plate",
     "core": "Circulation Core",
     "site_boundary": "Site Boundary",
+    "architectural_wall": "Architectural Wall",
+    "architectural_slab": "Architectural Slab",
 }
 
 #: Preflight grid lines, as an IFC4 element class.
@@ -146,6 +148,7 @@ def write_ifc(
             base_elevation_m=float(entry.get("base_elevation_m", 0.0)),
             height_m=float(entry["height_m"]),
             material_class=entry.get("material_class", "conceptual_mass"),
+            element_kind=entry.get("kind", "building_mass"),
             canonical_element_id=entry["id"],
             source_world_model_hash=entry.get("source_world_model_hash", ""),
         )
@@ -209,6 +212,7 @@ def _add_mass(
     base_elevation_m: float,
     height_m: float,
     material_class: str,
+    element_kind: str,
     canonical_element_id: str,
     source_world_model_hash: str = "",
 ) -> Any:
@@ -247,15 +251,19 @@ def _add_mass(
         Items=[solid],
     )
     product_shape = file.create_entity("IfcProductDefinitionShape", Representations=[representation])
+    if element_kind == "wall":
+        ifc_class, predefined_type = "IfcWall", "STANDARD"
+    elif element_kind == "floor_plate":
+        ifc_class, predefined_type = "IfcSlab", "FLOOR"
+    else:
+        # Generic conceptual massing remains an IfcBuildingElementProxy.
+        ifc_class, predefined_type = "IfcBuildingElementProxy", "ELEMENT"
     element = file.create_entity(
-        "IfcBuildingElementProxy",
+        ifc_class,
         GlobalId=ifcopenshell.guid.new(),
         OwnerHistory=owner,
         Name=name,
-        # ELEMENT is the only PredefinedType that means "an ordinary built
-        # element" in IFC4. The semantic material class travels in a property
-        # set below instead of being forced into a type enum that cannot hold it.
-        PredefinedType="ELEMENT",
+        PredefinedType=predefined_type,
         ObjectPlacement=file.create_entity(
             "IfcLocalPlacement",
             RelativePlacement=file.create_entity("IfcAxis2Placement3D"),
@@ -304,6 +312,8 @@ def inspect_ifc(path: str) -> dict[str, Any]:
         "IfcBuilding",
         "IfcBuildingStorey",
         "IfcBuildingElementProxy",
+        "IfcWall",
+        "IfcSlab",
         "IfcExtrudedAreaSolid",
         "IfcArbitraryClosedProfileDef",
         "IfcPropertySet",
@@ -319,7 +329,12 @@ def inspect_ifc(path: str) -> dict[str, Any]:
         from ifcopenshell.util.element import get_psets
     except ImportError as exc:
         raise IfcError("IfcOpenShell element property inspection is unavailable") from exc
-    for element in model.by_type("IfcBuildingElementProxy"):
+    semantic_elements = (
+        list(model.by_type("IfcWall"))
+        + list(model.by_type("IfcSlab"))
+        + list(model.by_type("IfcBuildingElementProxy"))
+    )
+    for element in semantic_elements:
         properties = get_psets(element, should_inherit=False).get("Pset_AIrchitectElement", {})
         elements.append({
             "global_id": element.GlobalId,
