@@ -109,6 +109,13 @@ def _inputs():
         "max_gfa_m2": 1000.0,
     }
     envelope = _seal(envelope, "envelope_hash")
+    layout["source_lineage"] = {"world_model_hash": WORLD_HASH, "envelope_hash": envelope["envelope_hash"]}
+    layout = _seal(layout, "layout_hash")
+    topology["layout_hash"] = layout["layout_hash"]
+    topology = _seal(topology, "topology_hash")
+    elements["source_lineage"]["layout_hash"] = layout["layout_hash"]
+    elements["source_lineage"]["topology_hash"] = topology["topology_hash"]
+    elements = _seal(elements, "elements_hash")
     return layout, topology, elements, envelope
 
 
