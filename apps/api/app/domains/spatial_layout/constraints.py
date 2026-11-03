@@ -205,6 +205,16 @@ def compile_architectural_constraints(
             expected=max_footprint,
             unit="m2",
         ))
+    else:
+        constraints.append(_constraint(
+            "MAXIMUM_FOOTPRINT_AREA",
+            "UNKNOWN",
+            "UNKNOWN",
+            "A canonical maximum footprint area is unavailable; no planning limit is assumed.",
+            actual=footprint.get("area_m2"),
+            expected=max_footprint,
+            unit="m2",
+        ))
 
     max_gfa = envelope.get("max_gfa_m2")
     selected_gfa = area.get("selected_concept_gfa_m2")
@@ -215,6 +225,16 @@ def compile_architectural_constraints(
             "HARD",
             "PASS" if valid else "FAIL",
             "Selected concept GFA must not exceed the current envelope maximum.",
+            actual=selected_gfa,
+            expected=max_gfa,
+            unit="m2",
+        ))
+    else:
+        constraints.append(_constraint(
+            "MAXIMUM_GFA",
+            "UNKNOWN",
+            "UNKNOWN",
+            "A canonical maximum GFA is unavailable; no planning limit is assumed.",
             actual=selected_gfa,
             expected=max_gfa,
             unit="m2",
@@ -348,7 +368,7 @@ def compile_architectural_constraints(
                 ))
 
     required_adjacencies = [
-        item for item in topology.get("program_adjacencies", [])
+        item for item in layout.get("adjacencies", [])
         if isinstance(item, dict) and item.get("required")
     ]
     for adjacency in required_adjacencies:
