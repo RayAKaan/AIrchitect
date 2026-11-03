@@ -14,6 +14,7 @@ ENGINE_VERSION = "architectural-elements-v1.0.0"
 _AREA_TOLERANCE_M2 = 0.02
 _GEOMETRY_TOLERANCE_M = 1e-6
 _MAX_SPACES = 2_000
+Point3 = tuple[float, float, float]
 
 
 class ArchitecturalElementError(ValueError):
@@ -56,6 +57,15 @@ def _coordinate(point: Any, *, space_id: str) -> tuple[float, float, float]:
             )
         values.append(float(value))
     return values[0], values[1], values[2]
+
+
+def _interpolate_point(first: Point3, second: Point3, t_first: float, t_second: float, t: float) -> Point3:
+    ratio = (t - t_first) / (t_second - t_first)
+    return (
+        round(first[0] + ratio * (second[0] - first[0]), 6),
+        round(first[1] + ratio * (second[1] - first[1]), 6),
+        round(first[2] + ratio * (second[2] - first[2]), 6),
+    )
 
 
 def compile_architectural_elements(
@@ -103,7 +113,6 @@ def compile_architectural_elements(
 
     spaces: dict[str, dict[str, Any]] = {}
     polygons: dict[str, Polygon] = {}
-    Point3 = tuple[float, float, float]
     raw_segments_by_level: dict[int, list[tuple[Point3, Point3, str]]] = defaultdict(list)
     for row in rows:
         if not isinstance(row, dict):
@@ -162,7 +171,10 @@ def compile_architectural_elements(
         lambda: defaultdict(set)
     )
     for level, raw_segments in sorted(raw_segments_by_level.items()):
-        line_groups: dict[tuple[float, float, float], list[tuple[float, float, Point3, Point3, str]]] = defaultdict(list)
+        line_groups: dict[
+            tuple[float, float, float],
+            list[tuple[float, float, Point3, Point3, str]],
+        ] = defaultdict(list)
         for first, second, owner_id in raw_segments:
             dx = second[0] - first[0]
             dy = second[1] - first[1]
@@ -191,14 +203,15 @@ def compile_architectural_elements(
                 t_first = first[0] * ux + first[1] * uy
                 t_second = second[0] * ux + second[1] * uy
                 low, high = sorted((t_first, t_second))
-                cuts = [value for value in breakpoints if low - _GEOMETRY_TOLERANCE_M <= value <= high + _GEOMETRY_TOLERANCE_M]
+                cuts = [
+                    value for value in breakpoints
+                    if low - _GEOMETRY_TOLERANCE_M <= value <= high + _GEOMETRY_TOLERANCE_M
+                ]
                 for cut_start, cut_end in zip(cuts, cuts[1:]):
                     if cut_end - cut_start <= _GEOMETRY_TOLERANCE_M:
                         continue
-                    def point_at(t: float) -> Point3:
-                        ratio = (t - t_first) / (t_second - t_first)
-                        return tuple(round(first[index] + ratio * (second[index] - first[index]), 6) for index in range(3))  # type: ignore[return-value]
-                    a, b = point_at(cut_start), point_at(cut_end)
+                    a = _interpolate_point(first, second, t_first, t_second, cut_start)
+                    b = _interpolate_point(first, second, t_first, t_second, cut_end)
                     ordered = tuple(sorted((a, b)))
                     segments_by_level[level][ordered].add(owner_id)
 
