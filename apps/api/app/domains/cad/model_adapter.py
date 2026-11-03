@@ -143,7 +143,7 @@ def build_semantic_cad_request(
         element["id"]: element for element in semantic_model.get("elements", [])
     }
     elements: list[MassingElement] = []
-    for intent in walls:
+    for intent in architectural_intents:
         if intent.get("status") != "READY_FOR_CAD_ADAPTER":
             raise ValueError(
                 f"SEMANTIC_WALL_UNDERCONSTRAINED:{intent.get('element_id')}:{','.join(intent.get('missing_parameters', []))}"
