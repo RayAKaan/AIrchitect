@@ -98,3 +98,10 @@ def test_semantic_model_cad_route_is_registered():
         "/api/v1/projects/{project_id}/versions/{version_ref}/semantic-model/cad"
         in paths
     )
+
+
+def test_semantic_wall_adapter_rejects_axis_length_mismatch():
+    world, semantic = _semantic_wall()
+    semantic["elements"][1]["properties"]["length_m"] = _typed(4.0, "m")
+    with pytest.raises(ValueError, match="WALL_LENGTH_MISMATCH"):
+        build_semantic_cad_request(world, semantic, job_id="mismatched-wall")
