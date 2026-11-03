@@ -764,7 +764,7 @@ async def test_semantic_wall_cad_generation_persists_version_bound_geometry(api,
             "changes": {},
         },
     )
-    assert draft_response.status_code == 200, draft_response.text
+    assert draft_response.status_code == 201, draft_response.text
     draft = draft_response.json()["version"]
     created = await api.post(
         f"/api/v1/projects/{project['id']}/versions/{draft['id']}/semantic-model/elements",
