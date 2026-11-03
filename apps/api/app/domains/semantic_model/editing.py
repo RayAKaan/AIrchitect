@@ -63,8 +63,8 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
     },
     "Slab": {
         "level_number": {"kind": "integer", "unit": "count", "minimum": 1, "maximum": 300},
-        "width_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
-        "depth_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 100_000},
+        "boundary_m": {"kind": "polygon3", "unit": "m"},
+        "area_m2": {"kind": "number", "unit": "m2", "minimum": 0.01, "maximum": 100_000_000},
         "thickness_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 10},
     },
     "Roof": {
@@ -98,7 +98,7 @@ GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
     "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "setback_m", "elevation_m", "level_number",
-    "length_m", "thickness_m", "start_m", "end_m", "spaces", "total_run_m", "total_rise_m", "riser_count", "run_m", "rise_m",
+    "length_m", "thickness_m", "start_m", "end_m", "boundary_m", "area_m2", "spaces", "total_run_m", "total_rise_m", "riser_count", "run_m", "rise_m",
 }
 
 
@@ -157,6 +157,35 @@ def _normalise(element_type: str, property_name: str, value: Any) -> tuple[Any, 
             if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)) or not math.isfinite(float(coordinate)):
                 raise error(422, "INVALID_PROPERTY_VALUE", "Vector coordinates must be finite numbers", property=property_name, axis=axis)
             normalised[axis] = float(coordinate)
+    elif kind == "polygon3":
+        if not isinstance(value, list) or len(value) < 4 or len(value) > 513:
+            raise error(422, "INVALID_PROPERTY_VALUE", "A slab boundary must be a closed ring of 4–513 metric points",
+                        property=property_name)
+        normalised = []
+        for index, point in enumerate(value):
+            if not isinstance(point, dict) or set(point) != {"x", "y", "z"}:
+                raise error(422, "INVALID_PROPERTY_VALUE", "Every slab boundary point must contain x, y and z",
+                            property=property_name, point_index=index)
+            coordinates = {}
+            for axis in ("x", "y", "z"):
+                coordinate = point[axis]
+                if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)) or not math.isfinite(float(coordinate)):
+                    raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary coordinates must be finite numbers",
+                                property=property_name, point_index=index, axis=axis)
+                coordinates[axis] = float(coordinate)
+            normalised.append(coordinates)
+        if normalised[0] != normalised[-1]:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary ring must be explicitly closed",
+                        property=property_name)
+        elevations = [point["z"] for point in normalised]
+        if max(elevations) - min(elevations) > 1e-6:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary must be planar and horizontal",
+                        property=property_name)
+        from shapely.geometry import Polygon
+        polygon = Polygon([(point["x"], point["y"]) for point in normalised])
+        if not polygon.is_valid or polygon.is_empty or polygon.area <= 1e-6 or polygon.interiors:
+            raise error(422, "INVALID_PROPERTY_VALUE", "Slab boundary must be a valid simple polygon without unmodelled voids",
+                        property=property_name)
     elif kind == "string":
         if not isinstance(value, str) or not value.strip() or len(value.strip()) > 500:
             raise error(422, "INVALID_PROPERTY_VALUE", "Value must be a non-empty string of at most 500 characters",
