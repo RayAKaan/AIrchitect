@@ -317,15 +317,36 @@ def test_element_compiler_derives_stable_floor_slab_from_room_union():
 def test_element_compiler_does_not_fill_floor_plate_voids():
     layout = _layout()
     layout.pop("layout_hash")
-    layout["spaces"] = [{
-        "id": "courtyard-ring",
-        "level_number": 1,
-        "area_m2": 84.0,
-        "boundary": [
-            [0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0],
-            [0.0, 10.0, 0.0], [0.0, 0.0, 0.0],
-        ],
-    }]
+    layout["spaces"] = [
+        {
+            "id": "south",
+            "level_number": 1,
+            "area_m2": 20.0,
+            "boundary": [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 2.0, 0.0],
+                         [0.0, 2.0, 0.0], [0.0, 0.0, 0.0]],
+        },
+        {
+            "id": "north",
+            "level_number": 1,
+            "area_m2": 20.0,
+            "boundary": [[0.0, 8.0, 0.0], [10.0, 8.0, 0.0], [10.0, 10.0, 0.0],
+                         [0.0, 10.0, 0.0], [0.0, 8.0, 0.0]],
+        },
+        {
+            "id": "west",
+            "level_number": 1,
+            "area_m2": 12.0,
+            "boundary": [[0.0, 2.0, 0.0], [2.0, 2.0, 0.0], [2.0, 8.0, 0.0],
+                         [0.0, 8.0, 0.0], [0.0, 2.0, 0.0]],
+        },
+        {
+            "id": "east",
+            "level_number": 1,
+            "area_m2": 12.0,
+            "boundary": [[8.0, 2.0, 0.0], [10.0, 2.0, 0.0], [10.0, 8.0, 0.0],
+                         [8.0, 8.0, 0.0], [8.0, 2.0, 0.0]],
+        },
+    ]
     layout = _seal(layout)
     topology = _topology(layout)
     result = compile_architectural_elements(layout, topology)
