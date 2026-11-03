@@ -3,6 +3,7 @@ from __future__ import annotations
 from shapely.geometry import Polygon, mapping
 
 from app.domains.spatial_layout.service import SpatialLayoutError, build_spatial_layout
+from app.domains.semantic_model.service import canonical_hash
 from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
 
 
@@ -225,5 +226,12 @@ def test_spatial_layout_regeneration_uses_current_program_envelope_and_selected_
         design_parameters=parameters,
         design_metrics={**metrics, "design_hash": "d" * 64},
     )
+    expected["regeneration_request"] = {
+        "project_id": "project-1",
+        "project_version_id": "version-1",
+    }
+    expected_hash_input = dict(expected)
+    expected_hash_input.pop("layout_hash", None)
+    expected["layout_hash"] = canonical_hash(expected_hash_input)
     assert result.payload["layout_hash"] == expected["layout_hash"]
     assert result.output_hash
