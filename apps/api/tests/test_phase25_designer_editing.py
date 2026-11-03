@@ -672,3 +672,59 @@ async def test_direct_designer_mutation_invalidates_persisted_artifacts_atomical
     assert "program" in calls[0]["groups"]
     assert "design_alternatives" in calls[0]["groups"]
     assert "validation" in calls[0]["groups"]
+
+
+def test_authored_stair_and_ramp_compile_to_typed_parametric_intents():
+    model = world_fixture()
+    state = model["designer_state"]
+    stair = create_element(
+        model, state, element_type="Stair", name="Main stair",
+        properties={"width_m": 1.2, "total_rise_m": 3.6, "total_run_m": 4.8, "riser_count": 20},
+        level_number=1, actor_id="designer-1", reason="Author stair dimensions",
+    )
+    ramp = create_element(
+        model, state, element_type="Ramp", name="Service ramp",
+        properties={"width_m": 1.5, "run_m": 12.0, "rise_m": 0.6},
+        level_number=1, actor_id="designer-1", reason="Author ramp dimensions",
+    )
+
+    semantic = model["semantic_model"]
+    stair_element = next(item for item in semantic["elements"] if item["id"] == stair["element_id"])
+    ramp_element = next(item for item in semantic["elements"] if item["id"] == ramp["element_id"])
+    assert stair_element["cad_mapping"]["ifc_class"] == "IfcStair"
+    assert ramp_element["cad_mapping"]["ifc_class"] == "IfcRamp"
+
+    spec = compile_parametric_geometry(model, semantic)
+    stair_intent = next(item for item in spec["intents"] if item["element_id"] == stair["element_id"])
+    ramp_intent = next(item for item in spec["intents"] if item["element_id"] == ramp["element_id"])
+    assert stair_intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert stair_intent["feature"] == "stair_assembly"
+    assert stair_intent["parameters"] == {
+        "width_m": 1.2, "total_rise_m": 3.6, "total_run_m": 4.8, "riser_count": 20,
+    }
+    assert ramp_intent["status"] == "READY_FOR_CAD_ADAPTER"
+    assert ramp_intent["feature"] == "ramp_solid"
+    assert ramp_intent["parameters"] == {"width_m": 1.5, "run_m": 12.0, "rise_m": 0.6}
+
+    undo(model, state, "designer-1")
+    assert not any(item["id"] == ramp["element_id"] for item in model["semantic_model"]["elements"])
+    redo(model, state, "designer-1")
+    assert any(item["id"] == ramp["element_id"] for item in model["semantic_model"]["elements"])
+
+
+def test_stair_and_ramp_dimensions_reject_non_positive_or_invalid_values():
+    model = world_fixture()
+    state = model["designer_state"]
+    with pytest.raises(HTTPException):
+        create_element(
+            model, state, element_type="Stair", name="Invalid stair",
+            properties={"width_m": 1.2, "total_rise_m": 3.0, "total_run_m": 0, "riser_count": 12},
+            level_number=1, actor_id="designer-1", reason="Reject invalid stair",
+        )
+    with pytest.raises(HTTPException):
+        create_element(
+            model, state, element_type="Ramp", name="Invalid ramp",
+            properties={"width_m": 1.5, "run_m": 4.0, "rise_m": -0.1},
+            level_number=1, actor_id="designer-1", reason="Reject invalid ramp",
+        )
+
