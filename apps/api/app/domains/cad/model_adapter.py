@@ -75,9 +75,6 @@ def _level_index(levels: tuple[Level, ...], level_id: str) -> int:
     raise ValueError(f"unknown level {level_id!r}")
 
 
-__all__ = ["build_cad_request"]
-
-
 def _wall_footprint(start: dict[str, Any], end: dict[str, Any], thickness_m: float) -> tuple[list[tuple[float, float]], float]:
     """Return the metric XY rectangle swept by a horizontal wall axis."""
     coordinates = [start.get(axis) for axis in ("x", "y", "z")] + [
@@ -227,3 +224,6 @@ def build_semantic_cad_request(
         project_name=project_name,
         elements=elements,
     )
+
+
+__all__ = ["build_cad_request", "build_semantic_cad_request"]
