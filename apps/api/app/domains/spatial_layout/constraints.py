@@ -192,7 +192,7 @@ def compile_architectural_constraints(
     else:
         constraints.append(_constraint(
             "FOOTPRINT_WITHIN_BUILDABLE_ENVELOPE",
-            "UNKNOWN",
+            "HARD",
             "UNKNOWN",
             "Buildable polygon evidence is unavailable; footprint containment is not asserted.",
         ))
@@ -212,7 +212,7 @@ def compile_architectural_constraints(
     else:
         constraints.append(_constraint(
             "MAXIMUM_FOOTPRINT_AREA",
-            "UNKNOWN",
+            "HARD",
             "UNKNOWN",
             "A canonical maximum footprint area is unavailable; no planning limit is assumed.",
             actual=footprint.get("area_m2"),
@@ -236,7 +236,7 @@ def compile_architectural_constraints(
     else:
         constraints.append(_constraint(
             "MAXIMUM_GFA",
-            "UNKNOWN",
+            "HARD",
             "UNKNOWN",
             "A canonical maximum GFA is unavailable; no planning limit is assumed.",
             actual=selected_gfa,
@@ -306,7 +306,7 @@ def compile_architectural_constraints(
             if missing:
                 constraints.append(_constraint(
                     "WALL_DIMENSIONS_COMPLETE",
-                    "UNKNOWN",
+                    "HARD",
                     "UNKNOWN",
                     "Wall height/thickness require explicit review; no dimension is inferred.",
                     subject_id=candidate_id,
@@ -357,7 +357,7 @@ def compile_architectural_constraints(
             if "thickness_m" in missing:
                 constraints.append(_constraint(
                     "SLAB_THICKNESS_COMPLETE",
-                    "UNKNOWN",
+                    "HARD",
                     "UNKNOWN",
                     "Slab thickness requires explicit review; no dimension is inferred.",
                     subject_id=candidate_id,
