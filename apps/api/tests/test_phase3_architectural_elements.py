@@ -175,7 +175,7 @@ def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
             {
                 "id": "left",
                 "level_number": 1,
-                "area_m2": 100.0,
+                "area_m2": 50.0,
                 "boundary": [
                     [0.0, 0.0, 0.0], [5.0, 0.0, 0.0],
                     [5.0, 10.0, 0.0], [0.0, 10.0, 0.0],
