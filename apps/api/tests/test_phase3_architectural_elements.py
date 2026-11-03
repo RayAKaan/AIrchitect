@@ -384,6 +384,9 @@ def test_element_compiler_rejects_non_manifold_shared_wall_segments():
     layout["spaces"].append(duplicate)
     layout = _seal(layout)
     topology = _topology(layout)
+    # Isolate the non-manifold ownership gate from the separate overlap gate.
+    topology["issues"] = []
+    topology = _reseal_topology(topology)
 
     with pytest.raises(ArchitecturalElementError) as exc:
         compile_architectural_elements(layout, topology)
