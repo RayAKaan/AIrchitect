@@ -180,16 +180,14 @@ def compile_architectural_elements(
             end_t = second[0] * ux + second[1] * uy
             line_groups[line_key].append((min(start_t, end_t), max(start_t, end_t), first, second, owner_id))
 
-        for group in line_groups.values():
+        for line_key, group in line_groups.items():
+            ux, uy = line_key[0], line_key[1]
             breakpoints = sorted({
                 round(value, 6)
                 for start_t, end_t, *_ in group
                 for value in (start_t, end_t)
             })
             for start_t, end_t, first, second, owner_id in group:
-                dx, dy = second[0] - first[0], second[1] - first[1]
-                length_xy = math.hypot(dx, dy)
-                ux, uy = dx / length_xy, dy / length_xy
                 t_first = first[0] * ux + first[1] * uy
                 t_second = second[0] * ux + second[1] * uy
                 low, high = sorted((t_first, t_second))
