@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { ModelScene, SceneNode, SceneView } from './sceneContract';
-type WorkspaceView = SceneView | '3d';
 import { EditToolbar, type EditCommand } from './EditToolbar';
 import { SceneCanvas } from './SceneCanvas';
 import { SceneInspector } from './SceneInspector';
 import { OrthographicSceneView } from './OrthographicSceneView';
+
+type WorkspaceView = SceneView | '3d';
 
 type SceneWorkspaceProps = Readonly<{
   scene: ModelScene;
@@ -19,9 +20,9 @@ export function SceneWorkspace({ scene, onPreviewEdit, onCommitEdit }: SceneWork
   const commitEdit = onCommitEdit ?? (() => undefined);
 
   return (
-    <section className="viewer-shell" aria-label="3D model workspace">
+    <section className="viewer-shell" aria-label="Architectural model workspace">
       <div className="viewer-head">
-        <div><p className="eyebrow">CANONICAL 3D WORKSPACE</p><h2>Model editing</h2><small>Edits are emitted as deterministic commands; persistence remains server-authoritative.</small></div>
+        <div><p className="eyebrow">CANONICAL MODEL WORKSPACE</p><h2>Model editing</h2><small>Edits are emitted as deterministic commands; persistence remains server-authoritative.</small></div>
         {selectedNode && <button className="btn outline" onClick={() => setSelectedNode(null)}>Clear selection</button>}
       </div>
       <div className="edit-toolbar" role="group" aria-label="Architectural view selection">
