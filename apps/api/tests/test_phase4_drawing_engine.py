@@ -6,6 +6,7 @@ from app.domains.drawings.engine import build_drawing_package
 from app.domains.drawings.documentation import build_drawing_documentation
 from app.domains.drawings.site_circulation import build_site_circulation_package
 from app.domains.drawings.environmental_spatial import analyze_environmental_spatial_performance
+from app.domains.drawings.engineering_analysis import CostSchedule, UnitRate, build_engineering_analysis
 from app.domains.model import (
     ArchitecturalModel, Building, Door, Level, Point3D, Site, Slab, Space, Wall,
 )
@@ -213,3 +214,56 @@ def test_environmental_spatial_analysis_route_is_registered():
     paths = {route.path for route in app.routes}
     assert "/api/v1/projects/{project_id}/environmental-spatial-analysis/generate" in paths
     assert "/api/v1/projects/{project_id}/environmental-spatial-analysis" in paths
+
+
+def test_engineering_analysis_derives_structural_proxy_and_geometric_quantities():
+    result = build_engineering_analysis(_model())
+    quantities = {item["code"]: item for item in result["quantities"]}
+
+    assert result["source_model_hash"]
+    assert result["analysis_hash"]
+    assert result["structural"]["status"] == "CONCEPT_ONLY"
+    assert result["structural"]["indicative_column_positions_per_level"] == 4
+    assert quantities["gross_space_floor_area"]["quantity"] == 48.0
+    assert quantities["wall_volume"]["quantity"] == 4.8
+    assert quantities["slab_volume"]["quantity"] == 12.0
+    assert quantities["door_count"]["quantity"] == 1
+    assert result["materials"]["status"] == "UNSPECIFIED"
+    assert result["cost"]["status"] == "NOT_ESTIMATED"
+
+
+def test_engineering_analysis_cost_is_only_computed_from_explicit_unit_rates():
+    schedule = CostSchedule(
+        schedule_id="client-rates-2026",
+        version="1",
+        currency="SAR",
+        source="User-supplied tender schedule",
+        rates=(
+            UnitRate(quantity_code="wall_volume", rate=100, unit="m3", description="Wall volume allowance"),
+            UnitRate(quantity_code="slab_volume", rate=200, unit="m3", description="Slab volume allowance"),
+        ),
+    )
+    result = build_engineering_analysis(_model(), schedule)
+    assert result["cost"]["status"] == "PRELIMINARY_USER_RATES"
+    assert result["cost"]["total"] == 2880.0
+    assert result["cost"]["schedule_source"] == "User-supplied tender schedule"
+
+
+def test_engineering_analysis_rejects_rate_unit_mismatch():
+    schedule = CostSchedule(
+        schedule_id="invalid-rates",
+        version="1",
+        currency="SAR",
+        source="User supplied",
+        rates=(UnitRate(quantity_code="wall_volume", rate=100, unit="m2", description="Wrong unit"),),
+    )
+    with pytest.raises(ValueError, match="COST_RATE_UNIT_MISMATCH"):
+        build_engineering_analysis(_model(), schedule)
+
+
+def test_engineering_analysis_routes_are_registered():
+    from app.main import app
+
+    paths = {route.path for route in app.routes}
+    assert "/api/v1/projects/{project_id}/engineering-analysis/generate" in paths
+    assert "/api/v1/projects/{project_id}/engineering-analysis" in paths
