@@ -627,6 +627,11 @@ async def commit_architectural_elements(
                 == proposal.output_hash
             and (existing_elements[candidate_id].get("provenance") or {}).get("generated_from", {}).get("review_reason")
                 == reason.strip()
+            and all(
+                isinstance(existing_elements[candidate_id].get("properties", {}).get(key), dict)
+                and existing_elements[candidate_id]["properties"][key].get("value") == value
+                for key, value in reviewed[candidate_id].items()
+            )
             for candidate_id in candidate_ids
         )
         if not replay_matches:
@@ -673,6 +678,7 @@ async def commit_architectural_elements(
             "layout_hash": proposal_source.get("layout_hash"),
             "topology_hash": proposal_source.get("topology_hash"),
             "source_space_ids": candidate.get("source_space_ids", []),
+            "reviewed_properties": dict(dimensions),
             "review_reason": reason.strip(),
         }
         committed.append(candidate_id)
