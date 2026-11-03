@@ -294,3 +294,31 @@ def test_regeneration_order_places_spatial_constraints_before_quantities():
         "architectural_constraints",
         "quantities",
     ]
+
+
+def test_architectural_program_regeneration_uses_current_world_and_requirements():
+    registry = RegenerationHandlerRegistry()
+    request = RegenerationInput(
+        artifact_type="architectural_program",
+        source_revision_hash=WORLD_HASH,
+        payload={},
+        dependencies={
+            "world_model": {
+                "payload": {
+                    "building": {
+                        "use": "office",
+                        "target_gfa": {"value": 800.0},
+                        "floor_count": {"value": 2},
+                    },
+                    "site": {"area": {"value": 1000.0}},
+                    "properties": {},
+                },
+                "model_hash": WORLD_HASH,
+            },
+            "requirements": {"records": []},
+        },
+    )
+    result = registry.execute(request)
+    assert result.payload["target_gfa_m2"] == 800.0
+    assert result.payload["floor_count"] == 2
+    assert result.payload["area_reconciliation"]["reconciled"] is True
