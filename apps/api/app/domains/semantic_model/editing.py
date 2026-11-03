@@ -98,7 +98,7 @@ GEOMETRY_PROPERTIES = {
     "area_m2", "width_m", "depth_m", "orientation_deg", "floor_count",
     "floor_to_floor_height_m", "height_m", "target_gfa_m2", "coverage_ratio",
     "footprint_width_m", "footprint_depth_m", "translation_m", "rotation_deg", "setback_m", "elevation_m", "level_number",
-    "length_m", "thickness_m", "spaces", "total_run_m", "total_rise_m", "riser_count", "run_m", "rise_m",
+    "length_m", "thickness_m", "start_m", "end_m", "spaces", "total_run_m", "total_rise_m", "riser_count", "run_m", "rise_m",
 }
 
 
