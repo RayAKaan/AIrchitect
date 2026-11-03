@@ -19,6 +19,7 @@ class RegenerationInput:
     artifact_type: str
     source_revision_hash: str
     payload: dict[str, Any]
+    dependencies: dict[str, dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
