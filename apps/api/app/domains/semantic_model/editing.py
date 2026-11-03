@@ -928,7 +928,7 @@ def set_lock(state: dict[str, Any], element_id: str, actor_id: str, locked: bool
 
 def create_element(model: dict[str, Any], state: dict[str, Any], *, element_type: str, name: str,
                    properties: dict[str, Any], level_number: int | None, actor_id: str, reason: str,
-                   host_element_id: str | None = None) -> dict[str, Any]:
+                   host_element_id: str | None = None, element_id: str | None = None) -> dict[str, Any]:
     if element_type not in CREATABLE_TYPES:
         raise error(422, "ELEMENT_TYPE_NOT_CREATABLE", "Only spaces and explicit architectural components can be authored",
                     allowed=sorted(CREATABLE_TYPES))
@@ -940,7 +940,20 @@ def create_element(model: dict[str, Any], state: dict[str, Any], *, element_type
         raise error(422, "INVALID_ELEMENT_NAME", "Element name must contain 1–120 characters")
     if len(properties) > 30:
         raise error(422, "TOO_MANY_PROPERTIES", "An element can contain at most 30 properties")
-    element_id = str(uuid4())
+    # Generated proposal promotion may supply its already-reviewed stable ID.
+    # Validate it as a UUID so arbitrary client identifiers cannot enter the graph.
+    if element_id is not None:
+        try:
+            from uuid import UUID
+            element_id = str(UUID(element_id))
+        except (ValueError, TypeError, AttributeError):
+            raise error(422, "INVALID_ELEMENT_ID", "A supplied semantic element ID must be a UUID")
+        if any(item.get("id") == element_id for item in model.get("designer_elements", [])):
+            raise error(409, "SEMANTIC_ELEMENT_EXISTS", "The semantic element ID already exists", element_id=element_id)
+        if element_id in {item.get("id") for item in (model.get("semantic_model") or {}).get("elements", [])}:
+            raise error(409, "SEMANTIC_ELEMENT_EXISTS", "The semantic element ID already exists", element_id=element_id)
+    else:
+        element_id = str(uuid4())
     identity_key = f"designer:{element_id}"
     typed: dict[str, Any] = {}
     for key, value in properties.items():
