@@ -117,3 +117,53 @@ def test_worker_accepts_architectural_wall_kind():
     ])
     assert validated[0]["kind"] == "wall"
     assert "wall" in COLOURS
+
+
+def _add_semantic_slab(world, semantic):
+    boundary = [
+        {"x": 0.0, "y": 0.0, "z": 3.0},
+        {"x": 10.0, "y": 0.0, "z": 3.0},
+        {"x": 10.0, "y": 8.0, "z": 3.0},
+        {"x": 0.0, "y": 8.0, "z": 3.0},
+        {"x": 0.0, "y": 0.0, "z": 3.0},
+    ]
+    semantic["elements"].append({
+        "id": "slab-1",
+        "element_type": "Slab",
+        "name": "Level 1 floor slab",
+        "properties": {
+            "boundary_m": _typed(boundary, "m", "polygon3"),
+            "area_m2": _typed(80.0, "m2"),
+            "thickness_m": _typed(0.25, "m"),
+        },
+    })
+    semantic["relationships"].append({
+        "source_id": "storey-1",
+        "relationship_type": "hosts_element",
+        "target_id": "slab-1",
+    })
+    return boundary
+
+
+def test_semantic_slab_adapter_builds_floor_plate_solid_below_top_elevation():
+    world, semantic = _semantic_wall(start_z=3.0)
+    boundary = _add_semantic_slab(world, semantic)
+    request = build_semantic_cad_request(world, semantic, job_id="wall-and-slab")
+    slab = next(element for element in request.elements if element.id == "slab-1")
+
+    assert slab.kind == "floor_plate"
+    assert slab.footprint.points == [
+        (0.0, 0.0), (10.0, 0.0), (10.0, 8.0), (0.0, 8.0),
+    ]
+    assert slab.base_elevation_m == 2.75
+    assert slab.height_m == 0.25
+    assert slab.metadata["element_type"] == "Slab"
+    assert slab.metadata["semantic_element_id"] == "slab-1"
+
+
+def test_semantic_slab_adapter_rejects_boundary_area_mismatch():
+    world, semantic = _semantic_wall(start_z=3.0)
+    _add_semantic_slab(world, semantic)
+    semantic["elements"][-1]["properties"]["area_m2"] = _typed(90.0, "m2")
+    with pytest.raises(ValueError, match="SLAB_AREA_MISMATCH"):
+        build_semantic_cad_request(world, semantic, job_id="bad-slab")
