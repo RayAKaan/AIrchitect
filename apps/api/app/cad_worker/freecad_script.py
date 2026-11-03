@@ -24,6 +24,7 @@ ignored by the caller.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import traceback
@@ -86,6 +87,82 @@ def build_prism(footprint, base_elevation_m, height_m):
     return solid
 
 
+def _add_native_metadata(feature, element):
+    """Attach canonical identity and editable dimensional provenance."""
+    metadata = element.get("metadata") or {}
+    values = {
+        "CanonicalElementId": ("App::PropertyString", element["id"]),
+        "CanonicalElementType": ("App::PropertyString", metadata.get("element_type") or metadata.get("canonical_element_type") or element.get("kind", "building_mass")),
+        "SourceWorldModelHash": ("App::PropertyString", metadata.get("world_model_hash") or element.get("source_reference", "")),
+        "SemanticModelHash": ("App::PropertyString", metadata.get("semantic_model_hash", "")),
+        "CoordinateSystem": ("App::PropertyString", metadata.get("coordinate_system", "local_cartesian_z_up")),
+        "Units": ("App::PropertyString", metadata.get("units", "m")),
+        "MaterialClass": ("App::PropertyString", element.get("material_class", "unspecified")),
+        "BaseElevationM": ("App::PropertyFloat", float(element.get("base_elevation_m", 0.0))),
+        "HeightM": ("App::PropertyFloat", float(element["height_m"])),
+    }
+    for name, (property_type, value) in values.items():
+        if not hasattr(feature, name):
+            feature.addProperty(property_type, name, "AIrchitect")
+        setattr(feature, name, value)
+
+
+def _build_native_feature(document, element):
+    """Create editable native FreeCAD objects for supported architectural solids."""
+    import FreeCAD
+    import Part
+
+    kind = element.get("kind", "building_mass")
+    points = [(float(x), float(y)) for x, y in element["footprint"]["points"]]
+    base = float(element.get("base_elevation_m", 0.0))
+    height = float(element["height_m"])
+    object_name = "AI_" + "".join(ch if ch.isalnum() else "_" for ch in element["id"])
+
+    if kind == "wall":
+        if len(points) != 4:
+            raise ValueError("wall footprint must contain four corners")
+        start = points[0]
+        end = points[1]
+        length = ((end[0] - start[0]) ** 2 + (end[1] - start[1]) ** 2) ** 0.5
+        thickness = ((points[2][0] - points[1][0]) ** 2 + (points[2][1] - points[1][1]) ** 2) ** 0.5
+        if length <= 1e-6 or thickness <= 1e-6:
+            raise ValueError("wall dimensions must be positive")
+        # The local X axis follows the wall axis; the local Y axis spans thickness.
+        angle = math.degrees(math.atan2(end[1] - start[1], end[0] - start[0]))
+        normal = (-math.sin(math.radians(angle)), math.cos(math.radians(angle)))
+        origin = FreeCAD.Vector(start[0] - normal[0] * thickness,
+                                start[1] - normal[1] * thickness, base)
+        feature = document.addObject("Part::Box", object_name)
+        feature.Length = length
+        feature.Width = thickness
+        feature.Height = height
+        feature.Placement = FreeCAD.Placement(
+            origin, FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), angle)
+        )
+        _add_native_metadata(feature, element)
+        return feature, feature.Shape
+
+    # A floor plate or mass is an editable Part::Extrusion with a retained profile.
+    vectors = [FreeCAD.Vector(x, y, base) for x, y in points]
+    wire = Part.makePolygon(vectors + [vectors[0]])
+    face = Part.Face(wire)
+    if not face.isValid():
+        raise ValueError("architectural profile is not a valid planar face")
+    profile = document.addObject("Part::Feature", object_name + "_Profile")
+    profile.Shape = face
+    profile.Label = (element.get("name") or element["id"]) + " profile"
+    profile.ViewObject.Visibility = False
+    extrusion = document.addObject("Part::Extrusion", object_name)
+    extrusion.Base = profile
+    extrusion.DirMode = "Custom"
+    extrusion.Dir = FreeCAD.Vector(0, 0, 1)
+    extrusion.LengthFwd = height
+    extrusion.Solid = True
+    extrusion.Reversed = False
+    _add_native_metadata(extrusion, element)
+    return extrusion, extrusion.Shape
+
+
 def measure(shape, element_id, kind):
     """Measure a real solid and return verified quantities."""
     box = shape.BoundBox
@@ -146,23 +223,13 @@ def run(request_path):
     solids = []
 
     for element in elements:
-        shape = build_prism(
-            element["footprint"]["points"],
-            element.get("base_elevation_m", 0.0),
-            element["height_m"],
-        )
+        feature, shape = _build_native_feature(document, element)
+        feature.Label = element.get("name") or element["id"]
+        document.recompute()
+        shape = feature.Shape
         measurement = measure(shape, element["id"], element.get("kind", "building_mass"))
         measurements.append(measurement)
         solids.append(shape)
-
-        # Add to the native document so the .FCStd artifact contains real
-        # parametric FreeCAD features, not just a baked mesh.
-        feature = document.addObject("Part::Feature", element["id"])
-        feature.Shape = shape
-        feature.Label = element.get("name") or element["id"]
-        if element.get("source_reference"):
-            feature.addProperty("App::PropertyString", "SourceReference", "AIrchitect")
-            feature.SourceReference = element["source_reference"]
 
         if not measurement["is_valid"]:
             warnings.append(
