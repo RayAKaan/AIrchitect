@@ -287,7 +287,7 @@ def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
     result = compile_architectural_elements(layout, _topology(layout))
     shared_vertical = [
         item for item in result["candidates"]
-        if item["wall_classification"] == "PARTITION"
+        if item.get("wall_classification") == "PARTITION"
         and item["properties"]["start_m"]["x"] == 5.0
         and item["properties"]["end_m"]["x"] == 5.0
     ]
