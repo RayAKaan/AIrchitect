@@ -103,8 +103,8 @@ def compile_architectural_elements(
 
     spaces: dict[str, dict[str, Any]] = {}
     polygons: dict[str, Polygon] = {}
-    Segment = tuple[tuple[float, float, float], tuple[float, float, float]]
-    segments_by_level: dict[int, dict[Segment, set[str]]] = defaultdict(lambda: defaultdict(set))
+    Point3 = tuple[float, float, float]
+    raw_segments_by_level: dict[int, list[tuple[Point3, Point3, str]]] = defaultdict(list)
     for row in rows:
         if not isinstance(row, dict):
             raise ArchitecturalElementError("ELEMENT_SPACE_INVALID", "Every layout space must be an object")
@@ -152,9 +152,57 @@ def compile_architectural_elements(
         for first, second in zip(points, points[1:]):
             if math.dist(first, second) <= _GEOMETRY_TOLERANCE_M:
                 continue
-            ordered = tuple(sorted((tuple(round(value, 6) for value in first),
-                                   tuple(round(value, 6) for value in second))))
-            segments_by_level[level][ordered].add(space_id)
+            raw_segments_by_level[level].append((first, second, space_id))
+
+    # Node collinear boundaries before emitting elements. Exact endpoint matching
+    # misses T-junctions and differently segmented shared boundaries, producing
+    # overlapping duplicate walls. Canonical line groups make this deterministic
+    # while keeping the work local to each collinear group.
+    segments_by_level: dict[int, dict[tuple[Point3, Point3], set[str]]] = defaultdict(
+        lambda: defaultdict(set)
+    )
+    for level, raw_segments in sorted(raw_segments_by_level.items()):
+        line_groups: dict[tuple[float, float, float], list[tuple[float, float, Point3, Point3, str]]] = defaultdict(list)
+        for first, second, owner_id in raw_segments:
+            dx = second[0] - first[0]
+            dy = second[1] - first[1]
+            length_xy = math.hypot(dx, dy)
+            if length_xy <= _GEOMETRY_TOLERANCE_M:
+                continue
+            ux, uy = dx / length_xy, dy / length_xy
+            if ux < -_GEOMETRY_TOLERANCE_M or (
+                abs(ux) <= _GEOMETRY_TOLERANCE_M and uy < 0
+            ):
+                ux, uy = -ux, -uy
+            offset = ux * first[1] - uy * first[0]
+            line_key = (round(ux, 6), round(uy, 6), round(offset, 6))
+            start_t = first[0] * ux + first[1] * uy
+            end_t = second[0] * ux + second[1] * uy
+            line_groups[line_key].append((min(start_t, end_t), max(start_t, end_t), first, second, owner_id))
+
+        for group in line_groups.values():
+            breakpoints = sorted({
+                round(value, 6)
+                for start_t, end_t, *_ in group
+                for value in (start_t, end_t)
+            })
+            for start_t, end_t, first, second, owner_id in group:
+                dx, dy = second[0] - first[0], second[1] - first[1]
+                length_xy = math.hypot(dx, dy)
+                ux, uy = dx / length_xy, dy / length_xy
+                t_first = first[0] * ux + first[1] * uy
+                t_second = second[0] * ux + second[1] * uy
+                low, high = sorted((t_first, t_second))
+                cuts = [value for value in breakpoints if low - _GEOMETRY_TOLERANCE_M <= value <= high + _GEOMETRY_TOLERANCE_M]
+                for cut_start, cut_end in zip(cuts, cuts[1:]):
+                    if cut_end - cut_start <= _GEOMETRY_TOLERANCE_M:
+                        continue
+                    def point_at(t: float) -> Point3:
+                        ratio = (t - t_first) / (t_second - t_first)
+                        return tuple(round(first[index] + ratio * (second[index] - first[index]), 6) for index in range(3))  # type: ignore[return-value]
+                    a, b = point_at(cut_start), point_at(cut_end)
+                    ordered = tuple(sorted((a, b)))
+                    segments_by_level[level][ordered].add(owner_id)
 
     candidates: list[dict[str, Any]] = []
     for level, segments in sorted(segments_by_level.items()):
