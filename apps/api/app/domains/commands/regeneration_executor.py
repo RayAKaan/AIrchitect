@@ -133,6 +133,73 @@ def _structural_handler(request: RegenerationInput) -> RegenerationOutput:
     return _output(request, result.model_dump(mode="json"), "structural-engine-v1")
 
 
+def _dependency_payload(request: RegenerationInput, artifact_type: str) -> dict[str, Any]:
+    dependency = (request.dependencies or {}).get(artifact_type)
+    payload = dependency.get("payload") if isinstance(dependency, dict) else None
+    if not isinstance(payload, dict):
+        raise ValueError(f"regeneration dependency is missing or not current: {artifact_type}")
+    return payload
+
+
+def _spatial_layout_handler(request: RegenerationInput) -> RegenerationOutput:
+    from app.domains.spatial_layout.service import build_spatial_layout
+
+    raw = request.payload.get("regeneration_request")
+    if not isinstance(raw, dict):
+        raise ValueError("spatial layout artifact is missing regeneration_request")
+    payload = build_spatial_layout(
+        project_id=raw["project_id"],
+        project_version_id=raw["project_version_id"],
+        world_model_hash=request.source_revision_hash,
+        program=raw["program"],
+        envelope=raw["envelope"],
+        alternative_id=raw["alternative_id"],
+        design_parameters=raw["design_parameters"],
+        design_metrics=raw["design_metrics"],
+    )
+    return _output(request, payload, "phase3-spatial-layout-v1")
+
+
+def _spatial_topology_handler(request: RegenerationInput) -> RegenerationOutput:
+    from app.domains.spatial_layout.topology import build_spatial_topology
+
+    layout = _dependency_payload(request, "spatial_layout")
+    return _output(request, build_spatial_topology(layout), "phase3-spatial-topology-v1")
+
+
+def _architectural_elements_handler(request: RegenerationInput) -> RegenerationOutput:
+    from app.domains.spatial_layout.architectural_elements import compile_architectural_elements
+
+    layout = _dependency_payload(request, "spatial_layout")
+    topology = _dependency_payload(request, "spatial_topology")
+    raw = request.payload.get("regeneration_request") or {}
+    if not isinstance(raw, dict):
+        raise ValueError("architectural elements regeneration_request must be an object")
+    payload = compile_architectural_elements(
+        layout,
+        topology,
+        default_wall_thickness_m=raw.get("default_wall_thickness_m"),
+    )
+    return _output(request, payload, "phase3-architectural-elements-v1")
+
+
+def _architectural_constraints_handler(request: RegenerationInput) -> RegenerationOutput:
+    from app.domains.spatial_layout.constraints import compile_architectural_constraints
+
+    layout = _dependency_payload(request, "spatial_layout")
+    topology = _dependency_payload(request, "spatial_topology")
+    elements = _dependency_payload(request, "architectural_elements")
+    envelope = _dependency_payload(request, "planning_envelope")
+    payload = compile_architectural_constraints(
+        layout,
+        topology,
+        elements,
+        envelope,
+        world_model_hash=request.source_revision_hash,
+    )
+    return _output(request, payload, "phase3-architectural-constraints-v1")
+
+
 class RegenerationHandlerRegistry:
     """Explicit registry; unsupported or evidence-dependent types fail closed."""
 
@@ -143,6 +210,10 @@ class RegenerationHandlerRegistry:
             "quantity": _quantity_handler,
             "cost": _cost_handler,
             "structural": _structural_handler,
+            "spatial_layout": _spatial_layout_handler,
+            "spatial_topology": _spatial_topology_handler,
+            "architectural_elements": _architectural_elements_handler,
+            "architectural_constraints": _architectural_constraints_handler,
         }
         self._handlers = {**defaults, **(handlers or {})}
 
