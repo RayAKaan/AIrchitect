@@ -92,6 +92,8 @@ def build_drawing_package(model: ArchitecturalModel) -> dict[str, Any]:
         })
     levels = [{"id": level.id, "name": level.name, "elevation_m": level.elevation_m}
               for level in sorted(model.levels, key=lambda item: (item.elevation_m, item.id))]
+    if not levels:
+        levels = [{"id": None, "name": "Unassigned", "elevation_m": 0.0}]
     payload = {
         "schema_version": "canonical-drawing-package-v1",
         "engine_version": ENGINE_VERSION,
