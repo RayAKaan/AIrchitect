@@ -392,15 +392,19 @@ def compile_architectural_constraints(
         if isinstance(item, dict) and item.get("required")
     ]
     for adjacency in required_adjacencies:
-        status = adjacency.get("status")
-        satisfied = status == "SATISFIED"
+        adjacency_status = adjacency.get("status")
+        result_status = (
+            "PASS" if adjacency_status == "SATISFIED"
+            else "FAIL" if adjacency_status in {"UNSATISFIED", "FAILED"}
+            else "UNKNOWN"
+        )
         constraints.append(_constraint(
             "REQUIRED_PROGRAM_ADJACENCY",
             "HARD",
-            "PASS" if satisfied else "UNKNOWN",
-            "Required programme adjacency must be confirmed by spatial topology; adjacency is not proof of traversable access.",
+            result_status,
+            "Required programme adjacency must be satisfied; deferred topology evidence remains unknown and is not proof of traversable access.",
             subject_id=f"{adjacency.get('from')}:{adjacency.get('to')}",
-            actual=status,
+            actual=adjacency_status,
             expected="SATISFIED",
         ))
 
