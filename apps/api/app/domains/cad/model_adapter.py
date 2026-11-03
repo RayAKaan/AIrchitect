@@ -197,9 +197,9 @@ def build_semantic_cad_request(
             if declared_area is not None and abs(polygon.area - float(declared_area)) > max(0.02, polygon.area * 1e-4):
                 raise ValueError(f"SLAB_AREA_MISMATCH:{element_id}")
             footprint = points[:-1]
-            base_elevation = elevations[0]
-            kind = "floor_plate"
             height = float(params["thickness_m"])
+            base_elevation = elevations[0] - height
+            kind = "floor_plate"
             material_class = "architectural_slab"
         elements.append(MassingElement(
             id=element_id,
