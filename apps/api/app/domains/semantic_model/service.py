@@ -347,7 +347,7 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
                 "level_number": level_number.get("value") if isinstance(level_number, dict) else None,
                 "elevation_m": elevation.get("value") if isinstance(elevation, dict) else None,
             }
-        elif element_type in {"Space", "Wall", "Slab", "Roof", "Door", "Window"}:
+        elif element_type in {"Space", "Wall", "Slab", "Roof", "Door", "Window", "Stair", "Ramp"}:
             missing.append("storey_placement")
         if element_type == "Space":
             translation_item = (element.get("properties") or {}).get("translation_m")
@@ -390,7 +390,7 @@ def compile_parametric_geometry(world_model: dict[str, Any], semantic_model: dic
         "intents": intents,
         "limitations": [
             "This is a deterministic parametric feature specification, not a generated B-rep or IFC file.",
-            "No wall, slab, roof, door, or window geometry is inferred without explicit dimensions and relationships.",
+            "No wall, slab, roof, door, window, stair, or ramp geometry is inferred without explicit dimensions and relationships.",
             "Native CAD/BIM generation and geometry validation remain the responsibility of the isolated CAD worker.",
         ],
     }
