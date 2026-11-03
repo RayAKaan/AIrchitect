@@ -1,3 +1,5 @@
+import pytest
+
 from app.domains.cad.model_adapter import build_cad_request, build_semantic_cad_request
 from app.domains.model import ArchitecturalModel, Building, Level, Point3D, Site, Space
 
