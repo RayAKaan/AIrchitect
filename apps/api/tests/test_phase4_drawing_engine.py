@@ -79,3 +79,19 @@ def test_drawing_generation_and_retrieval_routes_are_registered():
     paths = {route.path for route in app.routes}
     assert "/api/v1/projects/{project_id}/drawings/generate" in paths
     assert "/api/v1/projects/{project_id}/drawings" in paths
+
+
+def test_drawing_package_keeps_unassigned_elements_visible_without_storeys():
+    model = ArchitecturalModel(
+        project_id="project-2", revision=1,
+        site=Site(id="site-2", width_m=10, depth_m=10),
+        walls=(Wall(
+            id="wall-unassigned", name="Unassigned wall",
+            start=Point3D(x=0, y=0, z=0), end=Point3D(x=5, y=0, z=0),
+            thickness_m=0.2, height_m=3,
+        ),),
+    )
+    package = build_drawing_package(model)
+    assert package["views"][0]["id"] == "plan"
+    assert package["views"][0]["level_id"] is None
+    assert package["views"][0]["primitives"][0]["element_id"] == "wall-unassigned"
