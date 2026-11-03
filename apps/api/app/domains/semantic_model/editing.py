@@ -87,7 +87,7 @@ PROPERTY_SPECS: dict[str, dict[str, dict[str, Any]]] = {
     "Ramp": {
         "width_m": {"kind": "number", "unit": "m", "minimum": 0.3, "maximum": 100},
         "run_m": {"kind": "number", "unit": "m", "minimum": 0.01, "maximum": 1000},
-        "rise_m": {"kind": "number", "unit": "m", "minimum": 0.0, "maximum": 100},
+        "rise_m": {"kind": "number", "unit": "m", "minimum": 0.001, "maximum": 100},
     },
 }
 
