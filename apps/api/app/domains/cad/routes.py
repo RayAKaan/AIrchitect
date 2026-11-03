@@ -190,7 +190,7 @@ async def generate_semantic_cad(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Generate B-rep solids from reviewed canonical semantic wall elements."""
+    """Generate B-rep solids from reviewed canonical semantic wall and slab elements."""
     project, version = await resolve_project_version(
         session, project_id, version_ref, user.id, write=True
     )
