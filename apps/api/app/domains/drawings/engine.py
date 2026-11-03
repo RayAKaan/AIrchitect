@@ -79,9 +79,7 @@ def build_drawing_package(model: ArchitecturalModel) -> dict[str, Any]:
             raise ValueError(f"DRAWING_OPENING_HOST_MISSING:{opening.id}")
         start, end = _wall_opening_line(opening, wall)
         plan.append(_line("A-DOOR" if opening.element_type == "door" else "A-WINDOW", start, end, opening.id))
-        dx, dy = wall.end.x - wall.start.x, wall.end.y - wall.start.y
-        length = math.hypot(dx, dy)
-        ux, uy = dx / length, dy / length
+        length = math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y)
         offset = opening.offset_m
         elevations.append({
             "kind": "RECTANGLE", "layer": "A-DOOR" if opening.element_type == "door" else "A-WINDOW",
