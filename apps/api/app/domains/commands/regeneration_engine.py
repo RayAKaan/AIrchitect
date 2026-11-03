@@ -14,6 +14,10 @@ _ORDER = (
     # Design and canonical-model projections.
     "concepts",
     "design_alternatives",
+    "spatial_layout",
+    "spatial_topology",
+    "architectural_elements",
+    "architectural_constraints",
     "semantic_model",
     "parametric_geometry_intents",
     # Downstream quantities, reviews, documentation and release checks.
