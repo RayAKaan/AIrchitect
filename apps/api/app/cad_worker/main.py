@@ -279,8 +279,10 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
         dxf_summary = dxf_io.write_footprint_dxf(
             dxf_path, elements, source_model_hash=source_hash
         )
+        with open(dxf_path, "rb") as dxf_handle:
+            dxf_bytes = dxf_handle.read()
         dxf_summary["validation"] = dxf_io.validate_dxf(
-            open(dxf_path, "rb").read(),
+            dxf_bytes,
             expected_element_ids=[element["id"] for element in elements],
         )
         artifacts.append(_read_artifact(dxf_path, "dxf"))
@@ -374,6 +376,7 @@ def run_occt(request: dict[str, Any], output_dir: str) -> dict[str, Any]:
         "element_count": len(elements),
         "warnings": warnings,
         "ifc_summary": ifc_summary,
+        "dxf_summary": dxf_summary,
     }
 
 
