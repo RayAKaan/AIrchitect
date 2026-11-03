@@ -105,3 +105,15 @@ def test_semantic_wall_adapter_rejects_axis_length_mismatch():
     semantic["elements"][1]["properties"]["length_m"] = _typed(4.0, "m")
     with pytest.raises(ValueError, match="WALL_LENGTH_MISMATCH"):
         build_semantic_cad_request(world, semantic, job_id="mismatched-wall")
+
+
+def test_worker_accepts_architectural_wall_kind():
+    from app.cad_worker.main import COLOURS, _validate_elements
+
+    world, semantic = _semantic_wall()
+    request = build_semantic_cad_request(world, semantic, job_id="worker-wall")
+    validated = _validate_elements([
+        element.model_dump(mode="json") for element in request.elements
+    ])
+    assert validated[0]["kind"] == "wall"
+    assert "wall" in COLOURS
