@@ -49,6 +49,7 @@ COLOURS: dict[str, tuple[float, float, float]] = {
     "floor_plate": (0.42, 0.66, 0.86),
     "core": (0.90, 0.62, 0.28),
     "site_boundary": (0.55, 0.74, 0.52),
+    "wall": (0.72, 0.70, 0.65),
 }
 
 DEFAULT_COLOUR = (0.80, 0.55, 0.55)
