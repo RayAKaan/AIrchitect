@@ -245,6 +245,8 @@ def compile_architectural_elements(
         for edge in topology.get("edges", [])
         if isinstance(edge, dict)
         and edge.get("relationship") == "SHARED_BOUNDARY"
+        and isinstance(edge.get("source_space_id"), str)
+        and isinstance(edge.get("target_space_id"), str)
         and isinstance(edge.get("id"), str)
     }
 
