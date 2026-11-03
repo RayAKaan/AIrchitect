@@ -391,3 +391,18 @@ def test_element_compiler_rejects_non_manifold_shared_wall_segments():
     with pytest.raises(ArchitecturalElementError) as exc:
         compile_architectural_elements(layout, topology)
     assert exc.value.code == "ELEMENT_BOUNDARY_NON_MANIFOLD"
+
+
+def test_element_compiler_blocks_topology_geometry_errors():
+    layout = _layout()
+    topology = _topology(layout)
+    topology["issues"] = [{
+        "code": "SPACE_INTERIOR_OVERLAP",
+        "severity": "ERROR",
+        "space_ids": ["room-a", "room-b"],
+    }]
+    topology = _reseal_topology(topology)
+
+    with pytest.raises(ArchitecturalElementError) as exc:
+        compile_architectural_elements(layout, topology)
+    assert exc.value.code == "ELEMENT_TOPOLOGY_INVALID"
