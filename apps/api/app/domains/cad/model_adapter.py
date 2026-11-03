@@ -136,11 +136,20 @@ def build_semantic_cad_request(
                 f"SEMANTIC_WALL_UNDERCONSTRAINED:{intent.get('element_id')}:{','.join(intent.get('missing_parameters', []))}"
             )
         params = intent.get("parameters") or {}
+        start = params.get("start_m") or {}
+        end = params.get("end_m") or {}
         footprint, base_elevation = _wall_footprint(
-            params.get("start_m") or {},
-            params.get("end_m") or {},
+            start,
+            end,
             params.get("thickness_m"),
         )
+        axis_length = math.hypot(
+            float(end["x"]) - float(start["x"]),
+            float(end["y"]) - float(start["y"]),
+        )
+        declared_length = float(params["length_m"])
+        if abs(axis_length - declared_length) > max(1e-4, axis_length * 1e-4):
+            raise ValueError(f"WALL_LENGTH_MISMATCH:{intent['element_id']}")
         wall = elements_by_id[intent["element_id"]]
         placement = intent.get("placement") or {}
         elements.append(MassingElement(
