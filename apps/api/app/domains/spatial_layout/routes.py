@@ -660,7 +660,7 @@ async def commit_architectural_elements(
                         candidate_id=candidate_id)
         properties = dict(candidate.get("properties") or {})
         properties.update(dimensions)
-        event = create_element(
+        create_element(
             model, state,
             element_type="Wall",
             name=str(candidate.get("name") or "Reviewed wall"),
