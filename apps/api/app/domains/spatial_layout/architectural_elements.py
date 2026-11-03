@@ -141,6 +141,14 @@ def compile_architectural_elements(
         points = [_coordinate(point, space_id=space_id) for point in boundary]
         if points[0] != points[-1]:
             points.append(points[0])
+        elevations = [point[2] for point in points]
+        if max(elevations) - min(elevations) > _GEOMETRY_TOLERANCE_M:
+            raise ArchitecturalElementError(
+                "ELEMENT_BOUNDARY_NON_PLANAR",
+                "A room boundary must lie on one horizontal storey elevation",
+                {"space_id": space_id, "minimum_elevation_m": min(elevations),
+                 "maximum_elevation_m": max(elevations)},
+            )
         polygon = Polygon([(point[0], point[1]) for point in points])
         declared_area = row.get("area_m2")
         if (
