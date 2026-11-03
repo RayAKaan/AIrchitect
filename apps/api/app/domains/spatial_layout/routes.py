@@ -174,11 +174,6 @@ async def generate_spatial_layout(
     payload["regeneration_request"] = {
         "project_id": project.id,
         "project_version_id": version.id,
-        "program": program.payload_json,
-        "envelope": envelope.payload_json,
-        "alternative_id": alternative.id,
-        "design_parameters": alternative.design_parameters_json or {},
-        "design_metrics": metrics,
     }
     hash_input = dict(payload)
     hash_input.pop("layout_hash", None)
