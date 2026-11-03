@@ -14,6 +14,7 @@ from app.domains.design.lineage import alternative_is_stale, current_design_inpu
 from app.domains.design.s2_inputs import S2DesignInputError, resolve_s2_design_inputs
 from app.domains.foundation.service import audit, create_next_version, error, persist_world_model, resolve_project_version, resolve_world_model
 from app.domains.semantic_model.editing import create_element, state_for
+from app.domains.semantic_model.service import canonical_hash
 from app.domains.lifecycle.service import new_artifact
 
 from .architectural_elements import ArchitecturalElementError, compile_architectural_elements
@@ -170,6 +171,18 @@ async def generate_spatial_layout(
     except SpatialLayoutError as exc:
         raise error(409, exc.code, str(exc), **exc.context) from exc
 
+    payload["regeneration_request"] = {
+        "project_id": project.id,
+        "project_version_id": version.id,
+        "program": program.payload_json,
+        "envelope": envelope.payload_json,
+        "alternative_id": alternative.id,
+        "design_parameters": alternative.design_parameters_json or {},
+        "design_metrics": metrics,
+    }
+    hash_input = dict(payload)
+    hash_input.pop("layout_hash", None)
+    payload["layout_hash"] = canonical_hash(hash_input)
     digest = payload["layout_hash"]
     existing = await session.scalar(
         select(ArtifactVersion).where(
