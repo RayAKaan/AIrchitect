@@ -70,6 +70,8 @@ def write_footprint_dxf(
         points = footprint.get("points") if isinstance(footprint, dict) else None
         if not isinstance(points, list) or len(points) < 3:
             raise DxfError(f"element {element_id} has no valid footprint")
+        if any(not isinstance(point, (list, tuple)) or len(point) != 2 for point in points):
+            raise DxfError(f"element {element_id} footprint contains a malformed vertex")
         xy = [(_number(point[0], f"{element_id}.x"), _number(point[1], f"{element_id}.y")) for point in points]
         if len(set(xy)) < 3:
             raise DxfError(f"element {element_id} footprint has fewer than three unique vertices")
@@ -146,15 +148,30 @@ def validate_dxf(data: bytes, *, expected_element_ids: Sequence[str]) -> dict[st
         raise DxfError("DXF EOF marker is missing")
     if "AC1015" not in values or "$INSUNITS" not in values or "LWPOLYLINE" not in values:
         raise DxfError("DXF header or entity type is missing")
+    if not all(marker in values for marker in ("HEADER", "TABLES", "ENTITIES", "ENDSEC")):
+        raise DxfError("DXF section structure is incomplete")
+    if not any(pairs[index][0] == "70" and pairs[index][1] == "6"
+               for index in range(len(pairs) - 1)
+               if pairs[index - 1] == ("9", "$INSUNITS")):
+        raise DxfError("DXF units are not declared as metres")
     ids: list[str] = []
+    entity_count = 0
+    closed_count = 0
     for index, (code, value) in enumerate(pairs):
+        if code == "0" and value == "LWPOLYLINE":
+            entity_count += 1
+            end = next((offset for offset in range(index + 1, len(pairs))
+                        if pairs[offset][0] == "0"), len(pairs))
+            entity = pairs[index:end]
+            if ("70", "1") not in entity:
+                raise DxfError("DXF contains an open footprint polyline")
+            closed_count += 1
         if code == "1001" and value == "AIrchitect":
             if index + 2 >= len(pairs) or pairs[index + 1][0] != "1000":
                 raise DxfError("DXF canonical element XDATA is malformed")
             ids.append(pairs[index + 1][1])
     if len(ids) != len(set(ids)) or set(ids) != set(expected_element_ids):
         raise DxfError("DXF canonical element IDs do not match the source model")
-    entity_count = sum(code == "0" and value == "LWPOLYLINE" for code, value in pairs)
-    if entity_count != len(expected_element_ids):
+    if entity_count != len(expected_element_ids) or closed_count != entity_count:
         raise DxfError("DXF entity count does not match canonical element count")
     return {"status": "PASS", "schema": "AC1015", "entity_count": entity_count, "canonical_element_ids": sorted(ids)}
