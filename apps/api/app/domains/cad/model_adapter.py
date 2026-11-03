@@ -126,6 +126,8 @@ def build_semantic_cad_request(
     ]
     if not walls:
         raise ValueError("SEMANTIC_WALLS_REQUIRED")
+    if len(walls) > 2_000:
+        raise ValueError("SEMANTIC_WALL_LIMIT_EXCEEDED")
     elements_by_id = {
         element["id"]: element for element in semantic_model.get("elements", [])
     }
