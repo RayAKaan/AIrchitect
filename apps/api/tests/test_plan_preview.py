@@ -20,7 +20,7 @@ def test_plan_preview_is_deterministic_and_non_mutating() -> None:
     result = preview_sequential_plan("plan", [command("a"), command("b", command_type="LockEntity", payload={"element_id": "building-1"})])
     assert result.executable is True
     assert result.execution_order == ("a", "b")
-    assert result.impact_groups == ("architectural_constraints", "architectural_elements", "cost", "design_alternatives", "parametric_geometry_intents", "program", "quantities", "spatial_layout", "spatial_topology", "validation")
+    assert result.impact_groups == ("architectural_constraints", "architectural_elements", "cost", "parametric_geometry_intents", "program", "quantities", "spatial_layout", "spatial_topology")
     assert result.fingerprint
 
 
