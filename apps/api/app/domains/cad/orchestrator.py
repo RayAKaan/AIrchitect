@@ -545,6 +545,7 @@ async def run_cad_job_for_semantic_model(
         result=result,
         stored=stored,
         alternative_id=None,
+        persist_unassigned_geometry=True,
         design_hash=canonical_hash(semantic_model),
         capabilities=capabilities,
         duration_ms=duration_ms,
