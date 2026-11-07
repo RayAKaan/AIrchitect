@@ -2,7 +2,7 @@
 
 **Scope:** The six-deliverable architectural-generation milestone in the product roadmap. This is distinct from the legacy MVP tracker row named “Phase 3 — World Model” and from historical Phase 24/25 labels.
 
-**Status:** In progress. PR 1 establishes the first versioned programme-to-spatial-layout path. No later deliverable is complete merely because supporting infrastructure exists.
+**Status:** Phase 3 implementation PRs 1–6 are merged (#356–#361). The milestone remains in progress because the complete brief-to-editable-building acceptance journey, full architectural element coverage, native CAD-host validation and six-family benchmark evidence are not yet complete. Merged implementation foundations must not be confused with completion of the acceptance gates.
 
 ## Objective
 
@@ -121,3 +121,49 @@ The older apps/api/app/domains/design/compiler.py produces a separate prototype 
 - Persists wall/slab proposal artifacts against the exact spatial layout and topology hashes, with stable candidate IDs, source-space lineage, local metric geometry and explicit missing dimensions.
 - Adds a review/commit endpoint that forks the immutable committed source version into a draft, requires human-reviewed wall height/thickness or slab thickness, promotes stable IDs into the canonical semantic graph, records provenance/audit history, and uses the existing undo/redo event lifecycle.
 - Door/window locations, roof geometry, stairs, ramps, and fire/accessibility facts remain explicit unknowns where the source data does not provide authoritative geometry. PR 3 does not claim those elements are generated.
+
+## PR 2 implementation record
+
+- Adds a deterministic `spatial_topology` artifact derived from the exact current spatial-layout hash.
+- Validates semantic space IDs, storeys, polygon geometry and declared-area agreement; detects shared-boundary contacts, overlaps and disconnected per-floor components.
+- Records explicit circulation-zone contacts and vertical-core candidates without treating a shared boundary as a traversable doorway.
+- Preserves unresolved door placement, accessible routes, fire egress, exit distances, stairs, ramps and lift geometry as review/unknown states.
+- Persists topology with exact layout lineage and stale-artifact detection. It is a review graph, not a validated circulation or egress solution.
+
+## PR 4 implementation record
+
+- Compiles reviewed canonical semantic Wall and Slab elements into metric B-rep solids through the isolated CAD worker.
+- Preserves semantic IDs, World Model and semantic-model hashes, storey placement, coordinate system and units in worker metadata.
+- Validates wall-axis dimensions and slab polygon closure, planarity, voids and declared-area reconciliation before persistence.
+- Persists CAD runs, geometry artifacts and validation evidence against exact source lineage, including semantic-model jobs without a design-alternative foreign key.
+- Current automatic B-rep coverage is limited to reviewed walls and floor slabs. Wall-opening cuts, roofs, stairs, ramps, native FreeCAD semantic feature generation, host-containment/intersection checks and full feature dependency regeneration remain outstanding.
+
+## PR 5 implementation record
+
+- Adds deterministic hard-constraint evaluation over exact World Model, spatial layout, topology, architectural-element and planning-envelope lineage.
+- Validates topology identity, area reconciliation, footprint/envelope fit, maximum footprint/GFA, topology errors, wall axes, slab boundaries/areas and required programme adjacencies.
+- Separates hard constraints, preferred adjacency objectives and unresolved circulation/egress evidence. Missing hard dimensions are not treated as passes.
+- Persists hash-bound `architectural_constraints` artifacts with exact source dependencies, audit history and idempotent reuse.
+- Extends regeneration planning/execution support and targeted invalidation for spatial layout, topology, architectural elements and constraints.
+- Outstanding: broader structural/material, vertical-connectivity, opening/host and regulatory evidence; complete command preview/commit and durable regeneration coverage for every geometry mutation; undo/redo and stale-job end-to-end cases.
+
+## PR 6 implementation record
+
+- Extends the canonical scene contract with mesh face-index validation and exact semantic-node-to-mesh/model lineage checks.
+- Adds deterministic orthographic plan, front and side projections that reuse the scene mesh and stable semantic IDs, while retaining the interactive 3D canvas.
+- Adds selectable orthographic views to the scene workspace. Rendering remains read-only and does not become an authoritative geometry source.
+- Fixes the CI-discovered concurrent refresh-token race that could sign a user out during a React Strict Mode session restoration.
+- Latest-head CI passed for PR #361, including API, web, browser acceptance, runtime smoke, release preflight and Docker Compose checks.
+- Outstanding: complete end-to-end browser acceptance from brief through editable building, full natural-language command flow, professional drawing-sheet/dimension authoring, hidden-line removal, section-plane clipping, broader element mesh coverage and all six benchmark families.
+
+## Merged implementation status and remaining acceptance
+
+All six planned Phase 3 implementation PRs are merged:
+- PR #356 — programme-to-spatial layout
+- PR #357 — spatial topology and circulation review graph
+- PR #358 — reviewable architectural element proposals
+- PR #359 — canonical wall/slab B-rep geometry
+- PR #360 — hard constraints and regeneration foundation
+- PR #361 — shared scene and orthographic views
+
+This is not a Phase 3 completion declaration. The acceptance gates above remain the source of truth. In particular, the project still needs complete semantic element/geometry coverage, the full brief-to-editable-building journey, complete command/regeneration/undo-redo behavior, native CAD-host and legal release evidence where applicable, and reproducible results for all six building-type benchmark families. Keep the milestone status In progress until those gates are evidenced on the final main branch.
