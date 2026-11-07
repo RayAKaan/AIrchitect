@@ -56,7 +56,7 @@ ARTIFACT_CONTENT_TYPES: dict[str, str] = {
     "brep": "model/occt-brep",
 }
 
-MassingKind = Literal["building_mass", "floor_plate", "core", "site_boundary"]
+MassingKind = Literal["building_mass", "floor_plate", "core", "site_boundary", "wall"]
 
 
 class Footprint(BaseModel):

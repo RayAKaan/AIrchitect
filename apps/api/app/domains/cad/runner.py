@@ -111,7 +111,9 @@ def run_cad_job(
         argv = _build_argv(cfg, request_path, response_path, resolved)
         completed = _execute(argv, cfg, resolved, output_dir)
         response = _read_response(completed, response_path, cfg, resolved)
-        return _parse_result(response, resolved)
+        result = _parse_result(response, resolved)
+        _verify_result_matches_request(result, request)
+        return result
 
 
 def _build_argv(config: CadConfig, request_path: Path, response_path: Path, provider: str) -> list[str]:
@@ -405,6 +407,29 @@ def _parse_result(response: dict[str, Any], provider: str) -> CadJobResult:
     _verify_artifact_digests(result)
     _verify_worker_validation(result)
     return result
+
+
+def _verify_result_matches_request(result: CadJobResult, request: CadJobRequest) -> None:
+    """Require a one-to-one ID and element-kind match with the submitted geometry."""
+    expected = {element.id: element.kind for element in request.elements}
+    actual = {measurement.id: measurement.kind for measurement in result.measurements}
+    if len(actual) != len(result.measurements) or set(actual) != set(expected):
+        raise CadJobError(
+            "worker measurements do not identify exactly the requested elements"
+        )
+    mismatched = sorted(
+        element_id for element_id, kind in expected.items()
+        if actual.get(element_id) != kind
+    )
+    if mismatched:
+        raise CadJobError(
+            "worker measurement kinds do not match the requested element kinds: "
+            + ", ".join(mismatched)
+        )
+    if result.element_count != len(expected):
+        raise CadJobError(
+            f"worker reported {result.element_count} elements for a request containing {len(expected)}"
+        )
 
 
 def _parse_failure(response: dict[str, Any]) -> CadJobFailure:

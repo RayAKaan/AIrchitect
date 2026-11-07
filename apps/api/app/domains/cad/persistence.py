@@ -364,6 +364,7 @@ async def record_cad_success(
     result: CadJobResult,
     stored: dict[str, StoredBlob],
     alternative_id: str | None = None,
+    persist_unassigned_geometry: bool = False,
     design_hash: str = "",
     capabilities: WorkerCapabilities | None = None,
     duration_ms: int | None = None,
@@ -487,7 +488,7 @@ async def record_cad_success(
     # geometry, and inventing a GeometryArtifact for it would give consumers a
     # measurement of nothing.
     produced_geometry = result.element_count > 0 and result.combined_volume_m3 is not None
-    if produced_geometry and alternative_id:
+    if produced_geometry and (alternative_id is not None or persist_unassigned_geometry):
         geometry_hash = canonical_hash(
             {
                 "request_hash": run_hash,
@@ -508,7 +509,7 @@ async def record_cad_success(
             # still points at it, so the provenance chain stays intact.
             geometry_id = existing.id
         else:
-            if status == "CURRENT":
+            if status == "CURRENT" and alternative_id:
                 await _invalidate_prior_geometry_dependents(
                     session,
                     project_version_id=version.id,

@@ -92,7 +92,8 @@ def test_element_compiler_derives_unique_perimeter_and_partition_wall_axes():
         "perimeter_walls": 6,
         "partition_walls": 1,
     }
-    partition = next(item for item in first["candidates"] if item.get("wall_classification") == "PARTITION")
+    partition = next(item for item in first["candidates"] if item["element_type"] == "Wall"
+        and item["wall_classification"] == "PARTITION")
     assert partition["source_space_ids"] == ["room-a", "room-b"]
     assert partition["status"] == "UNDERCONSTRAINED"
     assert set(partition["missing_parameters"]) == {"height_m", "thickness_m"}
@@ -287,7 +288,8 @@ def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
     result = compile_architectural_elements(layout, _topology(layout))
     shared_vertical = [
         item for item in result["candidates"]
-        if item.get("wall_classification") == "PARTITION"
+        if item["element_type"] == "Wall"
+        and item["wall_classification"] == "PARTITION"
         and item["properties"]["start_m"]["x"] == 5.0
         and item["properties"]["end_m"]["x"] == 5.0
     ]

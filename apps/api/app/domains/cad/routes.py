@@ -39,7 +39,12 @@ from app.domains.cad.capability import probe_capabilities
 from app.domains.cad.config import CadConfig
 from app.domains.cad.errors import CadArtifactMissingError, CadError, CadStorageError
 from app.domains.cad.export_validation import validate_export
-from app.domains.cad.orchestrator import CadRequestRejected, classify_failure, run_cad_job_for_alternative
+from app.domains.cad.orchestrator import (
+    CadRequestRejected,
+    classify_failure,
+    run_cad_job_for_alternative,
+    run_cad_job_for_semantic_model,
+)
 from app.domains.cad.storage import ContentAddressedStore
 from app.domains.foundation.service import error, resolve_project_version, resolve_world_model
 from .schemas import CadGenerationRequest, artifact_out, job_out
@@ -170,6 +175,73 @@ async def generate_cad(
     return {
         **payload.model_dump(mode="json"),
         "artifacts": [artifact_out(row, version.id).model_dump(mode="json") for row in outcome.artifacts],
+        "validation_run_id": outcome.validation_run_id,
+    }
+
+
+@router.post(
+    "/projects/{project_id}/versions/{version_ref}/semantic-model/cad",
+    status_code=201,
+)
+async def generate_semantic_cad(
+    project_id: str,
+    version_ref: str,
+    body: CadGenerationRequest | None = None,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Generate B-rep solids from reviewed canonical semantic wall and slab elements."""
+    project, version = await resolve_project_version(
+        session, project_id, version_ref, user.id, write=True
+    )
+    world = await resolve_world_model(session, version.id)
+    semantic = world.model_json.get("semantic_model")
+    if not isinstance(semantic, dict) or not semantic.get("elements"):
+        raise error(409, "SEMANTIC_MODEL_REQUIRED", "A canonical semantic building model is required")
+    config = CadConfig.from_settings()
+    if config.geometry_engine != "cad_bim":
+        raise error(
+            409, "CAD_ENGINE_DISABLED",
+            "CAD geometry generation is disabled on this deployment",
+            geometry_engine=config.geometry_engine,
+        )
+    try:
+        capabilities = probe_capabilities(config)
+    except CadError as exc:
+        code, message = classify_failure(exc)
+        logger.error("cad_toolchain_unavailable", extra={"error": str(exc)})
+        raise error(503, code, message) from exc
+
+    try:
+        outcome = await run_cad_job_for_semantic_model(
+            session,
+            project=project,
+            version=version,
+            semantic_model=semantic,
+            actor_id=user.id,
+            config=config,
+            requested_outputs=list(body.requested_outputs) if body and body.requested_outputs else None,
+            capabilities=capabilities,
+            world=world,
+        )
+    except CadRequestRejected as exc:
+        raise error(exc.status, exc.code, exc.message) from exc
+
+    if outcome.unavailable:
+        raise error(
+            503,
+            outcome.error_code or "CAD_UNAVAILABLE",
+            outcome.error_message or "The CAD toolchain is not available",
+        )
+    run = outcome.run
+    assert run is not None
+    return {
+        **job_out(run, current_hash=world.model_hash or "", stale=outcome.stale).model_dump(mode="json"),
+        "artifacts": [
+            artifact_out(row, version.id).model_dump(mode="json")
+            for row in outcome.artifacts
+        ],
+        "geometry_artifact_id": outcome.geometry_artifact_id,
         "validation_run_id": outcome.validation_run_id,
     }
 
