@@ -112,9 +112,9 @@ def test_worker_accepts_architectural_wall_kind():
 
     world, semantic = _semantic_wall()
     request = build_semantic_cad_request(world, semantic, job_id="worker-wall")
-    validated = _validate_elements([
-        element.model_dump(mode="json") for element in request.elements
-    ])
+    validated = _validate_elements({
+        "elements": [element.model_dump(mode="json") for element in request.elements]
+    })
     assert validated[0]["kind"] == "wall"
     assert "wall" in COLOURS
 
