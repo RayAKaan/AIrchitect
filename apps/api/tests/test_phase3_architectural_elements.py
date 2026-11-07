@@ -12,8 +12,6 @@ from app.domains.spatial_layout.architectural_elements import (
 from app.domains.spatial_layout.topology import build_spatial_topology
 from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
 from app.domains.semantic_model.service import canonical_hash
-from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
-from app.domains.semantic_model.service import canonical_hash
 
 
 def _seal(payload: dict) -> dict:
