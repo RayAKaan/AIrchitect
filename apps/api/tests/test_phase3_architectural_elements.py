@@ -12,6 +12,8 @@ from app.domains.spatial_layout.architectural_elements import (
 from app.domains.spatial_layout.topology import build_spatial_topology
 from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
 from app.domains.semantic_model.service import canonical_hash
+from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
+from app.domains.semantic_model.service import canonical_hash
 
 
 def _seal(payload: dict) -> dict:
@@ -289,7 +291,8 @@ def test_element_compiler_nodes_t_junctions_into_unique_shared_wall_segments():
     result = compile_architectural_elements(layout, _topology(layout))
     shared_vertical = [
         item for item in result["candidates"]
-        if item["wall_classification"] == "PARTITION"
+        if item["element_type"] == "Wall"
+        and item["wall_classification"] == "PARTITION"
         and item["properties"]["start_m"]["x"] == 5.0
         and item["properties"]["end_m"]["x"] == 5.0
     ]
