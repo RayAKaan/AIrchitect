@@ -358,6 +358,27 @@ def compile_architectural_elements(
                 (round(float(x), 6), round(float(y), 6))
                 for x, y in list(component.exterior.coords)[:-1]
             ]
+            # Dissolve redundant collinear vertices introduced where adjacent
+            # room polygons meet. Keep corners and all true changes of direction.
+            changed = True
+            while changed and len(open_ring) > 3:
+                changed = False
+                simplified: list[tuple[float, float]] = []
+                for index, current in enumerate(open_ring):
+                    previous = open_ring[index - 1]
+                    following = open_ring[(index + 1) % len(open_ring)]
+                    first = (current[0] - previous[0], current[1] - previous[1])
+                    second = (following[0] - current[0], following[1] - current[1])
+                    cross = first[0] * second[1] - first[1] * second[0]
+                    dot = first[0] * second[0] + first[1] * second[1]
+                    scale = max(math.hypot(*first), math.hypot(*second), 1.0)
+                    if abs(cross) <= _GEOMETRY_TOLERANCE_M * scale and dot >= 0:
+                        changed = True
+                        continue
+                    simplified.append(current)
+                if len(simplified) < 3:
+                    break
+                open_ring = simplified
             if len(open_ring) < 3:
                 slab_unknowns.add(f"slab_level_{level}_boundary_invalid")
                 continue
