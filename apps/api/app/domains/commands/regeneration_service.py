@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ArtifactDependency, ArtifactVersion, Project, ProjectVersion, WorldModelRevision
+from app.db.models import ArtifactDependency, ArtifactVersion, DesignAlternative, Project, ProjectVersion, RequirementRecord, WorldModelRevision
 from app.db.regeneration_job_models import RegenerationJobRecord
 from app.db.regeneration_models import RegenerationStateRecord
 from app.domains.lifecycle.artifact_rebinding import rebind_artifact
@@ -50,14 +50,55 @@ class RegenerationService:
         if artifact.status != "stale":
             raise ValueError(f"artifact is not stale: {artifact.status}")
 
+        dependencies = await self._current_dependencies(session, artifact)
+        dependency_snapshots = {
+            dependency.artifact_type: {
+                "output_hash": dependency.output_hash,
+                "payload": dependency.payload_json,
+            }
+            for dependency in dependencies
+        }
+        if "design_alternative" in dependency_snapshots:
+            target_alternative = (
+                await session.get(DesignAlternative, artifact.alternative_id)
+                if artifact.alternative_id else await session.scalar(
+                    select(DesignAlternative).where(
+                        DesignAlternative.project_version_id == artifact.project_version_id,
+                        DesignAlternative.status == "SELECTED",
+                    )
+                )
+            )
+            if target_alternative is not None:
+                dependency_snapshots["design_alternative"]["selected_alternative_id"] = target_alternative.id
+        if artifact.artifact_type == "architectural_program":
+            world_revision = await session.scalar(
+                select(WorldModelRevision).where(
+                    WorldModelRevision.project_version_id == artifact.project_version_id,
+                    WorldModelRevision.model_hash == job.source_revision_hash,
+                ).order_by(WorldModelRevision.revision.desc()).limit(1)
+            )
+            if world_revision is not None:
+                dependency_snapshots["world_model"] = {
+                    "payload": world_revision.model_json,
+                    "model_hash": world_revision.model_hash,
+                }
+            requirements = list((await session.scalars(
+                select(RequirementRecord).where(
+                    RequirementRecord.project_version_id == artifact.project_version_id
+                ).order_by(RequirementRecord.created_at, RequirementRecord.id)
+            )).all())
+            dependency_snapshots["requirements"] = {"records": requirements}
         output = self._handlers.execute(
             RegenerationInput(
                 artifact_type=artifact.artifact_type,
                 source_revision_hash=job.source_revision_hash,
                 payload=artifact.payload_json,
+                dependencies=dependency_snapshots,
             )
         )
-        successor = await self._publish_successor(session, artifact, job, output)
+        successor = await self._publish_successor(
+            session, artifact, job, output, dependencies=dependencies
+        )
         await self._states.transition(session, state, "SUCCEEDED")
 
         successor_state = await self._states.get_for_update(session, successor.id)
@@ -91,6 +132,8 @@ class RegenerationService:
         artifact: ArtifactVersion,
         job: RegenerationJobRecord,
         output: RegenerationOutput,
+        *,
+        dependencies: list[ArtifactVersion],
     ) -> ArtifactVersion:
         if output.artifact_type != artifact.artifact_type:
             raise ValueError("regeneration output artifact type mismatch")
@@ -115,7 +158,6 @@ class RegenerationService:
         if world is None:
             raise ValueError("regeneration source world-model revision not found")
 
-        dependencies = await self._current_dependencies(session, artifact)
         return await rebind_artifact(
             session,
             project=project,
@@ -146,18 +188,35 @@ class RegenerationService:
             previous = await session.get(ArtifactVersion, edge.depends_on_artifact_version_id)
             if previous is None:
                 raise ValueError("regeneration dependency artifact not found")
-            current_result = await session.execute(
-                select(ArtifactVersion)
-                .where(
-                    ArtifactVersion.project_version_id == artifact.project_version_id,
-                    ArtifactVersion.artifact_type == previous.artifact_type,
-                    ArtifactVersion.alternative_id == previous.alternative_id,
-                    ArtifactVersion.status == "current",
+            if previous.artifact_type == "design_alternative" and previous.alternative_id is None:
+                target_alternative = (
+                    await session.get(DesignAlternative, artifact.alternative_id)
+                    if artifact.alternative_id else await session.scalar(
+                        select(DesignAlternative).where(
+                            DesignAlternative.project_version_id == artifact.project_version_id,
+                            DesignAlternative.status == "SELECTED",
+                        )
+                    )
                 )
-                .order_by(ArtifactVersion.version.desc())
-                .limit(1)
-            )
-            current = current_result.scalar_one_or_none()
+                current = (
+                    await session.get(ArtifactVersion, target_alternative.artifact_version_id)
+                    if target_alternative is not None else None
+                )
+                if current is not None and current.status != "current":
+                    current = None
+            else:
+                current_result = await session.execute(
+                    select(ArtifactVersion)
+                    .where(
+                        ArtifactVersion.project_version_id == artifact.project_version_id,
+                        ArtifactVersion.artifact_type == previous.artifact_type,
+                        ArtifactVersion.alternative_id == previous.alternative_id,
+                        ArtifactVersion.status == "current",
+                    )
+                    .order_by(ArtifactVersion.version.desc())
+                    .limit(1)
+                )
+                current = current_result.scalar_one_or_none()
             if current is None:
                 raise ValueError(
                     f"REGENERATION_DEPENDENCY_NOT_CURRENT: {previous.artifact_type} "

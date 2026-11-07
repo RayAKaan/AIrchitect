@@ -3,6 +3,8 @@ from __future__ import annotations
 from shapely.geometry import Polygon, mapping
 
 from app.domains.spatial_layout.service import SpatialLayoutError, build_spatial_layout
+from app.domains.semantic_model.service import canonical_hash
+from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
 
 
 def _inputs(*, relationship: str = "direct", footprint_width: float = 20.0, footprint_depth: float = 20.0):
@@ -187,3 +189,49 @@ def test_canonical_building_translation_is_not_silently_relocated():
         assert exc.code == "LAYOUT_FOOTPRINT_NOT_CONTAINED"
     else:
         raise AssertionError("An out-of-envelope canonical translation must not be relocated")
+
+
+def test_spatial_layout_regeneration_uses_current_program_envelope_and_selected_alternative():
+    program, envelope, parameters, metrics = _inputs()
+    request = RegenerationInput(
+        artifact_type="spatial_layout",
+        source_revision_hash="a" * 64,
+        payload={
+            "regeneration_request": {
+                "project_id": "project-1",
+                "project_version_id": "version-1",
+            },
+        },
+        dependencies={
+            "architectural_program": {"payload": program},
+            "planning_envelope": {"payload": envelope},
+            "design_alternative": {
+                "payload": {
+                    "parameters": parameters,
+                    "metrics": {**metrics, "design_hash": "d" * 64},
+                    "design_hash": "d" * 64,
+                },
+                "selected_alternative_id": "alternative-1",
+            },
+        },
+    )
+    result = RegenerationHandlerRegistry().execute(request)
+    expected = build_spatial_layout(
+        project_id="project-1",
+        project_version_id="version-1",
+        world_model_hash="a" * 64,
+        program=program,
+        envelope=envelope,
+        alternative_id="alternative-1",
+        design_parameters=parameters,
+        design_metrics={**metrics, "design_hash": "d" * 64},
+    )
+    expected["regeneration_request"] = {
+        "project_id": "project-1",
+        "project_version_id": "version-1",
+    }
+    expected_hash_input = dict(expected)
+    expected_hash_input.pop("layout_hash", None)
+    expected["layout_hash"] = canonical_hash(expected_hash_input)
+    assert result.payload["layout_hash"] == expected["layout_hash"]
+    assert result.output_hash

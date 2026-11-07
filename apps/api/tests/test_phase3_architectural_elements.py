@@ -10,6 +10,8 @@ from app.domains.spatial_layout.architectural_elements import (
     compile_architectural_elements,
 )
 from app.domains.spatial_layout.topology import build_spatial_topology
+from app.domains.commands.regeneration_executor import RegenerationHandlerRegistry, RegenerationInput
+from app.domains.semantic_model.service import canonical_hash
 
 
 def _seal(payload: dict) -> dict:
@@ -92,8 +94,7 @@ def test_element_compiler_derives_unique_perimeter_and_partition_wall_axes():
         "perimeter_walls": 6,
         "partition_walls": 1,
     }
-    partition = next(item for item in first["candidates"] if item["element_type"] == "Wall"
-        and item["wall_classification"] == "PARTITION")
+    partition = next(item for item in first["candidates"] if item["wall_classification"] == "PARTITION")
     assert partition["source_space_ids"] == ["room-a", "room-b"]
     assert partition["status"] == "UNDERCONSTRAINED"
     assert set(partition["missing_parameters"]) == {"height_m", "thickness_m"}
@@ -408,3 +409,33 @@ def test_element_compiler_blocks_topology_geometry_errors():
     with pytest.raises(ArchitecturalElementError) as exc:
         compile_architectural_elements(layout, topology)
     assert exc.value.code == "ELEMENT_TOPOLOGY_INVALID"
+
+
+def test_spatial_topology_and_element_regeneration_use_current_layout_dependencies():
+    layout = _layout()
+    expected_topology = _topology(layout)
+    registry = RegenerationHandlerRegistry()
+
+    topology_result = registry.execute(RegenerationInput(
+        artifact_type="spatial_topology",
+        source_revision_hash=layout["world_model_hash"],
+        payload={},
+        dependencies={"spatial_layout": {"payload": layout}},
+    ))
+    assert topology_result.payload["topology_hash"] == expected_topology["topology_hash"]
+
+    expected_elements = compile_architectural_elements(layout, expected_topology)
+    elements_result = registry.execute(RegenerationInput(
+        artifact_type="architectural_elements",
+        source_revision_hash=layout["world_model_hash"],
+        payload={"regeneration_request": {"default_wall_thickness_m": None}},
+        dependencies={
+            "spatial_layout": {"payload": layout},
+            "spatial_topology": {"payload": expected_topology},
+        },
+    ))
+    expected_elements["regeneration_request"] = {"default_wall_thickness_m": None}
+    expected_hash_input = dict(expected_elements)
+    expected_hash_input.pop("elements_hash", None)
+    expected_elements["elements_hash"] = canonical_hash(expected_hash_input)
+    assert elements_result.payload["elements_hash"] == expected_elements["elements_hash"]

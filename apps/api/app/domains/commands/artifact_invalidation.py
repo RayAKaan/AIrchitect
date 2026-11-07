@@ -16,6 +16,10 @@ from .regeneration_repository import RegenerationStateRepository
 GROUP_TO_ARTIFACT_TYPE: dict[str, str] = {
     "planning_envelope": "planning_envelope",
     "design_alternatives": "design_alternative",
+    "spatial_layout": "spatial_layout",
+    "spatial_topology": "spatial_topology",
+    "architectural_elements": "architectural_elements",
+    "architectural_constraints": "architectural_constraints",
     "parametric_geometry_intents": "geometry",
     "program": "architectural_program",
     "quantities": "quantity",

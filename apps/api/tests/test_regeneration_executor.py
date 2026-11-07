@@ -87,5 +87,10 @@ def test_registry_distinguishes_supported_and_unimplemented_artifact_types() -> 
     assert registry.supports("planning_envelope") is True
     assert registry.supports("cost") is True
     assert registry.supports("program") is False
+    assert registry.supports("architectural_program") is True
     assert registry.supports("design_alternative") is False
+    assert registry.supports("spatial_layout") is True
+    assert registry.supports("spatial_topology") is True
+    assert registry.supports("architectural_elements") is True
+    assert registry.supports("architectural_constraints") is True
     assert registry.supports("validation") is False
