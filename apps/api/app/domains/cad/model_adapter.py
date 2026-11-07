@@ -191,7 +191,15 @@ def build_semantic_cad_request(
             if not polygon.is_valid or polygon.is_empty or polygon.interiors or polygon.area <= 1e-6:
                 raise ValueError(f"SLAB_BOUNDARY_INVALID:{element_id}")
             declared_area = params.get("area_m2")
-            if declared_area is not None and abs(polygon.area - float(declared_area)) > max(0.02, polygon.area * 1e-4):
+            if declared_area is None:
+                raw_area = (authored.get("properties") or {}).get("area_m2")
+                declared_area = raw_area.get("value") if isinstance(raw_area, dict) else raw_area
+            if declared_area is not None and (
+                isinstance(declared_area, bool)
+                or not isinstance(declared_area, (int, float))
+                or not math.isfinite(float(declared_area))
+                or abs(polygon.area - float(declared_area)) > max(0.02, polygon.area * 1e-4)
+            ):
                 raise ValueError(f"SLAB_AREA_MISMATCH:{element_id}")
             footprint = points[:-1]
             height = float(params["thickness_m"])
