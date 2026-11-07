@@ -269,6 +269,13 @@ def main(argv):
                 document["element_count"] = len(requested_elements)
                 document["combined_volume_m3"] = 3000.0 * len(requested_elements)
                 document["combined_area_m2"] = 1400.0 * len(requested_elements)
+            elif document.get("status") == "ok" and document.get("measurements"):
+                requested_elements = request.get("elements") or []
+                if len(document["measurements"]) == len(requested_elements) and requested_elements:
+                    for measured, requested in zip(document["measurements"], requested_elements):
+                        measured["id"] = requested["id"]
+                        measured["kind"] = requested.get("kind", "building_mass")
+                    document["element_count"] = len(requested_elements)
             options = request.get("options", {})
             # Honour the narrow-output contract for the end-to-end workflow. The
             # normal default remains the STEP fixture so existing STEP-focused tests
