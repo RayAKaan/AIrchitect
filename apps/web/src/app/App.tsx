@@ -8,12 +8,33 @@ import { clearWorkspaceUrl } from '../state/workspaceNavigation';
 import '../style.css';
 
 const API = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+let refreshAccessTokenInFlight: Promise<string> | null = null;
 type Project = { id: string; name: string; building_type?: string; location?: string; status?: string; version?: string | number };
 
 export default function App() {
   const [token, setToken] = useState(''); const [checkingSession, setCheckingSession] = useState(true); const [forgotPassword, setForgotPassword] = useState(false); const [verificationRequired, setVerificationRequired] = useState(false); const [verificationNotice, setVerificationNotice] = useState(''); const [recoveryMessage, setRecoveryMessage] = useState(''); const [recoveryEmail, setRecoveryEmail] = useState(''); const [newPassword, setNewPassword] = useState(''); const [verifyToken, setVerifyToken] = useState(() => new URLSearchParams(window.location.search).get('verify_token') || ''); const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset_token') || ''); const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('token') || ''); const [inviteNotice, setInviteNotice] = useState(''); const [orgs, setOrgs] = useState<any[]>([]); const [selectedOrganizationId, setSelectedOrganizationId] = useState(''); const [projects, setProjects] = useState<Project[]>([]); const [activeProject, setActiveProject] = useState<Project | null>(null); const [settings, setSettings] = useState(false); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [register, setRegister] = useState(false); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [name, setName] = useState(''); const [orgName, setOrgName] = useState('');
   function csrfCookie() { return document.cookie.split(';').map(value => value.trim()).find(value => value.startsWith('airchitect_csrf='))?.slice('airchitect_csrf='.length) || ''; }
-  async function refreshAccessToken() { const csrf = csrfCookie(); const response = await fetch(API + '/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {}) }, body: '{}' }); if (!response.ok) return ''; const data = await response.json(); return data.access_token as string; }
+  async function refreshAccessToken() {
+    if (!refreshAccessTokenInFlight) {
+      refreshAccessTokenInFlight = (async () => {
+        const csrf = csrfCookie();
+        const response = await fetch(API + '/auth/refresh', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {}) },
+          body: '{}',
+        });
+        if (!response.ok) return '';
+        const data = await response.json();
+        return data.access_token as string;
+      })();
+    }
+    const current = refreshAccessTokenInFlight;
+    try {
+      return await current;
+    } finally {
+      if (refreshAccessTokenInFlight === current) refreshAccessTokenInFlight = null;
+    }
+  }
   async function request(path: string, init: RequestInit = {}) { const send = (accessToken: string) => fetch(API + path, { ...init, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...init.headers } }); let response = await send(token); if (response.status === 401 && token && !path.startsWith('/auth/')) { const renewed = await refreshAccessToken(); if (renewed) { setToken(renewed); response = await send(renewed); } } const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error?.message || data.detail?.message || data.detail || `Request failed (${response.status})`); return data; }
   async function loadWorkspace(preferredOrganizationId?: string) { if (!token) return []; setBusy(true); setError(''); try { const organizations = await request('/organizations'); const selectedOrganization = organizations.find((item: any) => item.id === (preferredOrganizationId || selectedOrganizationId)) || organizations[0]; const orderedOrganizations = selectedOrganization ? [selectedOrganization, ...organizations.filter((item: any) => item.id !== selectedOrganization.id)] : organizations; setOrgs(orderedOrganizations); setSelectedOrganizationId(selectedOrganization?.id || ''); const nextProjects = selectedOrganization ? await request(`/projects?organization_id=${selectedOrganization.id}`) : []; const projectList = nextProjects as Project[]; setProjects(projectList); const requestedProjectId = new URLSearchParams(window.location.search).get('project'); if (requestedProjectId) { const requestedProject = projectList.find((item) => item.id === requestedProjectId); if (requestedProject) setActiveProject(requestedProject); else window.history.replaceState({}, '', clearWorkspaceUrl(window.location.href)); } return projectList; } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load workspace.'); return []; } finally { setBusy(false); } }
   useEffect(() => { let active = true; void refreshAccessToken().then(restored => { if (active && restored) setToken(restored); }).catch(() => {}).finally(() => { if (active) setCheckingSession(false); }); return () => { active = false; }; }, []);
