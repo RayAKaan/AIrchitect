@@ -95,16 +95,6 @@ def compile_architectural_elements(
             "ELEMENT_WORLD_MODEL_MISMATCH",
             "Spatial topology and layout use different World Model revisions",
         )
-    blocking_topology_issues = [
-        issue for issue in topology.get("issues", [])
-        if isinstance(issue, dict) and issue.get("severity") == "ERROR"
-    ]
-    if blocking_topology_issues:
-        raise ArchitecturalElementError(
-            "ELEMENT_TOPOLOGY_INVALID",
-            "Architectural elements cannot be derived from topology with blocking geometry issues",
-            {"issues": blocking_topology_issues},
-        )
     if default_wall_thickness_m is not None and (
         isinstance(default_wall_thickness_m, bool)
         or not isinstance(default_wall_thickness_m, (int, float))
@@ -261,6 +251,29 @@ def compile_architectural_elements(
         and isinstance(edge.get("id"), str)
     }
 
+    # Detect non-manifold ownership globally before requiring topology edges.
+    # Otherwise an earlier duplicated perimeter segment can mask a later
+    # three-space shared segment with a less useful missing-edge error.
+    for level, segments in sorted(segments_by_level.items()):
+        for owners in segments.values():
+            if len(owners) > 2:
+                raise ArchitecturalElementError(
+                    "ELEMENT_BOUNDARY_NON_MANIFOLD",
+                    "A wall segment cannot be shared by more than two spaces",
+                    {"level_number": level, "space_ids": sorted(owners)},
+                )
+
+    blocking_topology_issues = [
+        issue for issue in topology.get("issues", [])
+        if isinstance(issue, dict) and issue.get("severity") == "ERROR"
+    ]
+    if blocking_topology_issues:
+        raise ArchitecturalElementError(
+            "ELEMENT_TOPOLOGY_INVALID",
+            "Architectural elements cannot be derived from topology with blocking geometry issues",
+            {"issues": blocking_topology_issues},
+        )
+
     candidates: list[dict[str, Any]] = []
     for level, segments in sorted(segments_by_level.items()):
         for (start, end), owners in sorted(segments.items()):
@@ -354,6 +367,10 @@ def compile_architectural_elements(
                 slab_unknowns.add(f"slab_level_{level}_void_boundary_requires_explicit_opening_geometry")
                 continue
             component = orient(component, sign=1.0)
+            # Remove redundant collinear vertices introduced by polygon union.
+            # This keeps the persisted slab boundary minimal and stable across
+            # equivalent room partitioning.
+            component = component.simplify(_GEOMETRY_TOLERANCE_M, preserve_topology=True)
             open_ring = [
                 (round(float(x), 6), round(float(y), 6))
                 for x, y in list(component.exterior.coords)[:-1]
