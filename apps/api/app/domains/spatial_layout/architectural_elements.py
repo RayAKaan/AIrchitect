@@ -261,6 +261,18 @@ def compile_architectural_elements(
         and isinstance(edge.get("id"), str)
     }
 
+    # Diagnose non-manifold ownership across the complete boundary graph before
+    # checking individual topology-edge references. Otherwise an earlier
+    # two-owner edge without an adjacency record can mask a later 3+ owner edge.
+    for level, segments in sorted(segments_by_level.items()):
+        for (start, end), owners in sorted(segments.items()):
+            if len(owners) > 2:
+                raise ArchitecturalElementError(
+                    "ELEMENT_BOUNDARY_NON_MANIFOLD",
+                    "A wall segment cannot be shared by more than two spaces",
+                    {"level_number": level, "space_ids": sorted(owners)},
+                )
+
     candidates: list[dict[str, Any]] = []
     for level, segments in sorted(segments_by_level.items()):
         for (start, end), owners in sorted(segments.items()):
