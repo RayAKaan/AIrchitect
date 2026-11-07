@@ -278,7 +278,7 @@ class DesignAlternative(Base, DomainArtifactMixin):
 class GeometryArtifact(Base, DomainArtifactMixin):
     __tablename__ = "geometry_artifacts"
     __table_args__ = (UniqueConstraint("project_version_id", "geometry_hash", name="uq_geometry_hash_per_version"),)
-    alternative_id: Mapped[str] = mapped_column(ForeignKey("design_alternatives.id"), index=True)
+    alternative_id: Mapped[str | None] = mapped_column(ForeignKey("design_alternatives.id"), nullable=True, index=True)
     world_model_revision_id: Mapped[str | None] = mapped_column(ForeignKey("world_model_revisions.id"), nullable=True, index=True)
     geometry_hash: Mapped[str] = mapped_column(String(64), index=True)
     source: Mapped[str] = mapped_column(String(24), nullable=False, default="LEGACY_IR", index=True)
